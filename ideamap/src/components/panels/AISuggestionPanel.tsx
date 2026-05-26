@@ -3,6 +3,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateSuggestions } from '../../services/claudeService'
+import { calcSuggestionPositions } from '../../utils/mapLayout'
 import type { AISuggestion } from '../../types'
 
 const typeColors: Record<string, string> = {
@@ -57,21 +58,22 @@ export function AISuggestionPanel() {
 
   const handleAddSelected = useCallback(() => {
     if (!selectedNode) return
-    const parentX = selectedNode.position.x
-    const parentY = selectedNode.position.y
     const selectedSuggestions = aiSuggestions.filter((_, i) => selected.has(i))
+    const positions = calcSuggestionPositions(
+      selectedNode.position.x,
+      selectedNode.position.y,
+      selectedSuggestions.length,
+      nodes
+    )
 
     selectedSuggestions.forEach((suggestion, idx) => {
-      const angle = (idx / selectedSuggestions.length) * Math.PI * 2 - Math.PI / 2
-      const radius = 220
-      const x = parentX + Math.cos(angle) * radius
-      const y = parentY + Math.sin(angle) * radius
+      const { x, y } = positions[idx]
       const newId = addNode(suggestion.text, x, y, 'ai', '#f3f4ff')
       onConnect({ source: selectedNode.id, target: newId, sourceHandle: null, targetHandle: null })
     })
     setAIPanelOpen(false)
     setSelected(new Set())
-  }, [selectedNode, aiSuggestions, selected, addNode, onConnect, setAIPanelOpen])
+  }, [selectedNode, aiSuggestions, selected, nodes, addNode, onConnect, setAIPanelOpen])
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {

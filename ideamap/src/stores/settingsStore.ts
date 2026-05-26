@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Theme, AIModel } from '../types'
+import { getStoredApiKey, setStoredApiKey } from '../utils/encryption'
 
 interface SettingsState {
   apiKey: string
@@ -15,6 +16,7 @@ interface SettingsState {
   setAutoSave: (enabled: boolean) => void
   setTheme: (theme: Theme) => void
   setLanguage: (lang: 'ja' | 'en') => void
+  loadApiKey: () => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -26,15 +28,32 @@ export const useSettingsStore = create<SettingsState>()(
       autoSave: true,
       theme: 'light',
       language: 'ja',
-      setApiKey: (key) => set({ apiKey: key }),
+
+      setApiKey: (key) => {
+        set({ apiKey: key })
+        void setStoredApiKey(key)
+      },
       setAiModel: (model) => set({ aiModel: model }),
       setSuggestionCount: (count) => set({ suggestionCount: count }),
       setAutoSave: (enabled) => set({ autoSave: enabled }),
       setTheme: (theme) => set({ theme }),
       setLanguage: (lang) => set({ language: lang }),
+
+      loadApiKey: async () => {
+        const key = await getStoredApiKey()
+        set({ apiKey: key })
+      },
     }),
     {
       name: 'ideamap-settings',
+      // apiKey は暗号化ストレージで管理するため persist から除外
+      partialize: (state) => ({
+        aiModel: state.aiModel,
+        suggestionCount: state.suggestionCount,
+        autoSave: state.autoSave,
+        theme: state.theme,
+        language: state.language,
+      }),
     }
   )
 )
