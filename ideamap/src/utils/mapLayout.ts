@@ -1,4 +1,5 @@
-import type { Node } from '@xyflow/react'
+import type { Node, Edge } from '@xyflow/react'
+import Dagre from '@dagrejs/dagre'
 import type { IdeaNodeData } from '../types'
 
 const RADIUS = 220
@@ -16,7 +17,6 @@ export function calcSuggestionPositions(
     let x = parentX + Math.cos(angle) * RADIUS
     let y = parentY + Math.sin(angle) * RADIUS
 
-    // Push outward until no overlap with existing nodes
     for (let attempt = 0; attempt < 5; attempt++) {
       const overlaps = existingNodes.some((n) => {
         const dx = Math.abs(n.position.x - x)
@@ -29,5 +29,34 @@ export function calcSuggestionPositions(
     }
 
     return { x, y }
+  })
+}
+
+export function applyDagreLayout(
+  nodes: Node<IdeaNodeData>[],
+  edges: Edge[]
+): Node<IdeaNodeData>[] {
+  if (nodes.length === 0) return nodes
+
+  const g = new Dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: 'LR', ranksep: 100, nodesep: 60, marginx: 40, marginy: 40 })
+
+  nodes.forEach((node) => {
+    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+  })
+  edges.forEach((edge) => {
+    g.setEdge(edge.source, edge.target)
+  })
+
+  Dagre.layout(g)
+
+  return nodes.map((node) => {
+    const pos = g.node(node.id)
+    if (!pos) return node
+    return {
+      ...node,
+      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+    }
   })
 }

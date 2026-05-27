@@ -50,7 +50,10 @@ export function useAutoSave(accessToken: string | null) {
           setSaveStatus('saved')
         }
       } catch {
-        if (isMountedRef.current) setSaveStatus('error')
+        if (isMountedRef.current) {
+          setSaveStatus('error')
+          useUIStore.getState().addToast('Googleドライブへの保存に失敗しました', 'error')
+        }
       }
     } else {
       if (isMountedRef.current) setSaveStatus('saved')

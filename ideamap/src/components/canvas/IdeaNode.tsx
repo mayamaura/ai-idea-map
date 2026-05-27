@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { memo, useState, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -9,12 +9,13 @@ const NODE_COLORS = [
   '#fef3c7', '#fce7f3', '#ffe4e6', '#f3f4f6',
 ]
 
-export function IdeaNode({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
+function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
   const nodeData = data as IdeaNodeData
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(nodeData.text)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { updateNodeText, updateNodeColor, deleteNode } = useMapStore()
   const { setSelectedNodeId, setAIPanelOpen } = useUIStore()
 
@@ -74,6 +75,21 @@ export function IdeaNode({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) 
     [id, deleteNode]
   )
 
+  // Long press for mobile: select node and open AI panel after 500ms
+  const handleTouchStart = useCallback(() => {
+    longPressTimer.current = setTimeout(() => {
+      setSelectedNodeId(id)
+      setAIPanelOpen(true)
+    }, 500)
+  }, [id, setSelectedNodeId, setAIPanelOpen])
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }, [])
+
   const isAI = nodeData.createdBy === 'ai'
 
   return (
@@ -89,21 +105,24 @@ export function IdeaNode({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) 
       `}
       style={{ backgroundColor: nodeData.color }}
       onDoubleClick={handleDoubleClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchEnd}
     >
       {/* AI badge */}
       {isAI && (
-        <div className="absolute -top-2 -right-2 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center z-10">
-          <span className="text-white text-xs font-bold">AI</span>
+        <div className="absolute -top-2 -right-2 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center z-10 shadow-sm">
+          <span className="text-white text-xs font-bold leading-none">✦</span>
         </div>
       )}
 
-      {/* ハンドル（接続ポイント） */}
+      {/* ハンドル */}
       <Handle type="target" position={Position.Top} className="!bg-primary-400 !border-white !border-2" />
       <Handle type="target" position={Position.Left} className="!bg-primary-400 !border-white !border-2" />
       <Handle type="source" position={Position.Bottom} className="!bg-primary-400 !border-white !border-2" />
       <Handle type="source" position={Position.Right} className="!bg-primary-400 !border-white !border-2" />
 
-      {/* テキスト表示 / 編集 */}
+      {/* テキスト */}
       <div className="px-3 py-2">
         {isEditing ? (
           <textarea
@@ -123,7 +142,7 @@ export function IdeaNode({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) 
         )}
       </div>
 
-      {/* 選択時のアクションボタン */}
+      {/* 選択時アクションバー */}
       {selected && !isEditing && (
         <div className="absolute -bottom-9 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white border border-gray-200 rounded-lg shadow-lg px-1 py-1 z-20 whitespace-nowrap">
           <button
@@ -131,7 +150,7 @@ export function IdeaNode({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) 
             className="flex items-center gap-1 px-2 py-1 text-xs text-primary-600 font-medium hover:bg-primary-50 rounded-md transition-colors"
             title="AIに拡張を依頼"
           >
-            <span>🤖</span>
+            <span>✦</span>
             <span>AI拡張</span>
           </button>
           <div className="w-px h-4 bg-gray-200" />
@@ -179,3 +198,5 @@ export function IdeaNode({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) 
     </div>
   )
 }
+
+export const IdeaNode = memo(IdeaNodeComponent)

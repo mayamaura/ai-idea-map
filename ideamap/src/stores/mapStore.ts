@@ -15,10 +15,18 @@ import type { IdeaNodeData, SerializedNode, SerializedEdge } from '../types'
 type IdeaNode = Node<IdeaNodeData>
 
 const DEFAULT_NODE_COLOR = '#ffffff'
+const MAX_HISTORY = 50
+
+interface Snapshot {
+  nodes: IdeaNode[]
+  edges: Edge[]
+}
 
 interface MapState {
   nodes: IdeaNode[]
   edges: Edge[]
+  past: Snapshot[]
+  future: Snapshot[]
   onNodesChange: (changes: NodeChange<IdeaNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
@@ -26,9 +34,12 @@ interface MapState {
   updateNodeText: (id: string, text: string) => void
   updateNodeColor: (id: string, color: string) => void
   deleteNode: (id: string) => void
+  setNodes: (nodes: IdeaNode[]) => void
   loadFromSerialized: (nodes: SerializedNode[], edges: SerializedEdge[]) => void
   getSerializedNodes: () => SerializedNode[]
   getSerializedEdges: () => SerializedEdge[]
+  undo: () => void
+  redo: () => void
   reset: () => void
 }
 
@@ -41,14 +52,36 @@ const initialNodes: IdeaNode[] = [
   },
 ]
 
+function snapshot(nodes: IdeaNode[], edges: Edge[]): Snapshot {
+  return { nodes: [...nodes], edges: [...edges] }
+}
+
+function pushPast(past: Snapshot[], snap: Snapshot): Snapshot[] {
+  return [...past.slice(-MAX_HISTORY + 1), snap]
+}
+
 export const useMapStore = create<MapState>((set, get) => ({
   nodes: initialNodes,
   edges: [],
+  past: [],
+  future: [],
 
-  onNodesChange: (changes) =>
-    set((state) => ({
-      nodes: applyNodeChanges(changes, state.nodes) as IdeaNode[],
-    })),
+  onNodesChange: (changes) => {
+    const hasDragEnd = changes.some(
+      (c) => c.type === 'position' && !(c as { dragging?: boolean }).dragging
+    )
+    set((state) => {
+      const newNodes = applyNodeChanges(changes, state.nodes) as IdeaNode[]
+      if (hasDragEnd) {
+        return {
+          nodes: newNodes,
+          past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+          future: [],
+        }
+      }
+      return { nodes: newNodes }
+    })
+  },
 
   onEdgesChange: (changes) =>
     set((state) => ({ edges: applyEdgeChanges(changes, state.edges) })),
@@ -56,6 +89,8 @@ export const useMapStore = create<MapState>((set, get) => ({
   onConnect: (connection) =>
     set((state) => ({
       edges: addEdge({ ...connection, id: uuidv4() }, state.edges),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
     })),
 
   addNode: (text, x, y, createdBy = 'user', color = DEFAULT_NODE_COLOR) => {
@@ -66,7 +101,11 @@ export const useMapStore = create<MapState>((set, get) => ({
       position: { x, y },
       data: { text, color, createdBy },
     }
-    set((state) => ({ nodes: [...state.nodes, newNode] }))
+    set((state) => ({
+      nodes: [...state.nodes, newNode],
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    }))
     return id
   },
 
@@ -75,6 +114,8 @@ export const useMapStore = create<MapState>((set, get) => ({
       nodes: state.nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, text } } : n
       ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
     })),
 
   updateNodeColor: (id, color) =>
@@ -82,12 +123,23 @@ export const useMapStore = create<MapState>((set, get) => ({
       nodes: state.nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, color } } : n
       ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
     })),
 
   deleteNode: (id) =>
     set((state) => ({
       nodes: state.nodes.filter((n) => n.id !== id),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  setNodes: (nodes) =>
+    set((state) => ({
+      nodes,
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
     })),
 
   loadFromSerialized: (nodes, edges) => {
@@ -103,7 +155,7 @@ export const useMapStore = create<MapState>((set, get) => ({
       target: e.target,
       label: e.label || undefined,
     }))
-    set({ nodes: flowNodes, edges: flowEdges })
+    set({ nodes: flowNodes, edges: flowEdges, past: [], future: [] })
   },
 
   getSerializedNodes: () =>
@@ -124,5 +176,29 @@ export const useMapStore = create<MapState>((set, get) => ({
       label: typeof e.label === 'string' ? e.label : '',
     })),
 
-  reset: () => set({ nodes: initialNodes, edges: [] }),
+  undo: () =>
+    set((state) => {
+      if (state.past.length === 0) return {}
+      const prev = state.past[state.past.length - 1]
+      return {
+        nodes: prev.nodes,
+        edges: prev.edges,
+        past: state.past.slice(0, -1),
+        future: [snapshot(state.nodes, state.edges), ...state.future.slice(0, MAX_HISTORY - 1)],
+      }
+    }),
+
+  redo: () =>
+    set((state) => {
+      if (state.future.length === 0) return {}
+      const next = state.future[0]
+      return {
+        nodes: next.nodes,
+        edges: next.edges,
+        past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+        future: state.future.slice(1),
+      }
+    }),
+
+  reset: () => set({ nodes: initialNodes, edges: [], past: [], future: [] }),
 }))
