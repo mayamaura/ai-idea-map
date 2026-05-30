@@ -3,80 +3,11 @@
 **作成日**: 2026-05-27  
 **バージョン**: 1.0
 
----
-
-## 1. 技術スタック
-
-### 1.1 フロントエンド
-| 分類 | 採用技術 | 理由 |
-|------|----------|------|
-| フレームワーク | **React 18 + TypeScript** | 型安全、大規模コンポーネント管理に適する |
-| ビルドツール | **Vite** | 高速な開発サーバー、軽量バンドル |
-| マインドマップ | **React Flow** | ノード・エッジの管理が容易、スマホ対応、豊富なAPI |
-| スタイリング | **Tailwind CSS** | レスポンシブ対応が容易、ユーティリティファーストで高速開発 |
-| 状態管理 | **Zustand** | シンプルで軽量、React Flowとの親和性が高い |
-| AI連携 | **Anthropic SDK (@anthropic-ai/sdk)** | 公式SDK、型安全 |
-| Googleドライブ | **Google API Client (gapi)** | 公式クライアント |
-| ユニークID | **uuid** | ノード・エッジのID生成 |
-
-### 1.2 ホスティング
-- **Vercel** または **GitHub Pages**（静的サイトホスティング）
-- GitHub Actions でCI/CD自動デプロイ
+> 技術スタック・プロジェクト構成・技術的設計は [design.md](design.md) を参照。
 
 ---
 
-## 2. プロジェクト構成
-
-```
-ideamap/
-├── public/
-│   └── index.html
-├── src/
-│   ├── main.tsx                    # エントリーポイント
-│   ├── App.tsx                     # ルートコンポーネント
-│   ├── components/
-│   │   ├── canvas/
-│   │   │   ├── IdeaCanvas.tsx      # React Flowのメインキャンバス
-│   │   │   ├── IdeaNode.tsx        # カスタムノードコンポーネント
-│   │   │   └── IdeaEdge.tsx        # カスタムエッジコンポーネント
-│   │   ├── panels/
-│   │   │   ├── NodePanel.tsx       # ノード選択時のサイドパネル
-│   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル
-│   │   │   └── SettingsPanel.tsx   # 設定パネル
-│   │   ├── toolbar/
-│   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
-│   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）
-│   │   └── common/
-│   │       ├── Header.tsx
-│   │       ├── Modal.tsx
-│   │       └── LoadingSpinner.tsx
-│   ├── stores/
-│   │   ├── mapStore.ts             # マップ状態（ノード・エッジ）
-│   │   ├── settingsStore.ts        # 設定状態（APIキーなど）
-│   │   └── uiStore.ts              # UI状態（パネル開閉など）
-│   ├── services/
-│   │   ├── claudeService.ts        # Claude API呼び出し
-│   │   ├── googleDriveService.ts   # Google Drive API操作
-│   │   └── storageService.ts       # localStorageのラッパー
-│   ├── hooks/
-│   │   ├── useAutoSave.ts          # 自動保存フック
-│   │   ├── useGoogleAuth.ts        # Googleログイン状態管理
-│   │   └── useKeyboardShortcuts.ts # キーボードショートカット
-│   ├── types/
-│   │   └── index.ts                # 型定義
-│   └── utils/
-│       ├── mapLayout.ts            # ノード自動配置ロジック
-│       └── encryption.ts           # APIキーの暗号化・復号
-├── .env.example
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── tailwind.config.js
-```
-
----
-
-## 3. 実装フェーズ
+## 1. 実装フェーズ
 
 ### Phase 1: 基盤構築（約2日） ✅ 完了（2026-05-27）
 
@@ -120,7 +51,7 @@ ideamap/
   - 「追加」「再生成」ボタン
   - ローディング表示
 - [x] 選択した提案を新ノードとして追加するロジック
-  - 親ノードの右側/下側に自動配置（`mapLayout.ts`）
+  - 親ノードの周囲に円形配置（`mapLayout.ts`）
 
 **完了条件**: ノードを選択してAIに拡張依頼→提案を選択→マップに追加できる
 
@@ -179,109 +110,6 @@ ideamap/
 - [x] README.md の作成（Phase 3時点で作成済み）
 
 **完了条件**: 全機能が実用レベルで動作する
-
----
-
-## 4. 重要な技術的設計
-
-### 4.1 Claude API プロンプト設計
-
-```typescript
-const buildPrompt = (selectedNode: Node, context: MapContext) => `
-あなたはアイデア発想の専門家です。
-以下のアイデアを起点に、関連する新しいアイデアを${count}個提案してください。
-
-【選択されたアイデア】
-${selectedNode.text}
-
-【つながっているアイデア】
-${context.connectedNodes.map(n => `- ${n.text}`).join('\n')}
-
-【マップ全体のテーマ（参考）】
-${context.allNodes.slice(0, 10).map(n => `- ${n.text}`).join('\n')}
-
-以下のJSON形式で回答してください：
-{
-  "suggestions": [
-    {"text": "アイデア1", "type": "関連"},
-    {"text": "アイデア2", "type": "深掘り"},
-    ...
-  ]
-}
-`;
-```
-
-### 4.2 APIキーの暗号化
-
-```typescript
-// Web Crypto APIを使ってlocalStorageの値を保護
-// キーはユーザーのブラウザフィンガープリントから導出
-const encrypt = async (text: string): Promise<string> => {
-  const key = await deriveKey();
-  const encoded = new TextEncoder().encode(text);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encoded
-  );
-  return btoa(String.fromCharCode(...iv, ...new Uint8Array(encrypted)));
-};
-```
-
-### 4.3 ノード自動配置ロジック
-
-AI提案ノードの配置：
-- 親ノードの周囲に円形配置（半径200px）
-- 既存ノードと重ならないよう衝突検出
-- アニメーション付きで配置（React Flowのtransition）
-
-### 4.4 Googleドライブ保存戦略
-
-```
-Googleドライブ/
-└── IdeaMap/           # アプリ専用フォルダ（自動作成）
-    ├── map_001.json
-    ├── map_002.json
-    └── ...
-```
-
-- ファイル名: `map_{タイトル}_{YYYYMMDD}.json`
-- 変更のたびに同じファイルを上書き（新バージョンは作らない）
-- ファイルIDをlocalStorageにキャッシュして高速アクセス
-
----
-
-## 5. Google Cloud Project 設定（開発者向け）
-
-> **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
-
-1. [Google Cloud Console](https://console.cloud.google.com) でプロジェクト作成
-2. Google Drive API を有効化
-3. OAuth 2.0 クライアントIDを作成（ウェブアプリケーション）
-4. 承認済みのJavaScript生成元にアプリのURLを追加（例: `https://<username>.github.io`）
-5. クライアントIDを `.env` および GitHub Variables に設定:
-   ```
-   VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
-   ```
-
----
-
-## 6. 開発環境セットアップ
-
-```bash
-# プロジェクト作成
-npm create vite@latest ideamap -- --template react-ts
-cd ideamap
-
-# 依存関係インストール
-npm install @xyflow/react zustand @anthropic-ai/sdk uuid
-npm install -D tailwindcss postcss autoprefixer @types/uuid
-npx tailwindcss init -p
-
-# 開発サーバー起動
-npm run dev
-```
 
 ---
 
@@ -511,7 +339,40 @@ npm run dev
 
 ---
 
-## 7. スケジュール概要
+## 2. Google Cloud Project 設定（開発者向け）
+
+> **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
+
+1. [Google Cloud Console](https://console.cloud.google.com) でプロジェクト作成
+2. Google Drive API を有効化
+3. OAuth 2.0 クライアントIDを作成（ウェブアプリケーション）
+4. 承認済みのJavaScript生成元にアプリのURLを追加（例: `https://<username>.github.io`）
+5. クライアントIDを `.env` および GitHub Variables に設定:
+   ```
+   VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+   ```
+
+---
+
+## 3. 開発環境セットアップ
+
+```bash
+# プロジェクト作成
+npm create vite@latest ideamap -- --template react-ts
+cd ideamap
+
+# 依存関係インストール
+npm install @xyflow/react zustand @anthropic-ai/sdk uuid
+npm install -D tailwindcss postcss autoprefixer @types/uuid
+npx tailwindcss init -p
+
+# 開発サーバー起動
+npm run dev
+```
+
+---
+
+## 4. スケジュール概要
 
 | フェーズ | 内容 | 目安期間 |
 |----------|------|----------|
@@ -531,7 +392,7 @@ npm run dev
 
 ---
 
-## 8. リスクと対策
+## 5. リスクと対策
 
 | リスク | 対策 |
 |--------|------|
