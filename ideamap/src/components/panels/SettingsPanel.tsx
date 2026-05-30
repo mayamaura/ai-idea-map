@@ -10,11 +10,7 @@ export function SettingsPanel() {
     aiModel, setAiModel,
     suggestionCount, setSuggestionCount,
     autoSave, setAutoSave,
-    googleClientId, setGoogleClientId,
   } = useSettingsStore()
-
-  const [clientIdInput, setClientIdInput] = useState(googleClientId)
-  const [isEditingClientId, setIsEditingClientId] = useState(false)
 
   const [keyInput, setKeyInput] = useState(apiKey ? '••••••••••••••••' : '')
   const [showKey, setShowKey] = useState(false)
@@ -143,56 +139,6 @@ export function SettingsPanel() {
             </div>
           </section>
 
-          {/* Google Drive 設定 */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Google Drive</h3>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1.5">OAuth クライアントID</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={isEditingClientId ? clientIdInput : (googleClientId ? '••••••••••••••••' : '')}
-                  onChange={(e) => setClientIdInput(e.target.value)}
-                  disabled={!isEditingClientId}
-                  placeholder="xxxx.apps.googleusercontent.com"
-                  className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-400 min-w-0"
-                />
-                {isEditingClientId ? (
-                  <button
-                    onClick={() => {
-                      setGoogleClientId(clientIdInput.trim())
-                      setIsEditingClientId(false)
-                    }}
-                    className="px-3 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors flex-shrink-0"
-                  >
-                    保存
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setClientIdInput(googleClientId)
-                      setIsEditingClientId(true)
-                    }}
-                    className="px-3 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0"
-                  >
-                    変更
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 mt-1.5">
-                Google Cloud Console で取得したOAuth 2.0クライアントIDを入力してください。
-              </p>
-              {!googleClientId && (
-                <div className="mt-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs text-blue-700">
-                    Googleドライブへの保存にはクライアントIDが必要です。
-                    Google Cloud Consoleでプロジェクトを作成し、Drive APIを有効化してください。
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-
           {/* 保存設定 */}
           <section>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">保存</h3>
@@ -208,7 +154,7 @@ export function SettingsPanel() {
               </button>
             </label>
             <p className="text-xs text-gray-400 mt-1.5">
-              {googleClientId ? 'Googleドライブに3秒後自動保存します。' : 'ブラウザのローカルストレージに保存します。'}
+              Googleドライブにサインイン中は3秒後に自動保存します。未サインイン時はローカルストレージに保存します。
             </p>
           </section>
         </div>

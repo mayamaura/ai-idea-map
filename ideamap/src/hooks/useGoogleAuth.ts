@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { clearDriveCache } from '../services/googleDriveService'
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file'
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 export interface GoogleAuthState {
   isSignedIn: boolean
@@ -10,7 +11,7 @@ export interface GoogleAuthState {
   error: string | null
 }
 
-export function useGoogleAuth(clientId: string) {
+export function useGoogleAuth() {
   const [state, setState] = useState<GoogleAuthState>({
     isSignedIn: false,
     accessToken: null,
@@ -21,7 +22,7 @@ export function useGoogleAuth(clientId: string) {
   const [isGisReady, setIsGisReady] = useState(false)
 
   useEffect(() => {
-    if (!clientId) return
+    if (!GOOGLE_CLIENT_ID) return
 
     const check = () => {
       if (typeof google !== 'undefined' && google.accounts?.oauth2) {
@@ -37,13 +38,13 @@ export function useGoogleAuth(clientId: string) {
       }, 300)
       return () => clearInterval(id)
     }
-  }, [clientId])
+  }, [])
 
   useEffect(() => {
-    if (!isGisReady || !clientId) return
+    if (!isGisReady || !GOOGLE_CLIENT_ID) return
 
     tokenClientRef.current = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
+      client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
       callback: (response) => {
         if (response.error) {
@@ -69,7 +70,7 @@ export function useGoogleAuth(clientId: string) {
         }))
       },
     })
-  }, [isGisReady, clientId])
+  }, [isGisReady])
 
   const signIn = useCallback(() => {
     if (!tokenClientRef.current) return

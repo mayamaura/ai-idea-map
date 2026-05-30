@@ -132,7 +132,7 @@ ideamap/
 
 #### タスク
 
-- [x] Google Cloud Project 設定（設定パネルでOAuthクライアントIDを入力）
+- [x] Google Cloud Project 設定（`VITE_GOOGLE_CLIENT_ID` 環境変数でクライアントIDを管理）
 - [x] Google Identity Services (GIS) のセットアップ（index.html にスクリプト追加）
 - [x] useGoogleAuth フックの実装（src/hooks/useGoogleAuth.ts）
   - サインイン・サインアウト
@@ -156,7 +156,7 @@ ideamap/
   - 保存状態の表示（「保存中...」「保存済み」）
 - [x] オフライン時のフォールバック（localStorageに自動保存）
 - [x] Header に Google Drive ボタン追加（接続・切断・マップ一覧）
-- [x] 設定パネルに Google Client ID 入力フォーム追加
+- [x] ~~設定パネルに Google Client ID 入力フォーム追加~~ → アプリ共通の Client ID を環境変数で管理する方式に変更
 
 **完了条件**: Googleドライブにマップが保存・読み込みできる
 
@@ -254,11 +254,13 @@ Googleドライブ/
 
 ## 5. Google Cloud Project 設定（開発者向け）
 
+> **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
+
 1. [Google Cloud Console](https://console.cloud.google.com) でプロジェクト作成
 2. Google Drive API を有効化
 3. OAuth 2.0 クライアントIDを作成（ウェブアプリケーション）
-4. 承認済みのJavaScript生成元にアプリのURLを追加
-5. クライアントIDを `.env` に設定:
+4. 承認済みのJavaScript生成元にアプリのURLを追加（例: `https://<username>.github.io`）
+5. クライアントIDを `.env` および GitHub Variables に設定:
    ```
    VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
    ```

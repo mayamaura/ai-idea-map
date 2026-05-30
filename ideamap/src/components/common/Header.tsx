@@ -12,7 +12,6 @@ const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
 interface HeaderProps {
   isSignedIn: boolean
   isGoogleLoading: boolean
-  hasGoogleClientId: boolean
   onGoogleSignIn: () => void
   onGoogleSignOut: () => void
 }
@@ -20,7 +19,6 @@ interface HeaderProps {
 export function Header({
   isSignedIn,
   isGoogleLoading,
-  hasGoogleClientId,
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
@@ -59,56 +57,54 @@ export function Header({
         </span>
 
         {/* Google Drive ボタン */}
-        {hasGoogleClientId && (
-          isSignedIn ? (
-            <>
-              <button
-                onClick={() => setMapListOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors hidden sm:flex"
-                title="マップ一覧"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-                <span>マップ一覧</span>
-              </button>
-              <button
-                onClick={() => setMapListOpen(true)}
-                className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors sm:hidden"
-                title="マップ一覧"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-              </button>
-              <button
-                onClick={onGoogleSignOut}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-600 border border-green-200 bg-green-50 rounded-lg hover:bg-green-100 transition-colors hidden sm:flex"
-                title="Googleドライブ接続済み"
-              >
-                <GoogleIcon />
-                <span>接続済み</span>
-              </button>
-            </>
-          ) : (
+        {isSignedIn ? (
+          <>
             <button
-              onClick={onGoogleSignIn}
-              disabled={isGoogleLoading}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-              title="Googleドライブに接続"
+              onClick={() => setMapListOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors hidden sm:flex"
+              title="マップ一覧"
             >
-              {isGoogleLoading ? (
-                <div className="w-3.5 h-3.5 border border-gray-400 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <GoogleIcon />
-              )}
-              <span className="hidden sm:block">
-                {isGoogleLoading ? '接続中...' : 'Drive接続'}
-              </span>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span>マップ一覧</span>
             </button>
-          )
+            <button
+              onClick={() => setMapListOpen(true)}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors sm:hidden"
+              title="マップ一覧"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+            </button>
+            <button
+              onClick={onGoogleSignOut}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-600 border border-green-200 bg-green-50 rounded-lg hover:bg-green-100 transition-colors hidden sm:flex"
+              title="Googleドライブ接続済み"
+            >
+              <GoogleIcon />
+              <span>接続済み</span>
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={onGoogleSignIn}
+            disabled={isGoogleLoading}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            title="Googleドライブに接続"
+          >
+            {isGoogleLoading ? (
+              <div className="w-3.5 h-3.5 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <GoogleIcon />
+            )}
+            <span className="hidden sm:block">
+              {isGoogleLoading ? '接続中...' : 'Drive接続'}
+            </span>
+          </button>
         )}
 
         {/* テーマ切替ボタン */}

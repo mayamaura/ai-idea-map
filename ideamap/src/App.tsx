@@ -15,8 +15,8 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 function AppInner() {
   useKeyboardShortcuts()
 
-  const { loadApiKey, googleClientId, theme } = useSettingsStore()
-  const googleAuth = useGoogleAuth(googleClientId)
+  const { loadApiKey, theme } = useSettingsStore()
+  const googleAuth = useGoogleAuth()
   const { setFileId } = useAutoSave(googleAuth.accessToken)
 
   useEffect(() => {
@@ -45,7 +45,6 @@ function AppInner() {
       <Header
         isSignedIn={googleAuth.isSignedIn}
         isGoogleLoading={googleAuth.isLoading}
-        hasGoogleClientId={!!googleClientId}
         onGoogleSignIn={googleAuth.signIn}
         onGoogleSignOut={googleAuth.signOut}
       />
