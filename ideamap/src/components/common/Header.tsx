@@ -12,6 +12,7 @@ const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
 interface HeaderProps {
   isSignedIn: boolean
   isGoogleLoading: boolean
+  clientIdMissing: boolean
   onGoogleSignIn: () => void
   onGoogleSignOut: () => void
 }
@@ -19,6 +20,7 @@ interface HeaderProps {
 export function Header({
   isSignedIn,
   isGoogleLoading,
+  clientIdMissing,
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
@@ -89,6 +91,15 @@ export function Header({
               <span>接続済み</span>
             </button>
           </>
+        ) : clientIdMissing ? (
+          <button
+            disabled
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-yellow-600 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg opacity-70 cursor-not-allowed"
+            title="VITE_GOOGLE_CLIENT_ID が設定されていません（管理者にお問い合わせください）"
+          >
+            <GoogleIcon />
+            <span className="hidden sm:block">Drive未設定</span>
+          </button>
         ) : (
           <button
             onClick={onGoogleSignIn}

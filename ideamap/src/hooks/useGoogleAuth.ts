@@ -73,9 +73,22 @@ export function useGoogleAuth() {
   }, [isGisReady])
 
   const signIn = useCallback(() => {
-    if (!tokenClientRef.current) return
+    if (!GOOGLE_CLIENT_ID) {
+      setState((s) => ({
+        ...s,
+        error: 'Google Client ID が未設定です（VITE_GOOGLE_CLIENT_ID）',
+      }))
+      return
+    }
+    if (!tokenClientRef.current) {
+      setState((s) => ({
+        ...s,
+        error: 'Google認証ライブラリの読み込みに失敗しました。ページを再読み込みしてください。',
+      }))
+      return
+    }
     setState((s) => ({ ...s, isLoading: true, error: null }))
-    tokenClientRef.current.requestAccessToken({ prompt: '' })
+    tokenClientRef.current.requestAccessToken({ prompt: 'select_account' })
   }, [])
 
   const signOut = useCallback(() => {
@@ -87,5 +100,5 @@ export function useGoogleAuth() {
     setState({ isSignedIn: false, accessToken: null, isLoading: false, error: null })
   }, [state.accessToken])
 
-  return { ...state, signIn, signOut, isGisReady }
+  return { ...state, signIn, signOut, isGisReady, clientIdMissing: !GOOGLE_CLIENT_ID }
 }

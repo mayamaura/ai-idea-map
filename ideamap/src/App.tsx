@@ -16,8 +16,15 @@ function AppInner() {
   useKeyboardShortcuts()
 
   const { loadApiKey, theme } = useSettingsStore()
+  const { addToast } = useUIStore()
   const googleAuth = useGoogleAuth()
   const { setFileId } = useAutoSave(googleAuth.accessToken)
+
+  useEffect(() => {
+    if (googleAuth.error) {
+      addToast(googleAuth.error, 'error')
+    }
+  }, [googleAuth.error, addToast])
 
   useEffect(() => {
     void loadApiKey()
@@ -45,6 +52,7 @@ function AppInner() {
       <Header
         isSignedIn={googleAuth.isSignedIn}
         isGoogleLoading={googleAuth.isLoading}
+        clientIdMissing={googleAuth.clientIdMissing}
         onGoogleSignIn={googleAuth.signIn}
         onGoogleSignOut={googleAuth.signOut}
       />
