@@ -34,6 +34,8 @@ interface UIState {
   isSettingsOpen: boolean
   isAIPanelOpen: boolean
   isMapListOpen: boolean
+  isNodeDetailOpen: boolean
+  nodeDetailId: string | null
   aiSuggestions: AISuggestion[]
   isAILoading: boolean
   saveStatus: SaveStatus
@@ -45,6 +47,8 @@ interface UIState {
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
   setMapListOpen: (open: boolean) => void
+  openNodeDetail: (nodeId: string) => void
+  closeNodeDetail: () => void
   setAISuggestions: (suggestions: AISuggestion[]) => void
   setAILoading: (loading: boolean) => void
   setSaveStatus: (status: SaveStatus) => void
@@ -62,6 +66,8 @@ export const useUIStore = create<UIState>((set) => ({
   isSettingsOpen: false,
   isAIPanelOpen: false,
   isMapListOpen: false,
+  isNodeDetailOpen: false,
+  nodeDetailId: null,
   aiSuggestions: [],
   isAILoading: false,
   saveStatus: 'saved',
@@ -73,6 +79,8 @@ export const useUIStore = create<UIState>((set) => ({
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setAIPanelOpen: (open) => set({ isAIPanelOpen: open }),
   setMapListOpen: (open) => set({ isMapListOpen: open }),
+  openNodeDetail: (nodeId) => set({ isNodeDetailOpen: true, nodeDetailId: nodeId }),
+  closeNodeDetail: () => set({ isNodeDetailOpen: false, nodeDetailId: null }),
   setAISuggestions: (suggestions) => set({ aiSuggestions: suggestions }),
   setAILoading: (loading) => set({ isAILoading: loading }),
   setSaveStatus: (status) => set({ saveStatus: status }),

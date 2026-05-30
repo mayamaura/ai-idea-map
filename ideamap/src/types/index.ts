@@ -1,7 +1,17 @@
+export interface Category {
+  id: string
+  name: string
+  color: string
+  icon: string
+  description?: string
+}
+
 export interface IdeaNodeData extends Record<string, unknown> {
-  text: string
+  title: string
+  body?: string
   color: string
   createdBy: 'user' | 'ai'
+  categoryId?: string
 }
 
 export interface IdeaEdgeData {
@@ -19,11 +29,13 @@ export interface MapFile {
 
 export interface SerializedNode {
   id: string
-  text: string
+  title: string
+  body?: string
   x: number
   y: number
   color: string
   createdBy: 'user' | 'ai'
+  categoryId?: string
 }
 
 export interface SerializedEdge {
@@ -39,6 +51,7 @@ export interface SerializedEdge {
 export interface AISuggestion {
   text: string
   type: '関連' | '深掘り' | '対比' | '応用'
+  categoryId?: string
 }
 
 export type Theme = 'light' | 'dark'

@@ -62,9 +62,10 @@ ideamap/
 │   │   │   ├── IdeaNode.tsx        # カスタムノードコンポーネント
 │   │   │   └── ContextMenu.tsx     # 右クリックコンテキストメニュー
 │   │   ├── panels/
-│   │   │   ├── NodePanel.tsx       # ノード選択時のサイドパネル
+│   │   │   ├── NodePanel.tsx       # ノード選択時のサイドパネル（簡易表示）
+│   │   │   ├── NodeDetailPanel.tsx # ノード詳細パネル（タイトル・本文・カテゴリ編集）
 │   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル
-│   │   │   ├── SettingsPanel.tsx   # 設定パネル
+│   │   │   ├── SettingsPanel.tsx   # 設定パネル（カテゴリ管理含む）
 │   │   │   └── MapListPanel.tsx    # マップ一覧パネル
 │   │   ├── toolbar/
 │   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
@@ -116,13 +117,13 @@ ideamap/
 | `clipboard` | `IdeaNode[]` | コピー用クリップボード |
 
 主要アクション:
-- `addNode`, `addConnectedNode` — ノード追加
-- `updateNodeText`, `updateNodeColor` — ノード更新
+- `addNode`, `addConnectedNode` — ノード追加（`addNode` に `categoryId` 引数追加）
+- `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory` — ノード更新
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
 - `copyNodes`, `paste` — コピー・ペースト
 - `undo`, `redo` — 履歴操作
-- `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ
+- `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
 
 ### 4.2 uiStore（src/stores/uiStore.ts）
 
@@ -134,6 +135,8 @@ UIの表示状態を管理する。副作用なし。
 | `isSettingsOpen` | `boolean` | 設定パネルの開閉 |
 | `isAIPanelOpen` | `boolean` | AI提案パネルの開閉 |
 | `isMapListOpen` | `boolean` | マップ一覧パネルの開閉 |
+| `isNodeDetailOpen` | `boolean` | ノード詳細パネルの開閉 |
+| `nodeDetailId` | `string \| null` | 詳細パネルで表示中のノードID |
 | `aiSuggestions` | `AISuggestion[]` | AI提案リスト |
 | `isAILoading` | `boolean` | AI呼び出し中フラグ |
 | `saveStatus` | `SaveStatus` | `saved \| saving \| unsaved \| error` |
@@ -154,6 +157,7 @@ UIの表示状態を管理する。副作用なし。
 | `autoSave` | `boolean` | 自動保存のオン/オフ |
 | `theme` | `Theme` | `light \| dark` |
 | `nodeShape` | `NodeShape` | `rounded \| ellipse \| hexagon`（ノード形状） |
+| `categories` | `Category[]` | カテゴリ一覧（デフォルト7件＋ユーザー追加分、localStorage永続化） |
 
 ---
 
@@ -204,10 +208,11 @@ React Flow の主要設定:
 - 選択中: ボーダー `border-primary-500`、アクションバーを下部に表示
 - AIノード (`createdBy === 'ai'`): `node-ai-generated` クラス（`✦` バッジ + pulse アニメーション）
 
-**インライン編集:**
-- ダブルクリックで `textarea` に切替
-- Enter（Shiftなし）または blur で確定
-- Escape でキャンセル（元テキストに戻す）
+**インライン編集（タイトルのみ）:**
+- ダブルクリックで NodeDetailPanel（詳細パネル）を開く
+- 詳細パネルでタイトル・本文・カテゴリを編集
+- 本文があるノードは左上に 📝 バッジを表示
+- 本文の冒頭をノードカード内にプレビュー表示（2行）
 
 **モバイル対応:**
 - ロングプレス 500ms → 選択 + AI提案パネルを開く
@@ -225,7 +230,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 | メニュー種別 | 表示項目 |
 |---|---|
-| node | アイデアを作成（接続）/ AIで拡張 / コピー / 色を変更 / 接続線のみ削除 / ノードを削除 |
+| node | 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / カテゴリを変更 / 接続線のみ削除 / ノードを削除 |
 | edge | 向きを反転 / 双方向切替 / ラベルを編集 / 線を削除 |
 | pane | アイデアを作成 / ここに貼り付け |
 
@@ -245,10 +250,20 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 ## 6. 型定義（src/types/index.ts）
 
 ```typescript
-interface IdeaNodeData extends Record<string, unknown> {
-  text: string
+interface Category {
+  id: string
+  name: string
   color: string        // hex カラーコード
+  icon: string         // 絵文字
+  description?: string
+}
+
+interface IdeaNodeData extends Record<string, unknown> {
+  title: string        // ノードタイトル（旧 text から Phase 7 でリネーム）
+  body?: string        // 詳細メモ（Markdown）
+  color: string        // hex カラーコード（カテゴリから派生）
   createdBy: 'user' | 'ai'
+  categoryId?: string  // Category.id への参照
 }
 
 interface MapFile {
@@ -262,10 +277,12 @@ interface MapFile {
 
 interface SerializedNode {
   id: string
-  text: string
+  title: string        // 旧フォーマット（text）との後方互換: loadFromSerialized で自動マイグレーション
+  body?: string
   x: number; y: number
   color: string
   createdBy: 'user' | 'ai'
+  categoryId?: string
 }
 
 interface SerializedEdge {
@@ -280,6 +297,7 @@ interface SerializedEdge {
 interface AISuggestion {
   text: string
   type: '関連' | '深掘り' | '対比' | '応用'
+  categoryId?: string  // AIが自動判定したカテゴリID
 }
 
 type Theme = 'light' | 'dark'

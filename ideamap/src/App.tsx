@@ -6,6 +6,7 @@ import { NodePanel } from './components/panels/NodePanel'
 import { SettingsPanel } from './components/panels/SettingsPanel'
 import { AISuggestionPanel } from './components/panels/AISuggestionPanel'
 import { MapListPanel } from './components/panels/MapListPanel'
+import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
@@ -73,6 +74,7 @@ function AppInner() {
         accessToken={googleAuth.accessToken}
         onMapLoaded={handleMapLoaded}
       />
+      <NodeDetailPanel />
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />

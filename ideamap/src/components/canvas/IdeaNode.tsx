@@ -5,11 +5,6 @@ import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import type { IdeaNodeData } from '../../types'
 
-const NODE_COLORS = [
-  '#ffffff', '#e0e7ff', '#dbeafe', '#d1fae5',
-  '#fef3c7', '#fce7f3', '#ffe4e6', '#f3f4f6',
-]
-
 function shapeClass(shape: string): string {
   if (shape === 'ellipse') return 'rounded-full'
   if (shape === 'hexagon') return 'node-shape-hexagon'
@@ -25,17 +20,16 @@ function widthClass(text: string): string {
 function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
   const nodeData = data as IdeaNodeData
   const [isEditing, setIsEditing] = useState(false)
-  const [editText, setEditText] = useState(nodeData.text)
-  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [editText, setEditText] = useState(nodeData.title)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { updateNodeText, updateNodeColor, deleteNode } = useMapStore()
-  const { setSelectedNodeId, setAIPanelOpen } = useUIStore()
+  const { updateNodeTitle, deleteNode } = useMapStore()
+  const { setSelectedNodeId, setAIPanelOpen, openNodeDetail } = useUIStore()
   const nodeShape = useSettingsStore((s) => s.nodeShape)
 
   useEffect(() => {
-    setEditText(nodeData.text)
-  }, [nodeData.text])
+    setEditText(nodeData.title)
+  }, [nodeData.title])
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
@@ -45,18 +39,18 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   }, [isEditing])
 
   const handleDoubleClick = useCallback(() => {
-    setIsEditing(true)
-  }, [])
+    openNodeDetail(id)
+  }, [id, openNodeDetail])
 
   const handleBlur = useCallback(() => {
     setIsEditing(false)
     const trimmed = editText.trim()
     if (trimmed) {
-      updateNodeText(id, trimmed)
+      updateNodeTitle(id, trimmed)
     } else {
-      setEditText(nodeData.text)
+      setEditText(nodeData.title)
     }
-  }, [editText, id, nodeData.text, updateNodeText])
+  }, [editText, id, nodeData.title, updateNodeTitle])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -65,11 +59,11 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         handleBlur()
       }
       if (e.key === 'Escape') {
-        setEditText(nodeData.text)
+        setEditText(nodeData.title)
         setIsEditing(false)
       }
     },
-    [handleBlur, nodeData.text]
+    [handleBlur, nodeData.title]
   )
 
   const handleAIExpand = useCallback(
@@ -104,8 +98,9 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   }, [])
 
   const isAI = nodeData.createdBy === 'ai'
+  const hasBody = Boolean(nodeData.body)
   const shape = shapeClass(nodeShape)
-  const width = widthClass(nodeData.text)
+  const width = widthClass(nodeData.title)
 
   return (
     <div
@@ -122,6 +117,13 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         </div>
       )}
 
+      {/* 本文インジケーター */}
+      {hasBody && (
+        <div className="absolute -top-2 -left-2 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center z-10 shadow-sm text-[10px] leading-none">
+          📝
+        </div>
+      )}
+
       {/* ハンドル: 全方向を source/target 兼用にして任意方向から接続できる（ConnectionMode.Loose） */}
       {(['Top', 'Right', 'Bottom', 'Left'] as const).map((pos) => (
         <Handle
@@ -133,7 +135,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         />
       ))}
 
-      {/* 形状コンテナ: border/shadow/色/形状 */}
+      {/* 形状コンテナ */}
       <div
         className={`
           ${width} ${shape} border-2 shadow-sm
@@ -159,9 +161,17 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
               style={{ minWidth: '80px' }}
             />
           ) : (
-            <p className="text-sm text-gray-800 leading-snug break-words select-none">
-              {nodeData.text}
-            </p>
+            <>
+              <p className="text-sm text-gray-800 leading-snug break-words select-none">
+                {nodeData.title}
+              </p>
+              {/* 本文プレビュー（先頭2行） */}
+              {hasBody && (
+                <p className="text-xs text-gray-500 leading-snug break-words select-none mt-1 line-clamp-2 opacity-75">
+                  {nodeData.body}
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -179,14 +189,14 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
           </button>
           <div className="w-px h-4 bg-gray-200" />
           <button
-            onClick={(e) => { e.stopPropagation(); setShowColorPicker(!showColorPicker) }}
-            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            title="色を変更"
+            onClick={(e) => { e.stopPropagation(); openNodeDetail(id) }}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 font-medium hover:bg-gray-100 rounded-md transition-colors"
+            title="詳細を開く"
           >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486z" />
-            </svg>
+            <span>📝</span>
+            <span>詳細</span>
           </button>
+          <div className="w-px h-4 bg-gray-200" />
           <button
             onClick={handleDelete}
             className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
@@ -197,26 +207,6 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
-        </div>
-      )}
-
-      {/* カラーピッカー */}
-      {showColorPicker && (
-        <div
-          className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex gap-1.5 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-30"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {NODE_COLORS.map((color) => (
-            <button
-              key={color}
-              className="w-5 h-5 rounded-full border border-gray-300 hover:scale-110 transition-transform"
-              style={{ backgroundColor: color }}
-              onClick={() => {
-                updateNodeColor(id, color)
-                setShowColorPicker(false)
-              }}
-            />
-          ))}
         </div>
       )}
     </div>

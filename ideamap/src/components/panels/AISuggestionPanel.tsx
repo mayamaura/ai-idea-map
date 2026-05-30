@@ -16,7 +16,7 @@ const typeColors: Record<string, string> = {
 export function AISuggestionPanel() {
   const { isAIPanelOpen, setAIPanelOpen, selectedNodeId, aiSuggestions, setAISuggestions, isAILoading, setAILoading } = useUIStore()
   const { nodes, edges, addNode, onConnect } = useMapStore()
-  const { apiKey, aiModel, suggestionCount } = useSettingsStore()
+  const { apiKey, aiModel, suggestionCount, categories, getCategoryById } = useSettingsStore()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
@@ -42,10 +42,12 @@ export function AISuggestionPanel() {
       const suggestions = await generateSuggestions({
         apiKey,
         model: aiModel,
-        selectedNodeText: selectedNode.data.text,
-        connectedNodeTexts: connectedNodes.map((n) => n.data.text),
-        allNodeTexts: nodes.slice(0, 15).map((n) => n.data.text),
+        selectedNodeTitle: selectedNode.data.title,
+        selectedNodeBody: selectedNode.data.body,
+        connectedNodeTitles: connectedNodes.map((n) => n.data.title),
+        allNodeTitles: nodes.slice(0, 15).map((n) => n.data.title),
         count: suggestionCount,
+        categories,
       })
       setAISuggestions(suggestions)
       setSelected(new Set(suggestions.map((_, i) => i)))
@@ -54,7 +56,7 @@ export function AISuggestionPanel() {
     } finally {
       setAILoading(false)
     }
-  }, [selectedNode, apiKey, aiModel, suggestionCount, nodes, edges, setAILoading, setAISuggestions])
+  }, [selectedNode, apiKey, aiModel, suggestionCount, nodes, edges, categories, setAILoading, setAISuggestions])
 
   const handleAddSelected = useCallback(() => {
     if (!selectedNode) return
@@ -68,12 +70,15 @@ export function AISuggestionPanel() {
 
     selectedSuggestions.forEach((suggestion, idx) => {
       const { x, y } = positions[idx]
-      const newId = addNode(suggestion.text, x, y, 'ai', '#f3f4ff')
+      const cat = suggestion.categoryId ? getCategoryById(suggestion.categoryId) : undefined
+      const nodeColor = cat?.color ?? '#f3f4ff'
+      const newId = addNode(suggestion.text, x, y, 'ai', nodeColor, suggestion.categoryId)
       onConnect({ source: selectedNode.id, target: newId, sourceHandle: null, targetHandle: null })
+      // categoryId が設定されている場合は updateNodeCategory を呼ぶ必要はない（addNode で設定済み）
     })
     setAIPanelOpen(false)
     setSelected(new Set())
-  }, [selectedNode, aiSuggestions, selected, nodes, addNode, onConnect, setAIPanelOpen])
+  }, [selectedNode, aiSuggestions, selected, nodes, addNode, onConnect, getCategoryById, setAIPanelOpen])
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {
@@ -95,7 +100,7 @@ export function AISuggestionPanel() {
             <div>
               <h2 className="text-sm font-semibold text-gray-800">AIアイデア拡張</h2>
               {selectedNode && (
-                <p className="text-xs text-gray-400 truncate max-w-48">"{selectedNode.data.text}"</p>
+                <p className="text-xs text-gray-400 truncate max-w-48">"{selectedNode.data.title}"</p>
               )}
             </div>
           </div>
@@ -130,29 +135,43 @@ export function AISuggestionPanel() {
             <>
               <p className="text-xs text-gray-400">採用するアイデアを選択してください</p>
               <div className="space-y-2">
-                {aiSuggestions.map((suggestion: AISuggestion, idx) => (
-                  <label
-                    key={idx}
-                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                      selected.has(idx)
-                        ? 'border-primary-300 bg-primary-50'
-                        : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(idx)}
-                      onChange={() => toggleSelect(idx)}
-                      className="mt-0.5 accent-primary-600 flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700">{suggestion.text}</p>
-                      <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full mt-1 ${typeColors[suggestion.type] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {suggestion.type}
-                      </span>
-                    </div>
-                  </label>
-                ))}
+                {aiSuggestions.map((suggestion: AISuggestion, idx) => {
+                  const cat = suggestion.categoryId ? getCategoryById(suggestion.categoryId) : undefined
+                  return (
+                    <label
+                      key={idx}
+                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                        selected.has(idx)
+                          ? 'border-primary-300 bg-primary-50'
+                          : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(idx)}
+                        onChange={() => toggleSelect(idx)}
+                        className="mt-0.5 accent-primary-600 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700">{suggestion.text}</p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full ${typeColors[suggestion.type] ?? 'bg-gray-100 text-gray-600'}`}>
+                            {suggestion.type}
+                          </span>
+                          {cat && (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border border-gray-200"
+                              style={{ backgroundColor: cat.color }}
+                            >
+                              <span className="text-[11px] leading-none">{cat.icon}</span>
+                              <span className="text-gray-700">{cat.name}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  )
+                })}
               </div>
             </>
           )}

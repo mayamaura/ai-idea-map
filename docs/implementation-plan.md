@@ -209,27 +209,27 @@
 
 ---
 
-### Phase 7: ノードのリッチコンテンツ & カテゴリシステム（約4日）
+### Phase 7: ノードのリッチコンテンツ & カテゴリシステム（約4日） ✅ 完了（2026-05-30）
 
 **目標**: アイデアに情報量を持たせ、カテゴリによる分類を実現
 
 #### タスク
 
 **ノードデータ拡張** (`src/types/index.ts`, `mapStore.ts`)
-- [ ] `IdeaNodeData` に `title: string`、`body?: string` を追加（`text` → `title` にリネーム、マイグレーション対応）
-- [ ] `SerializedNode` も同様に拡張
-- [ ] `claudeService.ts` のプロンプトをタイトル＋本文で構築するよう更新
+- [x] `IdeaNodeData` に `title: string`、`body?: string`、`categoryId?: string` を追加（`text` → `title` にリネーム、旧フォーマットはロード時に自動マイグレーション）
+- [x] `SerializedNode` も同様に拡張（`title`, `body`, `categoryId` を追加）
+- [x] `claudeService.ts` のプロンプトをタイトル＋本文で構築するよう更新
 
-**ノード詳細パネル / モーダル** (`src/components/panels/NodeDetailPanel.tsx`)
-- [ ] ノードをダブルクリック or 右クリック「詳細を開く」でサイドパネルを表示
-- [ ] タイトル編集（既存インライン編集をここに統合）
-- [ ] 本文エディタ（Markdown対応のテキストエリア、プレビュートグル）
-- [ ] 本文があるノードにはアイコン（📝）を表示してインジケーター
-- [ ] ノードカードに本文の冒頭2行をプレビュー表示（折り畳み）
+**ノード詳細パネル** (`src/components/panels/NodeDetailPanel.tsx`)
+- [x] ノードをダブルクリック or 右クリック「詳細を開く」でモーダルパネルを表示
+- [x] タイトル編集（既存インライン編集を詳細パネルに統合）
+- [x] 本文エディタ（Markdown対応のテキストエリア、プレビュートグル）
+- [x] 本文があるノードにはアイコン（📝）を表示してインジケーター
+- [x] ノードカードに本文の冒頭2行をプレビュー表示
 
-**カテゴリシステム** (`src/stores/settingsStore.ts`, `src/components/panels/CategoryPanel.tsx`)
-- [ ] カテゴリの型定義：`{ id, name, color, icon, description }`
-- [ ] デフォルトカテゴリの用意:
+**カテゴリシステム** (`src/stores/settingsStore.ts`, `SettingsPanel.tsx` 内カテゴリ管理）
+- [x] カテゴリの型定義：`{ id, name, color, icon, description }`
+- [x] デフォルトカテゴリの用意:
 
   | カテゴリ | 色 | アイコン | 用途 |
   |----------|-----|---------|------|
@@ -241,13 +241,13 @@
   | 懸念・リスク | 赤色 `#ffe4e6` | ⚠️ | 問題点・課題 |
   | 未分類 | 白 `#ffffff` | ○ | デフォルト |
 
-- [ ] `settingsStore` に `categories: Category[]` を追加（永続化）
-- [ ] カテゴリ管理パネル（設定画面内）：追加・編集・削除・色変更・アイコン変更
-- [ ] ノードの色ピッカーをカテゴリ選択UIに刷新（カテゴリ名 + カラーサークル）
-- [ ] カテゴリ変更時に `IdeaNodeData.categoryId` を更新、ノードの `color` はカテゴリから派生
-- [ ] AI提案ノードのカテゴリ自動判定（Claudeがsuggestion生成時に `category` フィールドも返す）
+- [x] `settingsStore` に `categories: Category[]` を追加（localStorage永続化）
+- [x] カテゴリ管理パネル（設定画面内）：追加・編集・削除・色変更・アイコン変更
+- [x] ノードの色ピッカーをカテゴリ選択UIに刷新（右クリックメニュー・詳細パネル）
+- [x] カテゴリ変更時に `IdeaNodeData.categoryId` を更新、ノードの `color` はカテゴリから派生
+- [x] AI提案ノードのカテゴリ自動判定（Claudeがsuggestion生成時に `categoryId` フィールドも返す）
 
-**完了条件**: ノードにタイトル＋本文が書け、カテゴリで色分けされたマップが作れる
+**完了条件**: ノードにタイトル＋本文が書け、カテゴリで色分けされたマップが作れる ✅
 
 ---
 

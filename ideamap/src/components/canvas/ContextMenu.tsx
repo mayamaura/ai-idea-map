@@ -2,17 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
-
-const NODE_COLORS = [
-  { hex: '#ffffff', name: '白' },
-  { hex: '#e0e7ff', name: '紫' },
-  { hex: '#dbeafe', name: '青' },
-  { hex: '#d1fae5', name: '緑' },
-  { hex: '#fef3c7', name: '黄' },
-  { hex: '#fce7f3', name: 'ピンク' },
-  { hex: '#ffe4e6', name: '赤' },
-  { hex: '#f3f4f6', name: 'グレー' },
-]
+import { useSettingsStore } from '../../stores/settingsStore'
 
 const MENU_WIDTH = 216
 
@@ -58,6 +48,7 @@ export function ContextMenu() {
     closeContextMenu,
     setSelectedNodeId,
     setAIPanelOpen,
+    openNodeDetail,
     openConfirmDialog,
     selectedNodeId,
   } = useUIStore()
@@ -68,7 +59,7 @@ export function ContextMenu() {
     deleteNodeEdges,
     copyNodes,
     paste,
-    updateNodeColor,
+    updateNodeCategory,
     deleteEdge,
     reverseEdge,
     toggleEdgeDirection,
@@ -76,13 +67,14 @@ export function ContextMenu() {
     hasConnectedEdges,
     clipboard,
     edges,
+    nodes,
   } = useMapStore()
+  const { categories } = useSettingsStore()
 
-  const [showColors, setShowColors] = useState(false)
+  const [showCategories, setShowCategories] = useState(false)
 
-  // メニューが切り替わったら色サブメニューを閉じる
   useEffect(() => {
-    setShowColors(false)
+    setShowCategories(false)
   }, [contextMenu])
 
   useEffect(() => {
@@ -98,7 +90,7 @@ export function ContextMenu() {
 
   const { type, x, y, targetId, flowPosition } = contextMenu
   const left = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 8))
-  const top = Math.max(8, Math.min(y, window.innerHeight - 320))
+  const top = Math.max(8, Math.min(y, window.innerHeight - 360))
 
   const run = (fn: () => void) => () => {
     fn()
@@ -150,6 +142,8 @@ export function ContextMenu() {
     type === 'edge' && targetId ? edges.find((e) => e.id === targetId) : undefined
   const isBidirectional = Boolean(currentEdge?.markerStart)
 
+  const targetNode = type === 'node' && targetId ? nodes.find((n) => n.id === targetId) : undefined
+
   return createPortal(
     <div
       className="fixed inset-0 z-50"
@@ -166,6 +160,7 @@ export function ContextMenu() {
       >
         {type === 'node' && (
           <>
+            <MenuItem icon="📝" label="詳細を開く" onClick={run(() => targetId && openNodeDetail(targetId))} />
             <MenuItem icon="➕" label="アイデアを作成（接続）" shortcut="Tab" onClick={handleCreateConnected} />
             <MenuItem
               icon="✦"
@@ -184,18 +179,31 @@ export function ContextMenu() {
               shortcut="Ctrl+C"
               onClick={run(() => targetId && copyNodes([targetId]))}
             />
-            <MenuItem icon="🎨" label="色を変更" onClick={() => setShowColors((v) => !v)} />
-            {showColors && (
-              <div className="px-3 py-2 grid grid-cols-4 gap-1.5">
-                {NODE_COLORS.map((c) => (
-                  <button
-                    key={c.hex}
-                    title={c.name}
-                    onClick={run(() => targetId && updateNodeColor(targetId, c.hex))}
-                    className="h-6 w-6 rounded-md border border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
-                    style={{ backgroundColor: c.hex }}
-                  />
-                ))}
+            {/* カテゴリ選択 */}
+            <MenuItem icon="🏷️" label="カテゴリを変更" onClick={() => setShowCategories((v) => !v)} />
+            {showCategories && (
+              <div className="px-2 py-1.5 space-y-0.5 max-h-52 overflow-y-auto">
+                {categories.map((cat) => {
+                  const isActive = targetNode?.data.categoryId === cat.id
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={run(() => {
+                        if (targetId) updateNodeCategory(targetId, cat.id, cat.color)
+                      })}
+                      className="w-full flex items-center gap-2 px-2 py-1 rounded-lg text-sm text-left transition-colors hover:brightness-95"
+                      style={{ backgroundColor: cat.color }}
+                    >
+                      <span className="text-sm leading-none">{cat.icon}</span>
+                      <span className="flex-1 text-gray-800">{cat.name}</span>
+                      {isActive && (
+                        <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
             <Divider />

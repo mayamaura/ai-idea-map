@@ -58,10 +58,12 @@ interface MapState {
   onNodesChange: (changes: NodeChange<IdeaNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
-  addNode: (text: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string) => string
-  addConnectedNode: (parentId: string, text?: string) => string | null
-  updateNodeText: (id: string, text: string) => void
+  addNode: (title: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string, categoryId?: string) => string
+  addConnectedNode: (parentId: string, title?: string) => string | null
+  updateNodeTitle: (id: string, title: string) => void
+  updateNodeBody: (id: string, body: string) => void
   updateNodeColor: (id: string, color: string) => void
+  updateNodeCategory: (id: string, categoryId: string, color: string) => void
   deleteNode: (id: string) => void
   deleteNodes: (ids: string[]) => void
   deleteSelected: () => void
@@ -87,7 +89,7 @@ const initialNodes: IdeaNode[] = [
     id: 'root',
     type: 'ideaNode',
     position: { x: 0, y: 0 },
-    data: { text: 'メインアイデア', color: '#e0e7ff', createdBy: 'user' },
+    data: { title: 'メインアイデア', color: '#e0e7ff', createdBy: 'user', categoryId: 'cat-main' },
   },
 ]
 
@@ -107,7 +109,6 @@ export const useMapStore = create<MapState>((set, get) => ({
   clipboard: [],
 
   onNodesChange: (changes) => {
-    // 履歴に積むべき確定的な変更（ドラッグ終了・削除）を検出
     const isHistoric = changes.some(
       (c) =>
         (c.type === 'position' && !(c as { dragging?: boolean }).dragging) ||
@@ -148,13 +149,13 @@ export const useMapStore = create<MapState>((set, get) => ({
       future: [],
     })),
 
-  addNode: (text, x, y, createdBy = 'user', color = DEFAULT_NODE_COLOR) => {
+  addNode: (title, x, y, createdBy = 'user', color = DEFAULT_NODE_COLOR, categoryId) => {
     const id = uuidv4()
     const newNode: IdeaNode = {
       id,
       type: 'ideaNode',
       position: { x, y },
-      data: { text, color, createdBy },
+      data: { title, color, createdBy, categoryId },
     }
     set((state) => ({
       nodes: [...state.nodes, newNode],
@@ -164,11 +165,10 @@ export const useMapStore = create<MapState>((set, get) => ({
     return id
   },
 
-  addConnectedNode: (parentId, text = '新しいアイデア') => {
+  addConnectedNode: (parentId, title = '新しいアイデア') => {
     const state = get()
     const parent = state.nodes.find((n) => n.id === parentId)
     if (!parent) return null
-    // 既存の子の数だけ縦にずらして重なりを避ける
     const childCount = state.edges.filter((e) => e.source === parentId).length
     const id = uuidv4()
     const newNode: IdeaNode = {
@@ -178,7 +178,7 @@ export const useMapStore = create<MapState>((set, get) => ({
         x: parent.position.x + 280,
         y: parent.position.y + childCount * 90,
       },
-      data: { text, color: DEFAULT_NODE_COLOR, createdBy: 'user' },
+      data: { title, color: DEFAULT_NODE_COLOR, createdBy: 'user' },
     }
     const edge = makeEdge({
       source: parentId,
@@ -195,10 +195,19 @@ export const useMapStore = create<MapState>((set, get) => ({
     return id
   },
 
-  updateNodeText: (id, text) =>
+  updateNodeTitle: (id, title) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, text } } : n
+        n.id === id ? { ...n, data: { ...n.data, title } } : n
+      ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  updateNodeBody: (id, body) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, body: body || undefined } } : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -208,6 +217,15 @@ export const useMapStore = create<MapState>((set, get) => ({
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, color } } : n
+      ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  updateNodeCategory: (id, categoryId, color) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, categoryId, color } } : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -323,7 +341,6 @@ export const useMapStore = create<MapState>((set, get) => ({
   paste: (position) => {
     const clip = get().clipboard
     if (clip.length === 0) return
-    // position 指定時は先頭ノードをその座標に合わせ、残りは相対位置を維持する
     const dx = position ? position.x - clip[0].position.x : 36
     const dy = position ? position.y - clip[0].position.y : 36
     const pasted: IdeaNode[] = clip.map((n) => ({
@@ -358,14 +375,20 @@ export const useMapStore = create<MapState>((set, get) => ({
       id: n.id,
       type: 'ideaNode',
       position: { x: n.x, y: n.y },
-      data: { text: n.text, color: n.color, createdBy: n.createdBy },
+      data: {
+        // 旧フォーマット（text フィールド）との互換処理
+        title: n.title ?? (n as unknown as { text?: string }).text ?? '',
+        body: n.body,
+        color: n.color,
+        createdBy: n.createdBy,
+        categoryId: n.categoryId,
+      },
     }))
     const flowEdges: Edge[] = edges.map((e) => ({
       id: e.id,
       type: 'floating',
       source: e.source,
       target: e.target,
-      // ハンドルID未指定の旧データは右→左をデフォルトにして必ず描画されるようにする
       sourceHandle: e.sourceHandle ?? 'right',
       targetHandle: e.targetHandle ?? 'left',
       label: e.label || undefined,
@@ -379,11 +402,13 @@ export const useMapStore = create<MapState>((set, get) => ({
   getSerializedNodes: () =>
     get().nodes.map((n) => ({
       id: n.id,
-      text: n.data.text,
+      title: n.data.title,
+      body: n.data.body,
       x: n.position.x,
       y: n.position.y,
       color: n.data.color,
       createdBy: n.data.createdBy,
+      categoryId: n.data.categoryId,
     })),
 
   getSerializedEdges: () =>
