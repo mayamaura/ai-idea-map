@@ -116,11 +116,16 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         </div>
       )}
 
-      {/* ハンドル */}
-      <Handle type="target" position={Position.Top} className="!bg-primary-400 !border-white !border-2" />
-      <Handle type="target" position={Position.Left} className="!bg-primary-400 !border-white !border-2" />
-      <Handle type="source" position={Position.Bottom} className="!bg-primary-400 !border-white !border-2" />
-      <Handle type="source" position={Position.Right} className="!bg-primary-400 !border-white !border-2" />
+      {/* ハンドル: 全方向を source/target 兼用にして任意方向から接続できる（ConnectionMode.Loose） */}
+      {(['Top', 'Right', 'Bottom', 'Left'] as const).map((pos) => (
+        <Handle
+          key={pos}
+          id={pos.toLowerCase()}
+          type="source"
+          position={Position[pos]}
+          className="!bg-primary-400 !border-white !border-2"
+        />
+      ))}
 
       {/* テキスト */}
       <div className="px-3 py-2">

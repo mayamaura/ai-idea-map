@@ -7,6 +7,8 @@ import { SettingsPanel } from './components/panels/SettingsPanel'
 import { AISuggestionPanel } from './components/panels/AISuggestionPanel'
 import { MapListPanel } from './components/panels/MapListPanel'
 import { ToastContainer } from './components/common/Toast'
+import { ContextMenu } from './components/canvas/ContextMenu'
+import { ConfirmDialog } from './components/common/ConfirmDialog'
 import { useSettingsStore } from './stores/settingsStore'
 import { useUIStore } from './stores/uiStore'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
@@ -68,6 +70,8 @@ function AppInner() {
         onMapLoaded={handleMapLoaded}
       />
       <ToastContainer />
+      <ContextMenu />
+      <ConfirmDialog />
     </div>
   )
 }

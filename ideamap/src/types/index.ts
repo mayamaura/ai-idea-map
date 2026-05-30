@@ -30,7 +30,10 @@ export interface SerializedEdge {
   id: string
   source: string
   target: string
+  sourceHandle?: string | null
+  targetHandle?: string | null
   label: string
+  bidirectional?: boolean
 }
 
 export interface AISuggestion {

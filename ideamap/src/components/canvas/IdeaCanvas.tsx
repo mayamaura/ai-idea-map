@@ -4,8 +4,11 @@ import {
   Background,
   Controls,
   MiniMap,
+  ConnectionMode,
+  useReactFlow,
   type NodeTypes,
   type Node,
+  type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useMapStore } from '../../stores/mapStore'
@@ -21,7 +24,8 @@ const nodeTypes: NodeTypes = {
 
 export function IdeaCanvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode } = useMapStore()
-  const { setSelectedNodeId } = useUIStore()
+  const { setSelectedNodeId, openContextMenu, closeContextMenu } = useUIStore()
+  const { screenToFlowPosition } = useReactFlow()
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -32,19 +36,44 @@ export function IdeaCanvas() {
 
   const handlePaneClick = useCallback(() => {
     setSelectedNodeId(null)
-  }, [setSelectedNodeId])
+    closeContextMenu()
+  }, [setSelectedNodeId, closeContextMenu])
 
   const handleDoubleClickOnPane = useCallback(
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement
       if (!target.closest('.react-flow__node')) {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
+        const { x, y } = screenToFlowPosition({ x: e.clientX, y: e.clientY })
         addNode('新しいアイデア', x - 60, y - 20)
       }
     },
-    [addNode]
+    [addNode, screenToFlowPosition]
+  )
+
+  const handleNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: Node) => {
+      e.preventDefault()
+      setSelectedNodeId(node.id)
+      openContextMenu({ type: 'node', x: e.clientX, y: e.clientY, targetId: node.id })
+    },
+    [openContextMenu, setSelectedNodeId]
+  )
+
+  const handleEdgeContextMenu = useCallback(
+    (e: React.MouseEvent, edge: Edge) => {
+      e.preventDefault()
+      openContextMenu({ type: 'edge', x: e.clientX, y: e.clientY, targetId: edge.id })
+    },
+    [openContextMenu]
+  )
+
+  const handlePaneContextMenu = useCallback(
+    (e: MouseEvent | React.MouseEvent) => {
+      e.preventDefault()
+      const flowPosition = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      openContextMenu({ type: 'pane', x: e.clientX, y: e.clientY, flowPosition })
+    },
+    [openContextMenu, screenToFlowPosition]
   )
 
   return (
@@ -58,10 +87,14 @@ export function IdeaCanvas() {
           onConnect={onConnect}
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}
+          onNodeContextMenu={handleNodeContextMenu}
+          onEdgeContextMenu={handleEdgeContextMenu}
+          onPaneContextMenu={handlePaneContextMenu}
           nodeTypes={nodeTypes}
+          connectionMode={ConnectionMode.Loose}
+          deleteKeyCode={null}
           fitView
           fitViewOptions={{ padding: 0.2 }}
-          deleteKeyCode="Delete"
           panOnScroll
           minZoom={0.1}
           maxZoom={3}

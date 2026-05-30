@@ -1,16 +1,23 @@
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
+import { useUIStore } from '../../stores/uiStore'
 import { applyDagreLayout } from '../../utils/mapLayout'
 import type { IdeaNodeData } from '../../types'
 import type { Node } from '@xyflow/react'
 
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
-  const { addNode, nodes, edges, setNodes, undo, redo, past, future } = useMapStore()
+  const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
+  const { selectedNodeId, setSelectedNodeId } = useUIStore()
 
   const handleAddNode = () => {
     const { x, y, zoom } = getViewport()
     addNode('新しいアイデア', (-x + 200) / zoom, (-y + 200) / zoom)
+  }
+
+  const handleDelete = () => {
+    deleteSelected()
+    setSelectedNodeId(null)
   }
 
   const handleAutoLayout = () => {
@@ -25,6 +32,17 @@ export function Toolbar() {
   return (
     <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white border-t border-gray-200 z-10 flex-shrink-0">
       <AddNodeButton onClick={handleAddNode} />
+      <button
+        onClick={handleDelete}
+        disabled={!selectedNodeId}
+        title="選択中のノードを削除 (Delete)"
+        className="p-2 rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
       <div className="w-px h-6 bg-gray-200 mx-1" />
 
       {/* Undo / Redo */}

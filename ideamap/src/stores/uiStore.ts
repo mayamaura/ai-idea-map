@@ -8,6 +8,27 @@ export interface Toast {
   type: 'success' | 'error' | 'info'
 }
 
+export type ContextMenuType = 'node' | 'edge' | 'pane'
+
+export interface ContextMenuState {
+  type: ContextMenuType
+  /** 画面座標（メニュー表示位置） */
+  x: number
+  y: number
+  /** node の場合はノードID、edge の場合はエッジID */
+  targetId?: string
+  /** pane の場合のフロー座標（新規ノード配置・貼り付け用） */
+  flowPosition?: { x: number; y: number }
+}
+
+export interface ConfirmDialogState {
+  title: string
+  message: string
+  confirmLabel?: string
+  danger?: boolean
+  onConfirm: () => void
+}
+
 interface UIState {
   selectedNodeId: string | null
   isSettingsOpen: boolean
@@ -18,6 +39,8 @@ interface UIState {
   saveStatus: SaveStatus
   mapTitle: string
   toasts: Toast[]
+  contextMenu: ContextMenuState | null
+  confirmDialog: ConfirmDialogState | null
   setSelectedNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
@@ -28,6 +51,10 @@ interface UIState {
   setMapTitle: (title: string) => void
   addToast: (message: string, type: Toast['type']) => void
   removeToast: (id: string) => void
+  openContextMenu: (menu: ContextMenuState) => void
+  closeContextMenu: () => void
+  openConfirmDialog: (dialog: ConfirmDialogState) => void
+  closeConfirmDialog: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -40,6 +67,8 @@ export const useUIStore = create<UIState>((set) => ({
   saveStatus: 'saved',
   mapTitle: '新しいマップ',
   toasts: [],
+  contextMenu: null,
+  confirmDialog: null,
   setSelectedNodeId: (id) => set({ selectedNodeId: id }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setAIPanelOpen: (open) => set({ isAIPanelOpen: open }),
@@ -57,4 +86,8 @@ export const useUIStore = create<UIState>((set) => ({
   },
   removeToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+  openContextMenu: (menu) => set({ contextMenu: menu }),
+  closeContextMenu: () => set({ contextMenu: null }),
+  openConfirmDialog: (dialog) => set({ confirmDialog: dialog }),
+  closeConfirmDialog: () => set({ confirmDialog: null }),
 }))
