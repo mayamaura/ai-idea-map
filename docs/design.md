@@ -153,6 +153,7 @@ UIの表示状態を管理する。副作用なし。
 | `suggestionCount` | `number` | AI提案件数（3〜7） |
 | `autoSave` | `boolean` | 自動保存のオン/オフ |
 | `theme` | `Theme` | `light \| dark` |
+| `nodeShape` | `NodeShape` | `rounded \| ellipse \| hexagon`（ノード形状） |
 
 ---
 
@@ -228,7 +229,12 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 | edge | 向きを反転 / 双方向切替 / ラベルを編集 / 線を削除 |
 | pane | アイデアを作成 / ここに貼り付け |
 
-### 5.5 ConfirmDialog（src/components/common/ConfirmDialog.tsx）
+### 5.5 WelcomeModal（src/components/common/WelcomeModal.tsx）
+
+初回起動時のみ表示。`localStorage.getItem('ideamap-welcomed')` がなければ表示し、閉じ時にセット。  
+3ステップ（アイデア追加 / 接続 / AI拡張）のスライドモーダル。`createPortal` で `<body>` に描画。
+
+### 5.6 ConfirmDialog（src/components/common/ConfirmDialog.tsx）
 
 接続線があるノード削除時のみ表示。  
 - `Enter` → 確認、`Escape` → キャンセル（ショートカット有効）
@@ -279,6 +285,7 @@ interface AISuggestion {
 type Theme = 'light' | 'dark'
 type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'
+type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
 ```
 
 ---
@@ -298,7 +305,7 @@ const ARROW: EdgeMarker = {
 const EDGE_STYLE = { stroke: '#94a3b8', strokeWidth: 1.5 }
 ```
 
-全ての新規エッジに `markerEnd: ARROW` を設定。
+全ての新規エッジに `markerEnd: ARROW` と `type: 'smoothstep'` を設定（折れ線より見栄えのよい曲線エッジ）。
 
 ### 7.2 双方向エッジ
 

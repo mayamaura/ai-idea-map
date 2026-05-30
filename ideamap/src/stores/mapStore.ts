@@ -33,6 +33,7 @@ interface EdgeSeed {
 function makeEdge(seed: EdgeSeed, bidirectional = false): Edge {
   return {
     id: uuidv4(),
+    type: 'floating',
     source: seed.source,
     target: seed.target,
     sourceHandle: seed.sourceHandle ?? undefined,
@@ -361,6 +362,7 @@ export const useMapStore = create<MapState>((set, get) => ({
     }))
     const flowEdges: Edge[] = edges.map((e) => ({
       id: e.id,
+      type: 'floating',
       source: e.source,
       target: e.target,
       // ハンドルID未指定の旧データは右→左をデフォルトにして必ず描画されるようにする

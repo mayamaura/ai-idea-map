@@ -1,7 +1,8 @@
+import { useState, useRef, useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
-import { applyDagreLayout } from '../../utils/mapLayout'
+import { applyDagreLayout, applyRadialLayout } from '../../utils/mapLayout'
 import type { IdeaNodeData } from '../../types'
 import type { Node } from '@xyflow/react'
 
@@ -9,6 +10,20 @@ export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
   const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
   const { selectedNodeId, setSelectedNodeId } = useUIStore()
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false)
+  const layoutMenuRef = useRef<HTMLDivElement>(null)
+
+  // メニュー外クリックで閉じる
+  useEffect(() => {
+    if (!showLayoutMenu) return
+    const handler = (e: MouseEvent) => {
+      if (layoutMenuRef.current && !layoutMenuRef.current.contains(e.target as Element)) {
+        setShowLayoutMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showLayoutMenu])
 
   const handleAddNode = () => {
     const { x, y, zoom } = getViewport()
@@ -20,10 +35,18 @@ export function Toolbar() {
     setSelectedNodeId(null)
   }
 
-  const handleAutoLayout = () => {
-    const laid = applyDagreLayout(nodes as Node<IdeaNodeData>[], edges)
+  const handleRadialLayout = () => {
+    const laid = applyRadialLayout(nodes as Node<IdeaNodeData>[], edges)
     setNodes(laid as Node<IdeaNodeData>[])
     setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
+    setShowLayoutMenu(false)
+  }
+
+  const handleDagreLayout = (rankdir: 'LR' | 'TB') => {
+    const laid = applyDagreLayout(nodes as Node<IdeaNodeData>[], edges, rankdir)
+    setNodes(laid as Node<IdeaNodeData>[])
+    setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
+    setShowLayoutMenu(false)
   }
 
   const canUndo = past.length > 0
@@ -71,18 +94,49 @@ export function Toolbar() {
 
       <div className="w-px h-6 bg-gray-200 mx-1" />
 
-      {/* 自動整列 */}
-      <button
-        onClick={handleAutoLayout}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-        title="ノードを自動整列"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-        </svg>
-        整列
-      </button>
+      {/* 自動整列: 3択ドロップダウン */}
+      <div className="relative" ref={layoutMenuRef}>
+        <button
+          onClick={() => setShowLayoutMenu((v) => !v)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          title="ノードを自動整列"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+          整列
+          <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showLayoutMenu && (
+          <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-36 animate-context-menu">
+            <button
+              onClick={handleRadialLayout}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-base leading-none">◎</span>
+              <span>放射状（デフォルト）</span>
+            </button>
+            <button
+              onClick={() => handleDagreLayout('LR')}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-base leading-none">→</span>
+              <span>左→右 (dagre)</span>
+            </button>
+            <button
+              onClick={() => handleDagreLayout('TB')}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-base leading-none">↓</span>
+              <span>上→下 (dagre)</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="w-px h-6 bg-gray-200 mx-1" />
 

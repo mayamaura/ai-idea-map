@@ -2,12 +2,25 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import type { IdeaNodeData } from '../../types'
 
 const NODE_COLORS = [
   '#ffffff', '#e0e7ff', '#dbeafe', '#d1fae5',
   '#fef3c7', '#fce7f3', '#ffe4e6', '#f3f4f6',
 ]
+
+function shapeClass(shape: string): string {
+  if (shape === 'ellipse') return 'rounded-full'
+  if (shape === 'hexagon') return 'node-shape-hexagon'
+  return 'rounded-xl'
+}
+
+function widthClass(text: string): string {
+  if (text.length < 20) return 'min-w-20 max-w-32'
+  if (text.length > 60) return 'min-w-32 max-w-64'
+  return 'min-w-24 max-w-48'
+}
 
 function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
   const nodeData = data as IdeaNodeData
@@ -18,6 +31,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { updateNodeText, updateNodeColor, deleteNode } = useMapStore()
   const { setSelectedNodeId, setAIPanelOpen } = useUIStore()
+  const nodeShape = useSettingsStore((s) => s.nodeShape)
 
   useEffect(() => {
     setEditText(nodeData.text)
@@ -75,7 +89,6 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
     [id, deleteNode]
   )
 
-  // Long press for mobile: select node and open AI panel after 500ms
   const handleTouchStart = useCallback(() => {
     longPressTimer.current = setTimeout(() => {
       setSelectedNodeId(id)
@@ -91,19 +104,12 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   }, [])
 
   const isAI = nodeData.createdBy === 'ai'
+  const shape = shapeClass(nodeShape)
+  const width = widthClass(nodeData.text)
 
   return (
     <div
-      className={`
-        relative group min-w-24 max-w-48 rounded-xl border-2 shadow-sm
-        transition-all duration-150 cursor-default
-        ${selected
-          ? 'border-primary-500 shadow-md shadow-primary-100'
-          : 'border-gray-200 hover:border-gray-300'
-        }
-        ${isAI ? 'node-ai-generated' : ''}
-      `}
-      style={{ backgroundColor: nodeData.color }}
+      className="relative group animate-node-enter"
       onDoubleClick={handleDoubleClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -127,24 +133,37 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         />
       ))}
 
-      {/* テキスト */}
-      <div className="px-3 py-2">
-        {isEditing ? (
-          <textarea
-            ref={textareaRef}
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            className="w-full text-sm text-gray-800 bg-transparent resize-none outline-none leading-snug"
-            rows={2}
-            style={{ minWidth: '80px' }}
-          />
-        ) : (
-          <p className="text-sm text-gray-800 leading-snug break-words select-none">
-            {nodeData.text}
-          </p>
-        )}
+      {/* 形状コンテナ: border/shadow/色/形状 */}
+      <div
+        className={`
+          ${width} ${shape} border-2 shadow-sm
+          transition-all duration-150 cursor-default
+          ${isAI ? 'node-ai-generated' : ''}
+          ${selected
+            ? 'border-primary-500 shadow-md shadow-primary-100'
+            : 'border-gray-200 hover:border-gray-300'
+          }
+        `}
+        style={{ backgroundColor: nodeData.color }}
+      >
+        <div className="px-3 py-2">
+          {isEditing ? (
+            <textarea
+              ref={textareaRef}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="w-full text-sm text-gray-800 bg-transparent resize-none outline-none leading-snug"
+              rows={2}
+              style={{ minWidth: '80px' }}
+            />
+          ) : (
+            <p className="text-sm text-gray-800 leading-snug break-words select-none">
+              {nodeData.text}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* 選択時アクションバー */}

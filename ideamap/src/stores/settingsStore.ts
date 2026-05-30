@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Theme, AIModel } from '../types'
+import type { Theme, AIModel, NodeShape } from '../types'
 import { getStoredApiKey, setStoredApiKey } from '../utils/encryption'
 
 interface SettingsState {
@@ -10,12 +10,14 @@ interface SettingsState {
   autoSave: boolean
   theme: Theme
   language: 'ja' | 'en'
+  nodeShape: NodeShape
   setApiKey: (key: string) => void
   setAiModel: (model: AIModel) => void
   setSuggestionCount: (count: number) => void
   setAutoSave: (enabled: boolean) => void
   setTheme: (theme: Theme) => void
   setLanguage: (lang: 'ja' | 'en') => void
+  setNodeShape: (shape: NodeShape) => void
   loadApiKey: () => Promise<void>
 }
 
@@ -28,6 +30,7 @@ export const useSettingsStore = create<SettingsState>()(
       autoSave: true,
       theme: 'light',
       language: 'ja',
+      nodeShape: 'rounded',
 
       setApiKey: (key) => {
         set({ apiKey: key })
@@ -38,6 +41,7 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoSave: (enabled) => set({ autoSave: enabled }),
       setTheme: (theme) => set({ theme }),
       setLanguage: (lang) => set({ language: lang }),
+      setNodeShape: (shape) => set({ nodeShape: shape }),
 
       loadApiKey: async () => {
         const key = await getStoredApiKey()
@@ -53,6 +57,7 @@ export const useSettingsStore = create<SettingsState>()(
         autoSave: state.autoSave,
         theme: state.theme,
         language: state.language,
+        nodeShape: state.nodeShape,
       }),
     }
   )

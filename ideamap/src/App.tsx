@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Header } from './components/common/Header'
 import { IdeaCanvas } from './components/canvas/IdeaCanvas'
@@ -9,15 +9,19 @@ import { MapListPanel } from './components/panels/MapListPanel'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
+import { WelcomeModal } from './components/common/WelcomeModal'
 import { useSettingsStore } from './stores/settingsStore'
 import { useUIStore } from './stores/uiStore'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { useAutoSave } from './hooks/useAutoSave'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 
+const WELCOME_KEY = 'ideamap-welcomed'
+
 function AppInner() {
   useKeyboardShortcuts()
 
+  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
   const { loadApiKey, theme } = useSettingsStore()
   const { addToast } = useUIStore()
   const googleAuth = useGoogleAuth()
@@ -72,6 +76,14 @@ function AppInner() {
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />
+      {showWelcome && (
+        <WelcomeModal
+          onClose={() => {
+            setShowWelcome(false)
+            localStorage.setItem(WELCOME_KEY, '1')
+          }}
+        />
+      )}
     </div>
   )
 }
