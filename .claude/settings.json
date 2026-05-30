@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"git commit が完了しました。機能・UI・設定・使い方に影響する変更がある場合は README.md の更新を確認してください。\"}}'",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ]
+  }
+}

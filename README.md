@@ -37,10 +37,7 @@ npm run dev
 1. ヘッダーの設定アイコンから **Claude APIキー** を入力
 2. キャンバスをダブルクリックしてノードを追加
 3. ノードを選択し「AIに拡張を依頼」でアイデアを展開
-4. Googleアカウントでサインインするとドライブに自動保存
-
-Googleドライブ連携には別途 Google Cloud Project の OAuth クライアントIDが必要です。
-詳細は [docs/implementation-plan.md](docs/implementation-plan.md) の「5. Google Cloud Project 設定」を参照してください。
+4. Googleアカウントでサインインするとドライブに自動保存（OAuth設定は不要）
 
 ## ドキュメント
 
