@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ReactFlow,
   Background,
@@ -6,6 +7,7 @@ import {
   MiniMap,
   ConnectionMode,
   useReactFlow,
+  useViewport,
   type NodeTypes,
   type EdgeTypes,
   type Node,
@@ -19,6 +21,65 @@ import { FloatingEdge } from './FloatingEdge'
 import { Toolbar } from '../toolbar/Toolbar'
 import { BottomNav } from '../toolbar/BottomNav'
 import type { IdeaNodeData } from '../../types'
+
+function NodeActionBar() {
+  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId } = useUIStore()
+  const { deleteNode, nodes } = useMapStore()
+  useViewport() // ズーム・パン変化時に再レンダリングしてバーを再配置
+  const { flowToScreenPosition, getNode } = useReactFlow()
+
+  if (!selectedNodeId) return null
+
+  // mapStore の nodes を参照することでドラッグ後の位置変化にも追従
+  const storeNode = nodes.find((n) => n.id === selectedNodeId)
+  if (!storeNode) return null
+
+  const rfNode = getNode(selectedNodeId)
+  const nodeWidth = rfNode?.measured?.width ?? 150
+  const nodeHeight = rfNode?.measured?.height ?? 60
+
+  const { x: screenX, y: screenY } = flowToScreenPosition({
+    x: storeNode.position.x + nodeWidth / 2,
+    y: storeNode.position.y + nodeHeight,
+  })
+
+  return createPortal(
+    <div
+      className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg shadow-lg px-1 py-1 whitespace-nowrap"
+      style={{ position: 'fixed', left: screenX, top: screenY + 8, transform: 'translateX(-50%)', zIndex: 40 }}
+    >
+      <button
+        onClick={() => { setSelectedNodeId(selectedNodeId); setAIPanelOpen(true) }}
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-primary-600 font-medium hover:bg-primary-50 rounded-md transition-colors"
+        title="AIに拡張を依頼"
+      >
+        <span>✦</span>
+        <span>AI拡張</span>
+      </button>
+      <div className="w-px h-4 bg-gray-200" />
+      <button
+        onClick={() => openNodeDetail(selectedNodeId)}
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-md transition-colors"
+        title="詳細を開く"
+      >
+        <span>📝</span>
+        <span>詳細</span>
+      </button>
+      <div className="w-px h-4 bg-gray-200" />
+      <button
+        onClick={() => { deleteNode(selectedNodeId); setSelectedNodeId(null) }}
+        className="px-3 py-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+        title="削除"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
+    </div>,
+    document.body
+  )
+}
 
 const nodeTypes: NodeTypes = {
   ideaNode: IdeaNode as NodeTypes['ideaNode'],
@@ -153,6 +214,7 @@ export function IdeaCanvas() {
       </div>
       <Toolbar />
       <BottomNav />
+      <NodeActionBar />
     </div>
   )
 }

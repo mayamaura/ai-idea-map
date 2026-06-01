@@ -23,7 +23,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const [editText, setEditText] = useState(nodeData.title)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { updateNodeTitle, deleteNode } = useMapStore()
+  const { updateNodeTitle } = useMapStore()
   const { setSelectedNodeId, setAIPanelOpen, openNodeDetail } = useUIStore()
   const nodeShape = useSettingsStore((s) => s.nodeShape)
 
@@ -64,23 +64,6 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       }
     },
     [handleBlur, nodeData.title]
-  )
-
-  const handleAIExpand = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      setSelectedNodeId(id)
-      setAIPanelOpen(true)
-    },
-    [id, setSelectedNodeId, setAIPanelOpen]
-  )
-
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      deleteNode(id)
-    },
-    [id, deleteNode]
   )
 
   const handleTouchStart = useCallback(() => {
@@ -176,39 +159,6 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         </div>
       </div>
 
-      {/* 選択時アクションバー */}
-      {selected && !isEditing && (
-        <div className="absolute -bottom-9 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white border border-gray-200 rounded-lg shadow-lg px-1 py-1 z-20 whitespace-nowrap">
-          <button
-            onClick={handleAIExpand}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-primary-600 font-medium hover:bg-primary-50 rounded-md transition-colors"
-            title="AIに拡張を依頼"
-          >
-            <span>✦</span>
-            <span>AI拡張</span>
-          </button>
-          <div className="w-px h-4 bg-gray-200" />
-          <button
-            onClick={(e) => { e.stopPropagation(); openNodeDetail(id) }}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 font-medium hover:bg-gray-100 rounded-md transition-colors"
-            title="詳細を開く"
-          >
-            <span>📝</span>
-            <span>詳細</span>
-          </button>
-          <div className="w-px h-4 bg-gray-200" />
-          <button
-            onClick={handleDelete}
-            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-            title="削除"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-        </div>
-      )}
     </div>
   )
 }
