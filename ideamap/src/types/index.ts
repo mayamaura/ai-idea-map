@@ -54,6 +54,30 @@ export interface AISuggestion {
   categoryId?: string
 }
 
+export type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
+
+export interface MapAnalysis {
+  summary: string
+  missingAreas: string[]
+  importantNodeIds: string[]
+  importantNodeTitles: string[]
+}
+
+export interface ConnectionSuggestion {
+  sourceId: string
+  targetId: string
+  sourceTitle: string
+  targetTitle: string
+  reason: string
+}
+
+export interface ClusterSuggestion {
+  groupName: string
+  categoryId: string
+  nodeIds: string[]
+  nodeTitles: string[]
+}
+
 export type Theme = 'light' | 'dark'
 export type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'

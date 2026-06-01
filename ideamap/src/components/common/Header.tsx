@@ -24,7 +24,7 @@ export function Header({
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
-  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen } = useUIStore()
+  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen } = useUIStore()
   const { theme, setTheme } = useSettingsStore()
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
@@ -117,6 +117,29 @@ export function Header({
             </span>
           </button>
         )}
+
+        {/* マップ分析ボタン */}
+        <button
+          onClick={() => setAnalysisPanelOpen(true)}
+          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-700 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors hidden sm:flex"
+          title="AIでマップ全体を分析"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <span>マップ分析</span>
+        </button>
+        <button
+          onClick={() => setAnalysisPanelOpen(true)}
+          className="p-2 rounded-lg text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-200 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors sm:hidden"
+          title="AIでマップ全体を分析"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </button>
 
         {/* テーマ切替ボタン */}
         <button

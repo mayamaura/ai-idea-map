@@ -72,6 +72,8 @@ interface MapState {
   reverseEdge: (id: string) => void
   toggleEdgeDirection: (id: string) => void
   updateEdgeLabel: (id: string, label: string) => void
+  addSuggestedEdge: (sourceId: string, targetId: string) => void
+  applyClusterCategory: (nodeIds: string[], categoryId: string, color: string) => void
   copyNodes: (ids: string[]) => void
   paste: (position?: { x: number; y: number }) => void
   hasConnectedEdges: (nodeId: string) => boolean
@@ -327,6 +329,39 @@ export const useMapStore = create<MapState>((set, get) => ({
     set((state) => ({
       edges: state.edges.map((e) =>
         e.id === id ? { ...e, label: label || undefined } : e
+      ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  addSuggestedEdge: (sourceId, targetId) =>
+    set((state) => {
+      const already = state.edges.some(
+        (e) =>
+          (e.source === sourceId && e.target === targetId) ||
+          (e.source === targetId && e.target === sourceId)
+      )
+      if (already) return {}
+      const edge: Edge = {
+        id: uuidv4(),
+        type: 'floating',
+        source: sourceId,
+        target: targetId,
+        markerEnd: ARROW,
+        style: { stroke: '#a78bfa', strokeWidth: 1.5, strokeDasharray: '6 3' },
+        data: { aiSuggested: true },
+      }
+      return {
+        edges: [...state.edges, edge],
+        past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+        future: [],
+      }
+    }),
+
+  applyClusterCategory: (nodeIds, categoryId, color) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        nodeIds.includes(n.id) ? { ...n, data: { ...n.data, categoryId, color } } : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],

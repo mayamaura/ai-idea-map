@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { AISuggestion, SaveStatus } from '../types'
+import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, SuggestionType } from '../types'
 
 export interface Toast {
   id: string
@@ -50,6 +50,13 @@ interface UIState {
   recentNodeIds: string[]
   // Phase 9: エクスポート & インポート
   isExportPanelOpen: boolean
+  // Phase 10: AI高度化
+  isAnalysisPanelOpen: boolean
+  isAnalysisLoading: boolean
+  mapAnalysis: MapAnalysis | null
+  connectionSuggestions: ConnectionSuggestion[]
+  clusterSuggestions: ClusterSuggestion[]
+  suggestionTypeFilter: SuggestionType[]
   setSelectedNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
@@ -74,6 +81,14 @@ interface UIState {
   trackRecentNode: (nodeId: string) => void
   // Phase 9: エクスポート & インポート
   setExportPanelOpen: (open: boolean) => void
+  // Phase 10: AI高度化
+  setAnalysisPanelOpen: (open: boolean) => void
+  setAnalysisLoading: (loading: boolean) => void
+  setMapAnalysis: (analysis: MapAnalysis | null) => void
+  setConnectionSuggestions: (suggestions: ConnectionSuggestion[]) => void
+  setClusterSuggestions: (suggestions: ClusterSuggestion[]) => void
+  toggleSuggestionTypeFilter: (type: SuggestionType) => void
+  clearSuggestionTypeFilters: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -95,6 +110,12 @@ export const useUIStore = create<UIState>((set) => ({
   activeCategoryFilters: [],
   recentNodeIds: [],
   isExportPanelOpen: false,
+  isAnalysisPanelOpen: false,
+  isAnalysisLoading: false,
+  mapAnalysis: null,
+  connectionSuggestions: [],
+  clusterSuggestions: [],
+  suggestionTypeFilter: [],
   setSelectedNodeId: (id) =>
     set((state) => ({
       selectedNodeId: id,
@@ -138,4 +159,16 @@ export const useUIStore = create<UIState>((set) => ({
       recentNodeIds: [nodeId, ...state.recentNodeIds.filter((r) => r !== nodeId)].slice(0, 10),
     })),
   setExportPanelOpen: (open) => set({ isExportPanelOpen: open }),
+  setAnalysisPanelOpen: (open) => set({ isAnalysisPanelOpen: open }),
+  setAnalysisLoading: (loading) => set({ isAnalysisLoading: loading }),
+  setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
+  setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),
+  setClusterSuggestions: (suggestions) => set({ clusterSuggestions: suggestions }),
+  toggleSuggestionTypeFilter: (type) =>
+    set((state) => ({
+      suggestionTypeFilter: state.suggestionTypeFilter.includes(type)
+        ? state.suggestionTypeFilter.filter((t) => t !== type)
+        : [...state.suggestionTypeFilter, type],
+    })),
+  clearSuggestionTypeFilters: () => set({ suggestionTypeFilter: [] }),
 }))

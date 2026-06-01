@@ -4,7 +4,7 @@ import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateSuggestions } from '../../services/claudeService'
 import { calcSuggestionPositions } from '../../utils/mapLayout'
-import type { AISuggestion } from '../../types'
+import type { AISuggestion, SuggestionType } from '../../types'
 
 const typeColors: Record<string, string> = {
   '関連': 'bg-blue-100 text-blue-700',
@@ -13,14 +13,20 @@ const typeColors: Record<string, string> = {
   '応用': 'bg-purple-100 text-purple-700',
 }
 
+const ALL_TYPES: SuggestionType[] = ['関連', '深掘り', '対比', '応用']
+
 export function AISuggestionPanel() {
-  const { isAIPanelOpen, setAIPanelOpen, selectedNodeId, aiSuggestions, setAISuggestions, isAILoading, setAILoading } = useUIStore()
+  const { isAIPanelOpen, setAIPanelOpen, selectedNodeId, aiSuggestions, setAISuggestions, isAILoading, setAILoading, suggestionTypeFilter, toggleSuggestionTypeFilter } = useUIStore()
   const { nodes, edges, addNode, onConnect } = useMapStore()
-  const { apiKey, aiModel, suggestionCount, categories, getCategoryById } = useSettingsStore()
+  const { apiKey, aiModel, suggestionCount, setSuggestionCount, categories, getCategoryById } = useSettingsStore()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+
+  const filteredSuggestions = suggestionTypeFilter.length > 0
+    ? aiSuggestions.filter((s) => suggestionTypeFilter.includes(s.type))
+    : aiSuggestions
 
   const handleFetch = useCallback(async () => {
     if (!selectedNode || !apiKey) {
@@ -50,17 +56,20 @@ export function AISuggestionPanel() {
         categories,
       })
       setAISuggestions(suggestions)
-      setSelected(new Set(suggestions.map((_, i) => i)))
+      const visible = suggestionTypeFilter.length > 0
+      ? suggestions.filter((s) => suggestionTypeFilter.includes(s.type))
+      : suggestions
+    setSelected(new Set(visible.map((_, i) => i)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
     } finally {
       setAILoading(false)
     }
-  }, [selectedNode, apiKey, aiModel, suggestionCount, nodes, edges, categories, setAILoading, setAISuggestions])
+  }, [selectedNode, apiKey, aiModel, suggestionCount, nodes, edges, categories, suggestionTypeFilter, setAILoading, setAISuggestions])
 
   const handleAddSelected = useCallback(() => {
     if (!selectedNode) return
-    const selectedSuggestions = aiSuggestions.filter((_, i) => selected.has(i))
+    const selectedSuggestions = filteredSuggestions.filter((_, i) => selected.has(i))
     const positions = calcSuggestionPositions(
       selectedNode.position.x,
       selectedNode.position.y,
@@ -78,7 +87,7 @@ export function AISuggestionPanel() {
     })
     setAIPanelOpen(false)
     setSelected(new Set())
-  }, [selectedNode, aiSuggestions, selected, nodes, addNode, onConnect, getCategoryById, setAIPanelOpen])
+  }, [selectedNode, filteredSuggestions, selected, nodes, addNode, onConnect, getCategoryById, setAIPanelOpen])
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {
@@ -115,6 +124,38 @@ export function AISuggestionPanel() {
         </div>
 
         <div className="px-5 py-4 space-y-3">
+          {/* 提案数スライダー */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500 flex-shrink-0">提案数</span>
+            <input
+              type="range"
+              min={3}
+              max={10}
+              value={suggestionCount}
+              onChange={(e) => setSuggestionCount(Number(e.target.value))}
+              className="flex-1 accent-primary-600"
+            />
+            <span className="text-xs font-medium text-gray-700 w-5 text-right">{suggestionCount}</span>
+          </div>
+
+          {/* 種別フィルタ */}
+          <div className="flex flex-wrap gap-1.5">
+            {ALL_TYPES.map((type) => {
+              const active = suggestionTypeFilter.length === 0 || suggestionTypeFilter.includes(type)
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleSuggestionTypeFilter(type)}
+                  className={`text-xs px-2 py-1 rounded-full border transition-all ${
+                    typeColors[type] ?? 'bg-gray-100 text-gray-600'
+                  } ${active ? 'opacity-100 ring-1 ring-offset-1 ring-gray-300' : 'opacity-40'}`}
+                >
+                  {type}
+                </button>
+              )
+            })}
+          </div>
+
           {/* エラー */}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
@@ -125,17 +166,17 @@ export function AISuggestionPanel() {
           {/* ローディング */}
           {isAILoading && (
             <div className="flex flex-col items-center gap-3 py-8">
-              <div className="w-8 h-8 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
               <p className="text-sm text-gray-500">アイデアを生成中...</p>
             </div>
           )}
 
           {/* 提案リスト */}
-          {!isAILoading && aiSuggestions.length > 0 && (
+          {!isAILoading && filteredSuggestions.length > 0 && (
             <>
-              <p className="text-xs text-gray-400">採用するアイデアを選択してください</p>
+              <p className="text-xs text-gray-400">採用するアイデアを選択してください（{filteredSuggestions.length}件）</p>
               <div className="space-y-2">
-                {aiSuggestions.map((suggestion: AISuggestion, idx) => {
+                {filteredSuggestions.map((suggestion: AISuggestion, idx) => {
                   const cat = suggestion.categoryId ? getCategoryById(suggestion.categoryId) : undefined
                   return (
                     <label
@@ -176,6 +217,11 @@ export function AISuggestionPanel() {
             </>
           )}
 
+          {/* フィルタが絞りすぎで空になった場合 */}
+          {!isAILoading && aiSuggestions.length > 0 && filteredSuggestions.length === 0 && (
+            <p className="text-xs text-center text-gray-400 py-4">フィルター条件に一致する提案がありません</p>
+          )}
+
           {/* 初期状態 */}
           {!isAILoading && aiSuggestions.length === 0 && !error && (
             <div className="text-center py-8 text-sm text-gray-400">
@@ -187,7 +233,7 @@ export function AISuggestionPanel() {
 
         {/* フッターボタン */}
         <div className="px-5 py-4 border-t border-gray-100 space-y-2">
-          {aiSuggestions.length > 0 && !isAILoading && (
+          {filteredSuggestions.length > 0 && !isAILoading && (
             <button
               onClick={handleAddSelected}
               disabled={selected.size === 0}

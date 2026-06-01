@@ -8,6 +8,7 @@ import { AISuggestionPanel } from './components/panels/AISuggestionPanel'
 import { MapListPanel } from './components/panels/MapListPanel'
 import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ExportImportPanel } from './components/panels/ExportImportPanel'
+import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
@@ -99,6 +100,7 @@ function AppInner() {
       />
       <NodeDetailPanel />
       <ExportImportPanel />
+      <MapAnalysisPanel />
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />

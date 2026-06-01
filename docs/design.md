@@ -64,10 +64,11 @@ ideamap/
 │   │   ├── panels/
 │   │   │   ├── NodePanel.tsx       # ノード選択時のサイドパネル（簡易表示）
 │   │   │   ├── NodeDetailPanel.tsx # ノード詳細パネル（タイトル・本文・カテゴリ編集）
-│   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル
+│   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル（種別フィルタ・提案数スライダー付き）
 │   │   │   ├── SettingsPanel.tsx   # 設定パネル（カテゴリ管理含む）
 │   │   │   ├── MapListPanel.tsx    # マップ一覧パネル
-│   │   │   └── ExportImportPanel.tsx # エクスポート/インポート/共有パネル（Phase 9）
+│   │   │   ├── ExportImportPanel.tsx # エクスポート/インポート/共有パネル（Phase 9）
+│   │   │   └── MapAnalysisPanel.tsx  # AIマップ分析パネル（分析・接続提案・クラスタリング）（Phase 10）
 │   │   ├── toolbar/
 │   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
 │   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）
@@ -83,7 +84,7 @@ ideamap/
 │   │   ├── settingsStore.ts        # 設定状態（APIキー・テーマ・自動保存）
 │   │   └── uiStore.ts              # UI状態（パネル開閉・コンテキストメニュー等）
 │   ├── services/
-│   │   ├── claudeService.ts        # Claude API呼び出し
+│   │   ├── claudeService.ts        # Claude API呼び出し（generateSuggestions / analyzeMap / suggestConnections / suggestClusters）
 │   │   ├── googleDriveService.ts   # Google Drive API操作
 │   │   ├── storageService.ts       # localStorageのラッパー
 │   │   └── exportService.ts        # エクスポート/インポート/共有URLロジック（Phase 9）
@@ -152,6 +153,12 @@ UIの表示状態を管理する。副作用なし。
 | `activeCategoryFilters` | `string[]` | フィルター中のカテゴリID（空=全表示、OR条件） |
 | `recentNodeIds` | `string[]` | 最近選択したノードID（最大10件、setSelectedNodeId呼び出し時に自動更新） |
 | `isExportPanelOpen` | `boolean` | エクスポート/インポートパネルの開閉（Phase 9） |
+| `isAnalysisPanelOpen` | `boolean` | AIマップ分析パネルの開閉（Phase 10） |
+| `isAnalysisLoading` | `boolean` | AI分析中フラグ（Phase 10） |
+| `mapAnalysis` | `MapAnalysis \| null` | マップ全体分析結果（Phase 10） |
+| `connectionSuggestions` | `ConnectionSuggestion[]` | 接続提案リスト（Phase 10） |
+| `clusterSuggestions` | `ClusterSuggestion[]` | クラスタリング提案リスト（Phase 10） |
+| `suggestionTypeFilter` | `SuggestionType[]` | AI提案の種別フィルター（空=全表示、Phase 10） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 
@@ -312,6 +319,30 @@ type Theme = 'light' | 'dark'
 type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'
 type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
+type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
+
+// Phase 10: AI高度化
+interface MapAnalysis {
+  summary: string              // マップの主要テーマ要約
+  missingAreas: string[]       // 見落としているアイデア領域（最大4件）
+  importantNodeIds: string[]   // 重要ノードのID（最大3件）
+  importantNodeTitles: string[] // 重要ノードのタイトル
+}
+
+interface ConnectionSuggestion {
+  sourceId: string
+  targetId: string
+  sourceTitle: string
+  targetTitle: string
+  reason: string               // 接続の理由（1文）
+}
+
+interface ClusterSuggestion {
+  groupName: string
+  categoryId: string           // 適用するカテゴリID
+  nodeIds: string[]
+  nodeTitles: string[]
+}
 ```
 
 ---
