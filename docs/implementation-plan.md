@@ -339,6 +339,104 @@
 
 ---
 
+### Phase 11: デバイス間連携 & スタートアップ体験改善（約4日）
+
+**目標**: どのデバイスからでもすぐに使い始められる環境の実現
+
+#### A. APIキーのGoogle Drive安全保存（セキュアなデバイス間共有）
+
+**設計方針**:
+- 現在の固定パスフレーズ方式を廃止し、**ユーザー設定の「同期パスワード」ベースの暗号化**に変更
+- 同期パスワード → PBKDF2 (100,000回) → AES-GCM鍵 → APIキーを暗号化
+- 暗号化済みAPIキーとsaltを `IdeaMap/settings.json` としてDriveに保存
+  ```json
+  {
+    "version": "1.0",
+    "encryptedApiKey": "<base64>",
+    "salt": [1, 2, 3, ...],
+    "model": "claude-sonnet-4-6",
+    "updatedAt": "..."
+  }
+  ```
+- 別デバイスでは「Driveから設定を読み込む」→同じパスワードを入力して復号
+- **パスワード自体はDriveに保存しない**（サーバーにも送信しない）
+
+#### タスク
+- [ ] `src/utils/encryption.ts` に `encryptWithPassword` / `decryptWithPassword` を追加（既存のデバイス固有暗号化は互換維持）
+- [ ] `src/services/googleDriveService.ts` に `saveAppSettings` / `loadAppSettings` を追加（`IdeaMap/settings.json` の読み書き）
+- [ ] `src/stores/settingsStore.ts` に `syncPassword`, `saveSettingsToDrive`, `loadSettingsFromDrive` アクションを追加
+- [ ] `src/components/panels/SettingsPanel.tsx` に同期パスワード設定UI + 「Driveに保存」「Driveから読み込む」ボタンを追加
+  - パスワード未設定時は「同期するにはパスワードを設定してください」と案内
+  - 読み込み成功時はトースト通知「APIキーを同期しました」
+
+---
+
+#### B. Googleログイン自動再認証
+
+**設計方針**:
+- GIS Token モデルは元々リフレッシュトークンを持たず、アクセストークンはメモリのみで1時間有効
+- `prompt: ''` を使うと、ユーザーが一度同意済みの場合はポップアップなしで自動トークン取得できる
+- リロード時にこの仕組みを使って「見えない形での自動ログイン」を実現
+- **テストユーザーの制限は原因ではない**（リフレッシュトークンを使わない設計なので影響なし）
+
+#### タスク
+- [ ] `src/hooks/useGoogleAuth.ts` を更新：
+  - サインイン成功時に `localStorage.setItem('googleAuthRequested', 'true')` を保存
+  - サインアウト時にフラグを削除
+  - GISライブラリ準備完了 (`isGisReady`) を検知したら、フラグがあれば自動的に `requestAccessToken({ prompt: '' })` を呼び出す
+  - 自動認証中は `isLoading: true` を立てて画面に「認証中...」を表示（素早く解決するため違和感なし）
+  - 失敗（同意取消・トークン期限切れ等）はフラグをクリアしてサインインボタンを表示
+- [ ] トークン失効時の自動再取得：`useAutoSave.ts` でDrive保存が401エラーの場合に `signIn()` を呼んで静かに再認証→リトライ
+
+---
+
+#### C. スタートアップ / ファイル選択ダッシュボード
+
+**設計方針**:
+- アプリ起動時のフローを刷新：
+  ```
+  アプリ起動
+  ├── 自動認証中（フラグあり） → 成功 → ファイルダッシュボード
+  ├── 未ログイン → ダッシュボード（ログインボタン付き）
+  └── オフライン → ダッシュボード（ローカルファイルのみ表示）
+  ```
+- `FileOpenDashboard.tsx`（全画面オーバーレイ）の内容：
+  - 「最近開いたマップ」（localStorageに最大5件の履歴を保存、マップ名+更新日時）
+  - 「Google Driveのマップ一覧」（Drive APIから取得、ファイル名+更新日時）
+  - 「新規作成」ボタン
+  - 「ファイルを開く（JSONインポート）」ボタン
+  - Googleログインボタン（未認証時）
+- マップを開いたら（またはファイルを選択したら）ダッシュボードを閉じてキャンバスへ移行
+- ヘッダーのマップ名をクリックするとダッシュボードを再表示できる
+
+#### タスク
+- [ ] `src/components/screens/FileOpenDashboard.tsx` を新規作成（全画面オーバーレイ）
+- [ ] `src/stores/uiStore.ts` に `isFileDashboardOpen`, `setFileDashboardOpen` を追加
+- [ ] `src/App.tsx` を更新：起動時にダッシュボードを表示、マップ選択後に閉じるフローを組み込む
+- [ ] `src/hooks/useAutoSave.ts` を更新：マップを開いたとき（`loadFromSerialized`）に最近開いたマップ履歴を更新
+- [ ] `src/components/common/Header.tsx` を更新：マップ名をクリック可能にしてダッシュボードを開く
+
+---
+
+#### D. UIの改善
+
+**D-1. キーボードショートカット一覧（Ctrl+/）**
+- [ ] `src/components/common/KeyboardShortcutsModal.tsx` を新規作成（全ショートカット一覧をモーダル表示）
+- [ ] `src/hooks/useKeyboardShortcuts.ts` に `Ctrl+/` ショートカットを追加
+
+**D-2. オフライン状態インジケーター**
+- [ ] `src/hooks/useOnlineStatus.ts` を新規作成（`navigator.onLine` + `online`/`offline` イベント）
+- [ ] `src/components/common/Header.tsx` にオフライン時の小バナーを追加（「オフライン - ローカル保存中」）
+
+**D-3. Drive保存エラー時の自動リトライ**
+- [ ] `src/hooks/useAutoSave.ts` でDrive保存が認証エラー（401）の場合、自動的に再認証→再保存を試みる
+
+---
+
+**完了条件**: どのデバイスでもサインイン後すぐにファイルを選択・開始でき、APIキーの再入力が不要になる
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
@@ -386,9 +484,11 @@ npm run dev
 | Phase 8 | 検索 & フィルタリング | 2日 |
 | Phase 9 | エクスポート & インポート | 2日 |
 | Phase 10 | AI高度化 | 3日 |
+| Phase 11 | デバイス間連携 & スタートアップ体験改善 | 4日 |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-10 合計** | | **約16日** |
-| **全体合計** | | **約24日** |
+| **Phase 11 合計** | | **約4日** |
+| **全体合計** | | **約28日** |
 
 ---
 
@@ -404,3 +504,6 @@ npm run dev
 | Phase 7でのデータ移行 | `text` → `title` のリネーム時は旧フォーマットの読み込み互換処理を実装 |
 | URLエンコード共有のサイズ限界 | base64エンコードのURLはブラウザの制限（約2KB）があるため、大マップはDriveリンクを推奨する旨を表示 |
 | 放射状レイアウトの計算精度 | ノード数が多い場合のオーバーラップを防ぐため、衝突検出ループを既存の `calcSuggestionPositions` から流用して拡張する |
+| APIキー同期パスワードの忘れ | パスワードを忘れた場合はDriveから読み込めなくなる（APIキーを再入力すれば継続利用可能）。UIに「パスワードを忘れた場合は再入力してください」と明示する |
+| GIS Token自動再認証の失敗 | prompt:'' でポップアップが開く場合（ブラウザ設定によりブロックされることがある）は、ユーザーにサインインボタンを提示してフォールバック |
+| Drive settings.json の競合 | 複数デバイスから同時に設定を保存した場合は上書きになる（現実的に同時操作は稀なため許容。APIキーは同一のことがほとんど） |
