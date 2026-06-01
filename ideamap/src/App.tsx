@@ -7,6 +7,7 @@ import { SettingsPanel } from './components/panels/SettingsPanel'
 import { AISuggestionPanel } from './components/panels/AISuggestionPanel'
 import { MapListPanel } from './components/panels/MapListPanel'
 import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
+import { ExportImportPanel } from './components/panels/ExportImportPanel'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
@@ -14,9 +15,11 @@ import { WelcomeModal } from './components/common/WelcomeModal'
 import { SearchBar } from './components/common/SearchBar'
 import { useSettingsStore } from './stores/settingsStore'
 import { useUIStore } from './stores/uiStore'
+import { useMapStore } from './stores/mapStore'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { useAutoSave } from './hooks/useAutoSave'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { parseMapFromUrl, clearMapFromUrl } from './services/exportService'
 
 const WELCOME_KEY = 'ideamap-welcomed'
 
@@ -25,7 +28,8 @@ function AppInner() {
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
   const { loadApiKey, theme } = useSettingsStore()
-  const { addToast } = useUIStore()
+  const { addToast, setMapTitle, openConfirmDialog } = useUIStore()
+  const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
   const { setFileId } = useAutoSave(googleAuth.accessToken)
 
@@ -38,6 +42,24 @@ function AppInner() {
   useEffect(() => {
     void loadApiKey()
   }, [loadApiKey])
+
+  // 共有URL からマップをインポート
+  useEffect(() => {
+    const mapData = parseMapFromUrl()
+    if (!mapData) return
+    clearMapFromUrl()
+    openConfirmDialog({
+      title: '共有マップのインポート',
+      message: `「${mapData.title}」が共有URLから見つかりました。インポートしますか？現在のマップは置き換えられます。`,
+      confirmLabel: 'インポート',
+      onConfirm: () => {
+        loadFromSerialized(mapData.nodes, mapData.edges)
+        setMapTitle(mapData.title)
+        addToast(`「${mapData.title}」をインポートしました`, 'success')
+      },
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Apply dark/light theme to <html>
   useEffect(() => {
@@ -76,6 +98,7 @@ function AppInner() {
         onMapLoaded={handleMapLoaded}
       />
       <NodeDetailPanel />
+      <ExportImportPanel />
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />

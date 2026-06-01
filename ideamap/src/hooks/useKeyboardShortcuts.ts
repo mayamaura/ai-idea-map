@@ -23,8 +23,15 @@ export function useKeyboardShortcuts() {
         return
       }
 
-      // モーダル・確認ダイアログ・右クリックメニュー・検索バー表示中はキャンバス操作を抑制
-      if (ui.isSettingsOpen || ui.isMapListOpen || ui.confirmDialog || ui.contextMenu || ui.isSearchOpen) {
+      // モーダル・確認ダイアログ・右クリックメニュー・検索バー・エクスポートパネル表示中はキャンバス操作を抑制
+      if (
+        ui.isSettingsOpen ||
+        ui.isMapListOpen ||
+        ui.isExportPanelOpen ||
+        ui.confirmDialog ||
+        ui.contextMenu ||
+        ui.isSearchOpen
+      ) {
         return
       }
 

@@ -66,7 +66,8 @@ ideamap/
 │   │   │   ├── NodeDetailPanel.tsx # ノード詳細パネル（タイトル・本文・カテゴリ編集）
 │   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル
 │   │   │   ├── SettingsPanel.tsx   # 設定パネル（カテゴリ管理含む）
-│   │   │   └── MapListPanel.tsx    # マップ一覧パネル
+│   │   │   ├── MapListPanel.tsx    # マップ一覧パネル
+│   │   │   └── ExportImportPanel.tsx # エクスポート/インポート/共有パネル（Phase 9）
 │   │   ├── toolbar/
 │   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
 │   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）
@@ -84,7 +85,8 @@ ideamap/
 │   ├── services/
 │   │   ├── claudeService.ts        # Claude API呼び出し
 │   │   ├── googleDriveService.ts   # Google Drive API操作
-│   │   └── storageService.ts       # localStorageのラッパー
+│   │   ├── storageService.ts       # localStorageのラッパー
+│   │   └── exportService.ts        # エクスポート/インポート/共有URLロジック（Phase 9）
 │   ├── hooks/
 │   │   ├── useAutoSave.ts          # 自動保存フック
 │   │   ├── useGoogleAuth.ts        # Googleログイン状態管理
@@ -149,6 +151,7 @@ UIの表示状態を管理する。副作用なし。
 | `searchQuery` | `string` | 検索クエリ（IdeaNodeが参照してdim/highlight） |
 | `activeCategoryFilters` | `string[]` | フィルター中のカテゴリID（空=全表示、OR条件） |
 | `recentNodeIds` | `string[]` | 最近選択したノードID（最大10件、setSelectedNodeId呼び出し時に自動更新） |
+| `isExportPanelOpen` | `boolean` | エクスポート/インポートパネルの開閉（Phase 9） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 

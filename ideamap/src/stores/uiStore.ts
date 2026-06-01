@@ -48,6 +48,8 @@ interface UIState {
   searchQuery: string
   activeCategoryFilters: string[]
   recentNodeIds: string[]
+  // Phase 9: エクスポート & インポート
+  isExportPanelOpen: boolean
   setSelectedNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
@@ -70,6 +72,8 @@ interface UIState {
   toggleCategoryFilter: (categoryId: string) => void
   clearCategoryFilters: () => void
   trackRecentNode: (nodeId: string) => void
+  // Phase 9: エクスポート & インポート
+  setExportPanelOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -90,6 +94,7 @@ export const useUIStore = create<UIState>((set) => ({
   searchQuery: '',
   activeCategoryFilters: [],
   recentNodeIds: [],
+  isExportPanelOpen: false,
   setSelectedNodeId: (id) =>
     set((state) => ({
       selectedNodeId: id,
@@ -132,4 +137,5 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       recentNodeIds: [nodeId, ...state.recentNodeIds.filter((r) => r !== nodeId)].slice(0, 10),
     })),
+  setExportPanelOpen: (open) => set({ isExportPanelOpen: open }),
 }))
