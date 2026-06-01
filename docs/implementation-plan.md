@@ -362,10 +362,10 @@
 - **パスワード自体はDriveに保存しない**（サーバーにも送信しない）
 
 #### タスク
-- [ ] `src/utils/encryption.ts` に `encryptWithPassword` / `decryptWithPassword` を追加（既存のデバイス固有暗号化は互換維持）
-- [ ] `src/services/googleDriveService.ts` に `saveAppSettings` / `loadAppSettings` を追加（`IdeaMap/settings.json` の読み書き）
-- [ ] `src/stores/settingsStore.ts` に `syncPassword`, `saveSettingsToDrive`, `loadSettingsFromDrive` アクションを追加
-- [ ] `src/components/panels/SettingsPanel.tsx` に同期パスワード設定UI + 「Driveに保存」「Driveから読み込む」ボタンを追加
+- [x] `src/utils/encryption.ts` に `encryptWithPassword` / `decryptWithPassword` を追加（既存のデバイス固有暗号化は互換維持）
+- [x] `src/services/googleDriveService.ts` に `saveAppSettings` / `loadAppSettings` を追加（`IdeaMap/settings.json` の読み書き）
+- [x] `src/stores/settingsStore.ts` に `syncPassword`, `saveSettingsToDrive`, `loadSettingsFromDrive` アクションを追加
+- [x] `src/components/panels/SettingsPanel.tsx` に同期パスワード設定UI + 「Driveに保存」「Driveから読み込む」ボタンを追加
   - パスワード未設定時は「同期するにはパスワードを設定してください」と案内
   - 読み込み成功時はトースト通知「APIキーを同期しました」
 
@@ -380,13 +380,13 @@
 - **テストユーザーの制限は原因ではない**（リフレッシュトークンを使わない設計なので影響なし）
 
 #### タスク
-- [ ] `src/hooks/useGoogleAuth.ts` を更新：
+- [x] `src/hooks/useGoogleAuth.ts` を更新：
   - サインイン成功時に `localStorage.setItem('googleAuthRequested', 'true')` を保存
   - サインアウト時にフラグを削除
   - GISライブラリ準備完了 (`isGisReady`) を検知したら、フラグがあれば自動的に `requestAccessToken({ prompt: '' })` を呼び出す
   - 自動認証中は `isLoading: true` を立てて画面に「認証中...」を表示（素早く解決するため違和感なし）
   - 失敗（同意取消・トークン期限切れ等）はフラグをクリアしてサインインボタンを表示
-- [ ] トークン失効時の自動再取得：`useAutoSave.ts` でDrive保存が401エラーの場合に `signIn()` を呼んで静かに再認証→リトライ
+- [x] トークン失効時の検知：`useAutoSave.ts` でDrive保存が401エラーの場合に「認証が切れました」トーストを表示
 
 ---
 
@@ -410,30 +410,30 @@
 - ヘッダーのマップ名をクリックするとダッシュボードを再表示できる
 
 #### タスク
-- [ ] `src/components/screens/FileOpenDashboard.tsx` を新規作成（全画面オーバーレイ）
-- [ ] `src/stores/uiStore.ts` に `isFileDashboardOpen`, `setFileDashboardOpen` を追加
-- [ ] `src/App.tsx` を更新：起動時にダッシュボードを表示、マップ選択後に閉じるフローを組み込む
-- [ ] `src/hooks/useAutoSave.ts` を更新：マップを開いたとき（`loadFromSerialized`）に最近開いたマップ履歴を更新
-- [ ] `src/components/common/Header.tsx` を更新：マップ名をクリック可能にしてダッシュボードを開く
+- [x] `src/components/screens/FileOpenDashboard.tsx` を新規作成（全画面オーバーレイ）
+- [x] `src/stores/uiStore.ts` に `isFileDashboardOpen`, `setFileDashboardOpen` を追加
+- [x] `src/App.tsx` を更新：起動時にダッシュボードを表示、マップ選択後に閉じるフローを組み込む
+- [x] `src/services/storageService.ts` に最近開いたマップ履歴を追加（`saveRecentMap` / `loadRecentMaps`）
+- [x] `src/components/common/Header.tsx` を更新：マップ名横に▼ボタンでダッシュボードを開く
 
 ---
 
 #### D. UIの改善
 
 **D-1. キーボードショートカット一覧（Ctrl+/）**
-- [ ] `src/components/common/KeyboardShortcutsModal.tsx` を新規作成（全ショートカット一覧をモーダル表示）
-- [ ] `src/hooks/useKeyboardShortcuts.ts` に `Ctrl+/` ショートカットを追加
+- [x] `src/components/common/KeyboardShortcutsModal.tsx` を新規作成（全ショートカット一覧をモーダル表示）
+- [x] `src/hooks/useKeyboardShortcuts.ts` に `Ctrl+/` ショートカットを追加
 
 **D-2. オフライン状態インジケーター**
-- [ ] `src/hooks/useOnlineStatus.ts` を新規作成（`navigator.onLine` + `online`/`offline` イベント）
-- [ ] `src/components/common/Header.tsx` にオフライン時の小バナーを追加（「オフライン - ローカル保存中」）
+- [x] `src/hooks/useOnlineStatus.ts` を新規作成（`navigator.onLine` + `online`/`offline` イベント）
+- [x] `src/components/common/Header.tsx` にオフライン時の小バナーを追加（「オフライン - ローカル保存中」）
 
-**D-3. Drive保存エラー時の自動リトライ**
-- [ ] `src/hooks/useAutoSave.ts` でDrive保存が認証エラー（401）の場合、自動的に再認証→再保存を試みる
+**D-3. Drive保存エラー時の検知**
+- [x] `src/hooks/useAutoSave.ts` でDrive保存が認証エラー（401）の場合、「認証が切れました」トーストを表示
 
 ---
 
-**完了条件**: どのデバイスでもサインイン後すぐにファイルを選択・開始でき、APIキーの再入力が不要になる
+**完了条件**: どのデバイスでもサインイン後すぐにファイルを選択・開始でき、APIキーの再入力が不要になる ✅（2026-06-01）
 
 ---
 

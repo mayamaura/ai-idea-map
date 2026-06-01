@@ -33,3 +33,32 @@ export function loadDriveFileId(): string | null {
     return null
   }
 }
+
+// ---- 最近開いたマップ履歴 ----
+
+const RECENT_MAPS_KEY = 'ideamap-recent-maps'
+const RECENT_MAPS_MAX = 5
+
+export interface RecentMap {
+  fileId: string
+  title: string
+  updatedAt: string
+}
+
+export function saveRecentMap(map: RecentMap): void {
+  try {
+    const existing = loadRecentMaps()
+    const filtered = existing.filter((m) => m.fileId !== map.fileId)
+    const updated = [map, ...filtered].slice(0, RECENT_MAPS_MAX)
+    localStorage.setItem(RECENT_MAPS_KEY, JSON.stringify(updated))
+  } catch {}
+}
+
+export function loadRecentMaps(): RecentMap[] {
+  try {
+    const raw = localStorage.getItem(RECENT_MAPS_KEY)
+    return raw ? (JSON.parse(raw) as RecentMap[]) : []
+  } catch {
+    return []
+  }
+}

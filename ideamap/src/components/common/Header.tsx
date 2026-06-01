@@ -1,5 +1,6 @@
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 import type { SaveStatus } from '../../types'
 
 const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
@@ -24,13 +25,25 @@ export function Header({
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
-  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen } = useUIStore()
+  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setFileDashboardOpen } = useUIStore()
   const { theme, setTheme } = useSettingsStore()
+  const isOnline = useOnlineStatus()
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10 flex-shrink-0">
+    <div className="flex-shrink-0 z-10">
+      {/* オフラインバナー */}
+      {!isOnline && (
+        <div className="flex items-center justify-center gap-2 px-4 py-1.5 bg-amber-500 text-white text-xs font-medium">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M18.364 5.636a9 9 0 010 12.728m-3.536-3.536a3 3 0 010-5.656M6.343 6.343a9 9 0 000 12.728m3.536-3.536a3 3 0 000-5.656" />
+          </svg>
+          オフライン — ローカルに保存中
+        </div>
+      )}
+    <header className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5">
           <div className="w-6 h-6 bg-primary-600 rounded-md flex items-center justify-center">
@@ -44,13 +57,24 @@ export function Header({
           </div>
           <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm hidden sm:block">IdeaMap</span>
         </div>
-        <input
-          type="text"
-          value={mapTitle}
-          onChange={(e) => setMapTitle(e.target.value)}
-          className="text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent border-none outline-none hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700 rounded px-2 py-1 min-w-0 max-w-48 truncate"
-          placeholder="マップタイトル"
-        />
+        <div className="flex items-center gap-1 group">
+          <input
+            type="text"
+            value={mapTitle}
+            onChange={(e) => setMapTitle(e.target.value)}
+            className="text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent border-none outline-none hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700 rounded px-2 py-1 min-w-0 max-w-48 truncate"
+            placeholder="マップタイトル"
+          />
+          <button
+            onClick={() => setFileDashboardOpen(true)}
+            className="p-1 rounded text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
+            title="マップを切り替える"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -173,6 +197,7 @@ export function Header({
         </button>
       </div>
     </header>
+    </div>
   )
 }
 

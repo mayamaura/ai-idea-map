@@ -57,6 +57,9 @@ interface UIState {
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
   suggestionTypeFilter: SuggestionType[]
+  // Phase 11: デバイス間連携
+  isFileDashboardOpen: boolean
+  isShortcutsModalOpen: boolean
   setSelectedNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
@@ -83,6 +86,9 @@ interface UIState {
   setExportPanelOpen: (open: boolean) => void
   // Phase 10: AI高度化
   setAnalysisPanelOpen: (open: boolean) => void
+  // Phase 11: デバイス間連携
+  setFileDashboardOpen: (open: boolean) => void
+  setShortcutsModalOpen: (open: boolean) => void
   setAnalysisLoading: (loading: boolean) => void
   setMapAnalysis: (analysis: MapAnalysis | null) => void
   setConnectionSuggestions: (suggestions: ConnectionSuggestion[]) => void
@@ -116,6 +122,8 @@ export const useUIStore = create<UIState>((set) => ({
   connectionSuggestions: [],
   clusterSuggestions: [],
   suggestionTypeFilter: [],
+  isFileDashboardOpen: true,
+  isShortcutsModalOpen: false,
   setSelectedNodeId: (id) =>
     set((state) => ({
       selectedNodeId: id,
@@ -171,4 +179,6 @@ export const useUIStore = create<UIState>((set) => ({
         : [...state.suggestionTypeFilter, type],
     })),
   clearSuggestionTypeFilters: () => set({ suggestionTypeFilter: [] }),
+  setFileDashboardOpen: (open) => set({ isFileDashboardOpen: open }),
+  setShortcutsModalOpen: (open) => set({ isShortcutsModalOpen: open }),
 }))

@@ -9,11 +9,13 @@ import { MapListPanel } from './components/panels/MapListPanel'
 import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ExportImportPanel } from './components/panels/ExportImportPanel'
 import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
+import { FileOpenDashboard } from './components/screens/FileOpenDashboard'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
 import { WelcomeModal } from './components/common/WelcomeModal'
 import { SearchBar } from './components/common/SearchBar'
+import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal'
 import { useSettingsStore } from './stores/settingsStore'
 import { useUIStore } from './stores/uiStore'
 import { useMapStore } from './stores/mapStore'
@@ -29,7 +31,7 @@ function AppInner() {
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
   const { loadApiKey, theme } = useSettingsStore()
-  const { addToast, setMapTitle, openConfirmDialog } = useUIStore()
+  const { addToast, setMapTitle, openConfirmDialog, isFileDashboardOpen } = useUIStore()
   const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
   const { setFileId } = useAutoSave(googleAuth.accessToken)
@@ -92,7 +94,7 @@ function AppInner() {
         <IdeaCanvas />
         <NodePanel />
       </div>
-      <SettingsPanel />
+      <SettingsPanel accessToken={googleAuth.accessToken} />
       <AISuggestionPanel />
       <MapListPanel
         accessToken={googleAuth.accessToken}
@@ -105,7 +107,17 @@ function AppInner() {
       <ContextMenu />
       <ConfirmDialog />
       <SearchBar />
-      {showWelcome && (
+      <KeyboardShortcutsModal />
+      {isFileDashboardOpen && (
+        <FileOpenDashboard
+          accessToken={googleAuth.accessToken}
+          isSignedIn={googleAuth.isSignedIn}
+          isGoogleLoading={googleAuth.isLoading}
+          onGoogleSignIn={googleAuth.signIn}
+          onMapLoaded={handleMapLoaded}
+        />
+      )}
+      {showWelcome && !isFileDashboardOpen && (
         <WelcomeModal
           onClose={() => {
             setShowWelcome(false)

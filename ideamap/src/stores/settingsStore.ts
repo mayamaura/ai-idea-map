@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import type { Theme, AIModel, NodeShape, Category } from '../types'
-import { getStoredApiKey, setStoredApiKey } from '../utils/encryption'
+import { getStoredApiKey, setStoredApiKey, encryptWithPassword, decryptWithPassword } from '../utils/encryption'
+import { saveAppSettings, loadAppSettings } from '../services/googleDriveService'
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-main', name: 'メインアイデア', color: '#e0e7ff', icon: '💡', description: 'マップの核心' },
@@ -23,6 +24,7 @@ interface SettingsState {
   language: 'ja' | 'en'
   nodeShape: NodeShape
   categories: Category[]
+  syncPassword: string
   setApiKey: (key: string) => void
   setAiModel: (model: AIModel) => void
   setSuggestionCount: (count: number) => void
@@ -30,11 +32,14 @@ interface SettingsState {
   setTheme: (theme: Theme) => void
   setLanguage: (lang: 'ja' | 'en') => void
   setNodeShape: (shape: NodeShape) => void
+  setSyncPassword: (password: string) => void
   addCategory: (category: Omit<Category, 'id'>) => string
   updateCategory: (id: string, patch: Partial<Omit<Category, 'id'>>) => void
   deleteCategory: (id: string) => void
   getCategoryById: (id: string) => Category | undefined
   loadApiKey: () => Promise<void>
+  saveSettingsToDrive: (token: string) => Promise<void>
+  loadSettingsFromDrive: (token: string) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -48,6 +53,7 @@ export const useSettingsStore = create<SettingsState>()(
       language: 'ja',
       nodeShape: 'rounded',
       categories: DEFAULT_CATEGORIES,
+      syncPassword: '',
 
       setApiKey: (key) => {
         set({ apiKey: key })
@@ -59,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setLanguage: (lang) => set({ language: lang }),
       setNodeShape: (shape) => set({ nodeShape: shape }),
+      setSyncPassword: (password) => set({ syncPassword: password }),
 
       addCategory: (category) => {
         const id = uuidv4()
@@ -84,6 +91,30 @@ export const useSettingsStore = create<SettingsState>()(
       loadApiKey: async () => {
         const key = await getStoredApiKey()
         set({ apiKey: key })
+      },
+
+      saveSettingsToDrive: async (token: string) => {
+        const { apiKey, aiModel, syncPassword } = get()
+        if (!syncPassword) throw new Error('同期パスワードが設定されていません')
+        if (!apiKey) throw new Error('APIキーが設定されていません')
+        const { encrypted, salt } = await encryptWithPassword(apiKey, syncPassword)
+        await saveAppSettings(token, {
+          version: '1.0',
+          encryptedApiKey: encrypted,
+          salt,
+          model: aiModel,
+          updatedAt: new Date().toISOString(),
+        })
+      },
+
+      loadSettingsFromDrive: async (token: string) => {
+        const { syncPassword } = get()
+        if (!syncPassword) throw new Error('同期パスワードが設定されていません')
+        const settings = await loadAppSettings(token)
+        if (!settings) throw new Error('Driveに設定ファイルが見つかりません')
+        const apiKey = await decryptWithPassword(settings.encryptedApiKey, syncPassword, settings.salt)
+        get().setApiKey(apiKey)
+        if (settings.model) set({ aiModel: settings.model as AIModel })
       },
     }),
     {

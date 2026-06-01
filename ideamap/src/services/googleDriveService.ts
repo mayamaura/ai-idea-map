@@ -117,3 +117,74 @@ export async function loadMap(token: string, fileId: string): Promise<unknown> {
 export async function deleteMap(token: string, fileId: string): Promise<void> {
   await driveRequest(`${DRIVE_API}/files/${fileId}`, token, { method: 'DELETE' })
 }
+
+// ---- アプリ設定（settings.json）の読み書き ----
+
+export interface AppSettings {
+  version: string
+  encryptedApiKey: string
+  salt: number[]
+  model: string
+  updatedAt: string
+}
+
+const SETTINGS_FILE_NAME = 'settings.json'
+let settingsFileIdCache: string | null = null
+
+export function clearSettingsCache(): void {
+  settingsFileIdCache = null
+}
+
+async function findSettingsFileId(token: string): Promise<string | null> {
+  if (settingsFileIdCache) return settingsFileIdCache
+  const folderId = await getOrCreateFolder(token)
+  const res = await driveRequest(
+    `${DRIVE_API}/files?q='${folderId}' in parents and name='${SETTINGS_FILE_NAME}' and trashed=false&fields=files(id)`,
+    token
+  )
+  const data = (await res.json()) as { files: { id: string }[] }
+  if (data.files.length > 0) {
+    settingsFileIdCache = data.files[0].id
+    return settingsFileIdCache
+  }
+  return null
+}
+
+export async function saveAppSettings(token: string, settings: AppSettings): Promise<void> {
+  const fileBlob = new Blob([JSON.stringify(settings, null, 2)], { type: MIME_JSON })
+  const existingId = await findSettingsFileId(token)
+
+  if (existingId) {
+    const form = new FormData()
+    form.append('metadata', new Blob([JSON.stringify({ name: SETTINGS_FILE_NAME })], { type: MIME_JSON }))
+    form.append('file', fileBlob)
+    await driveRequest(`${UPLOAD_API}/files/${existingId}?uploadType=multipart`, token, {
+      method: 'PATCH',
+      body: form,
+    })
+  } else {
+    const folderId = await getOrCreateFolder(token)
+    const form = new FormData()
+    form.append(
+      'metadata',
+      new Blob(
+        [JSON.stringify({ name: SETTINGS_FILE_NAME, mimeType: MIME_JSON, parents: [folderId] })],
+        { type: MIME_JSON }
+      )
+    )
+    form.append('file', fileBlob)
+    const res = await driveRequest(`${UPLOAD_API}/files?uploadType=multipart&fields=id`, token, {
+      method: 'POST',
+      body: form,
+    })
+    const data = (await res.json()) as { id: string }
+    settingsFileIdCache = data.id
+  }
+}
+
+export async function loadAppSettings(token: string): Promise<AppSettings | null> {
+  const fileId = await findSettingsFileId(token)
+  if (!fileId) return null
+  const res = await driveRequest(`${DRIVE_API}/files/${fileId}?alt=media`, token)
+  return res.json() as Promise<AppSettings>
+}

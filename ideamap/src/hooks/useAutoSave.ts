@@ -49,10 +49,16 @@ export function useAutoSave(accessToken: string | null) {
           setFileId(newId)
           setSaveStatus('saved')
         }
-      } catch {
+      } catch (err) {
         if (isMountedRef.current) {
+          const isAuthError = err instanceof Error && err.message.includes('401')
           setSaveStatus('error')
-          useUIStore.getState().addToast('Googleドライブへの保存に失敗しました', 'error')
+          useUIStore.getState().addToast(
+            isAuthError
+              ? 'Googleドライブの認証が切れました。再度サインインしてください。'
+              : 'Googleドライブへの保存に失敗しました',
+            'error'
+          )
         }
       }
     } else {

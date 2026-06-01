@@ -23,6 +23,13 @@ export function useKeyboardShortcuts() {
         return
       }
 
+      // Ctrl+/: キーボードショートカット一覧
+      if (ctrl && e.key === '/') {
+        e.preventDefault()
+        ui.setShortcutsModalOpen(!ui.isShortcutsModalOpen)
+        return
+      }
+
       // モーダル・確認ダイアログ・右クリックメニュー・検索バー・エクスポートパネル表示中はキャンバス操作を抑制
       if (
         ui.isSettingsOpen ||

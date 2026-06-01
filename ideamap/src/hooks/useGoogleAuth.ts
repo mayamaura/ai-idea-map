@@ -3,6 +3,7 @@ import { clearDriveCache } from '../services/googleDriveService'
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+const AUTO_AUTH_FLAG = 'googleAuthRequested'
 
 export interface GoogleAuthState {
   isSignedIn: boolean
@@ -48,6 +49,8 @@ export function useGoogleAuth() {
       scope: SCOPES,
       callback: (response) => {
         if (response.error) {
+          // 自動再認証失敗 → フラグをクリアしてサインインボタンを表示
+          localStorage.removeItem(AUTO_AUTH_FLAG)
           setState((s) => ({
             ...s,
             isLoading: false,
@@ -55,6 +58,7 @@ export function useGoogleAuth() {
           }))
           return
         }
+        localStorage.setItem(AUTO_AUTH_FLAG, 'true')
         setState({
           isSignedIn: true,
           accessToken: response.access_token,
@@ -63,6 +67,10 @@ export function useGoogleAuth() {
         })
       },
       error_callback: (err) => {
+        // ユーザーがポップアップを閉じた or 自動認証で同意が必要 → フラグはそのまま
+        if (err.type !== 'popup_closed') {
+          localStorage.removeItem(AUTO_AUTH_FLAG)
+        }
         setState((s) => ({
           ...s,
           isLoading: false,
@@ -70,6 +78,12 @@ export function useGoogleAuth() {
         }))
       },
     })
+
+    // 前回サインイン済みなら prompt: '' で自動再認証を試みる
+    if (localStorage.getItem(AUTO_AUTH_FLAG) === 'true') {
+      setState((s) => ({ ...s, isLoading: true }))
+      tokenClientRef.current.requestAccessToken({ prompt: '' })
+    }
   }, [isGisReady])
 
   const signIn = useCallback(() => {
@@ -96,6 +110,7 @@ export function useGoogleAuth() {
     if (token) {
       google.accounts.oauth2.revoke(token)
     }
+    localStorage.removeItem(AUTO_AUTH_FLAG)
     clearDriveCache()
     setState({ isSignedIn: false, accessToken: null, isLoading: false, error: null })
   }, [state.accessToken])
