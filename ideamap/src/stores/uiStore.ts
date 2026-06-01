@@ -43,6 +43,11 @@ interface UIState {
   toasts: Toast[]
   contextMenu: ContextMenuState | null
   confirmDialog: ConfirmDialogState | null
+  // Phase 8: 検索 & フィルター
+  isSearchOpen: boolean
+  searchQuery: string
+  activeCategoryFilters: string[]
+  recentNodeIds: string[]
   setSelectedNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
@@ -59,6 +64,12 @@ interface UIState {
   closeContextMenu: () => void
   openConfirmDialog: (dialog: ConfirmDialogState) => void
   closeConfirmDialog: () => void
+  // Phase 8: 検索 & フィルター
+  setSearchOpen: (open: boolean) => void
+  setSearchQuery: (query: string) => void
+  toggleCategoryFilter: (categoryId: string) => void
+  clearCategoryFilters: () => void
+  trackRecentNode: (nodeId: string) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -75,7 +86,17 @@ export const useUIStore = create<UIState>((set) => ({
   toasts: [],
   contextMenu: null,
   confirmDialog: null,
-  setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+  isSearchOpen: false,
+  searchQuery: '',
+  activeCategoryFilters: [],
+  recentNodeIds: [],
+  setSelectedNodeId: (id) =>
+    set((state) => ({
+      selectedNodeId: id,
+      recentNodeIds: id
+        ? [id, ...state.recentNodeIds.filter((r) => r !== id)].slice(0, 10)
+        : state.recentNodeIds,
+    })),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setAIPanelOpen: (open) => set({ isAIPanelOpen: open }),
   setMapListOpen: (open) => set({ isMapListOpen: open }),
@@ -98,4 +119,17 @@ export const useUIStore = create<UIState>((set) => ({
   closeContextMenu: () => set({ contextMenu: null }),
   openConfirmDialog: (dialog) => set({ confirmDialog: dialog }),
   closeConfirmDialog: () => set({ confirmDialog: null }),
+  setSearchOpen: (open) => set({ isSearchOpen: open, searchQuery: open ? '' : '' }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  toggleCategoryFilter: (categoryId) =>
+    set((state) => ({
+      activeCategoryFilters: state.activeCategoryFilters.includes(categoryId)
+        ? state.activeCategoryFilters.filter((id) => id !== categoryId)
+        : [...state.activeCategoryFilters, categoryId],
+    })),
+  clearCategoryFilters: () => set({ activeCategoryFilters: [] }),
+  trackRecentNode: (nodeId) =>
+    set((state) => ({
+      recentNodeIds: [nodeId, ...state.recentNodeIds.filter((r) => r !== nodeId)].slice(0, 10),
+    })),
 }))

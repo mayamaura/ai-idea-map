@@ -75,6 +75,7 @@ ideamap/
 │   │       ├── Modal.tsx
 │   │       ├── Toast.tsx
 │   │       ├── ConfirmDialog.tsx
+│   │       ├── SearchBar.tsx           # 検索バー（Phase 8）
 │   │       └── LoadingSpinner.tsx
 │   ├── stores/
 │   │   ├── mapStore.ts             # マップ状態（ノード・エッジ・Undo/Redo）
@@ -144,6 +145,10 @@ UIの表示状態を管理する。副作用なし。
 | `toasts` | `Toast[]` | トースト通知リスト（4秒後自動削除） |
 | `contextMenu` | `ContextMenuState \| null` | 右クリックメニューの表示状態 |
 | `confirmDialog` | `ConfirmDialogState \| null` | 確認ダイアログの表示状態 |
+| `isSearchOpen` | `boolean` | 検索バーの開閉（Phase 8） |
+| `searchQuery` | `string` | 検索クエリ（IdeaNodeが参照してdim/highlight） |
+| `activeCategoryFilters` | `string[]` | フィルター中のカテゴリID（空=全表示、OR条件） |
+| `recentNodeIds` | `string[]` | 最近選択したノードID（最大10件、setSelectedNodeId呼び出し時に自動更新） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 

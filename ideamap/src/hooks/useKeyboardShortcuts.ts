@@ -16,8 +16,15 @@ export function useKeyboardShortcuts() {
       const map = useMapStore.getState()
       const ui = useUIStore.getState()
 
-      // モーダル・確認ダイアログ・右クリックメニュー表示中はキャンバス操作を抑制
-      if (ui.isSettingsOpen || ui.isMapListOpen || ui.confirmDialog || ui.contextMenu) {
+      // Ctrl+F: 検索バーをトグル（モーダルより優先して処理）
+      if (ctrl && e.key === 'f') {
+        e.preventDefault()
+        ui.setSearchOpen(!ui.isSearchOpen)
+        return
+      }
+
+      // モーダル・確認ダイアログ・右クリックメニュー・検索バー表示中はキャンバス操作を抑制
+      if (ui.isSettingsOpen || ui.isMapListOpen || ui.confirmDialog || ui.contextMenu || ui.isSearchOpen) {
         return
       }
 

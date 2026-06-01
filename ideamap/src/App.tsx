@@ -11,6 +11,7 @@ import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
 import { WelcomeModal } from './components/common/WelcomeModal'
+import { SearchBar } from './components/common/SearchBar'
 import { useSettingsStore } from './stores/settingsStore'
 import { useUIStore } from './stores/uiStore'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
@@ -78,6 +79,7 @@ function AppInner() {
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />
+      <SearchBar />
       {showWelcome && (
         <WelcomeModal
           onClose={() => {

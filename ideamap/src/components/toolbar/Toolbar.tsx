@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { applyDagreLayout, applyRadialLayout } from '../../utils/mapLayout'
 import type { IdeaNodeData } from '../../types'
 import type { Node } from '@xyflow/react'
@@ -9,9 +10,12 @@ import type { Node } from '@xyflow/react'
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
   const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId } = useUIStore()
+  const { selectedNodeId, setSelectedNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters } = useUIStore()
+  const { categories } = useSettingsStore()
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
   const layoutMenuRef = useRef<HTMLDivElement>(null)
+  const filterMenuRef = useRef<HTMLDivElement>(null)
 
   // メニュー外クリックで閉じる
   useEffect(() => {
@@ -24,6 +28,17 @@ export function Toolbar() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showLayoutMenu])
+
+  useEffect(() => {
+    if (!showFilterMenu) return
+    const handler = (e: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Element)) {
+        setShowFilterMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showFilterMenu])
 
   const handleAddNode = () => {
     const { x, y, zoom } = getViewport()
@@ -134,6 +149,81 @@ export function Toolbar() {
               <span className="text-base leading-none">↓</span>
               <span>上→下 (dagre)</span>
             </button>
+          </div>
+        )}
+      </div>
+
+      <div className="w-px h-6 bg-gray-200 mx-1" />
+
+      {/* 検索ボタン */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        title="ノードを検索 (Ctrl+F)"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <circle cx="11" cy="11" r="8" strokeWidth="2" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
+        </svg>
+        検索
+      </button>
+
+      {/* カテゴリフィルター */}
+      <div className="relative" ref={filterMenuRef}>
+        <button
+          onClick={() => setShowFilterMenu((v) => !v)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
+            activeCategoryFilters.length > 0
+              ? 'text-primary-600 border-primary-300 bg-primary-50'
+              : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}
+          title="カテゴリでフィルター"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+          </svg>
+          フィルター
+          {activeCategoryFilters.length > 0 && (
+            <span className="bg-primary-500 text-white rounded-full text-[10px] w-4 h-4 flex items-center justify-center leading-none">
+              {activeCategoryFilters.length}
+            </span>
+          )}
+        </button>
+
+        {showFilterMenu && (
+          <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-50 min-w-56 animate-context-menu">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-600">カテゴリフィルター</span>
+              {activeCategoryFilters.length > 0 && (
+                <button
+                  onClick={clearCategoryFilters}
+                  className="text-xs text-primary-500 hover:text-primary-700 transition-colors"
+                >
+                  すべてクリア
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {categories.map((cat) => {
+                const active = activeCategoryFilters.includes(cat.id)
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => toggleCategoryFilter(cat.id)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all border ${
+                      active
+                        ? 'shadow-sm ring-1 ring-offset-1 ring-gray-400'
+                        : 'opacity-60 hover:opacity-100'
+                    }`}
+                    style={{ backgroundColor: cat.color, borderColor: `${cat.color}` }}
+                  >
+                    <span className="text-sm leading-none">{cat.icon}</span>
+                    <span className="text-gray-700">{cat.name}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
       </div>

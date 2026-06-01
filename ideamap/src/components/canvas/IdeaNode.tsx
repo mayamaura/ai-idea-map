@@ -24,8 +24,20 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { updateNodeTitle } = useMapStore()
-  const { setSelectedNodeId, setAIPanelOpen, openNodeDetail } = useUIStore()
+  const { setSelectedNodeId, setAIPanelOpen, openNodeDetail, searchQuery, activeCategoryFilters } = useUIStore()
   const nodeShape = useSettingsStore((s) => s.nodeShape)
+
+  // 検索・フィルター状態に応じた表示制御
+  const isSearchActive = searchQuery.trim() !== ''
+  const matchesSearch = isSearchActive
+    ? nodeData.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (nodeData.body?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
+    : true
+  const matchesFilter =
+    activeCategoryFilters.length === 0 ||
+    activeCategoryFilters.includes(nodeData.categoryId ?? 'cat-none')
+  const isDimmed = (isSearchActive && !matchesSearch) || (activeCategoryFilters.length > 0 && !matchesFilter)
+  const isHighlighted = isSearchActive && matchesSearch
 
   useEffect(() => {
     setEditText(nodeData.title)
@@ -87,7 +99,9 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
 
   return (
     <div
-      className="relative group animate-node-enter"
+      className={`relative group animate-node-enter transition-opacity duration-200 ${
+        isDimmed ? 'opacity-20' : isHighlighted ? 'opacity-100' : ''
+      }`}
       onDoubleClick={handleDoubleClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -126,6 +140,8 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
           ${isAI ? 'node-ai-generated' : ''}
           ${selected
             ? 'border-primary-500 shadow-md shadow-primary-100'
+            : isHighlighted
+            ? 'border-yellow-400 shadow-md shadow-yellow-100'
             : 'border-gray-200 hover:border-gray-300'
           }
         `}
