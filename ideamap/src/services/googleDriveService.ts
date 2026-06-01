@@ -3,6 +3,7 @@ const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
 const FOLDER_NAME = 'IdeaMap'
 const MIME_JSON = 'application/json'
 const MIME_FOLDER = 'application/vnd.google-apps.folder'
+const SETTINGS_FILE_NAME = 'settings.json'
 
 export interface DriveFile {
   id: string
@@ -63,7 +64,7 @@ async function getOrCreateFolder(token: string): Promise<string> {
 export async function listMaps(token: string): Promise<DriveFile[]> {
   const folderId = await getOrCreateFolder(token)
   const res = await driveRequest(
-    `${DRIVE_API}/files?q='${folderId}' in parents and mimeType='${MIME_JSON}' and trashed=false&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`,
+    `${DRIVE_API}/files?q='${folderId}' in parents and mimeType='${MIME_JSON}' and name != '${SETTINGS_FILE_NAME}' and trashed=false&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`,
     token
   )
   const data = (await res.json()) as { files: DriveFile[] }
@@ -128,7 +129,6 @@ export interface AppSettings {
   updatedAt: string
 }
 
-const SETTINGS_FILE_NAME = 'settings.json'
 let settingsFileIdCache: string | null = null
 
 export function clearSettingsCache(): void {
