@@ -47,12 +47,12 @@ export function Header({
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5">
           <div className="w-6 h-6 bg-primary-600 rounded-md flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <circle cx="5" cy="12" r="2" strokeWidth="2" />
-              <circle cx="19" cy="6" r="2" strokeWidth="2" />
-              <circle cx="19" cy="18" r="2" strokeWidth="2" />
-              <line x1="7" y1="12" x2="17" y2="7" strokeWidth="1.5" />
-              <line x1="7" y1="12" x2="17" y2="17" strokeWidth="1.5" />
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <line x1="7" y1="12" x2="17" y2="7" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="7" y1="12" x2="17" y2="17" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="5" cy="12" r="2" fill="white" />
+              <circle cx="19" cy="6" r="2" fill="white" />
+              <circle cx="19" cy="18" r="2" fill="white" />
             </svg>
           </div>
           <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm hidden sm:block">IdeaMap</span>

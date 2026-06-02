@@ -101,12 +101,12 @@ export function FileOpenDashboard({
         {/* ロゴ & タイトル */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-2xl mb-3 shadow-lg">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <circle cx="5" cy="12" r="2" strokeWidth="2" />
-              <circle cx="19" cy="6" r="2" strokeWidth="2" />
-              <circle cx="19" cy="18" r="2" strokeWidth="2" />
-              <line x1="7" y1="12" x2="17" y2="7" strokeWidth="1.5" />
-              <line x1="7" y1="12" x2="17" y2="17" strokeWidth="1.5" />
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24">
+              <line x1="7" y1="12" x2="17" y2="7" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="7" y1="12" x2="17" y2="17" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="5" cy="12" r="2" fill="white" />
+              <circle cx="19" cy="6" r="2" fill="white" />
+              <circle cx="19" cy="18" r="2" fill="white" />
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">IdeaMap</h1>
