@@ -55,11 +55,14 @@ export function AISuggestionPanel() {
         count: suggestionCount,
         categories,
       })
-      setAISuggestions(suggestions)
+      // 既にマップに存在するノードタイトルと一致する候補は除外する
+      const existingTitles = new Set(nodes.map((n) => n.data.title.trim().toLowerCase()))
+      const newSuggestions = suggestions.filter((s) => !existingTitles.has(s.text.trim().toLowerCase()))
+      setAISuggestions(newSuggestions)
       const visible = suggestionTypeFilter.length > 0
-      ? suggestions.filter((s) => suggestionTypeFilter.includes(s.type))
-      : suggestions
-    setSelected(new Set(visible.map((_, i) => i)))
+        ? newSuggestions.filter((s) => suggestionTypeFilter.includes(s.type))
+        : newSuggestions
+      setSelected(new Set(visible.map((_, i) => i)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
     } finally {
@@ -83,11 +86,13 @@ export function AISuggestionPanel() {
       const nodeColor = cat?.color ?? '#f3f4ff'
       const newId = addNode(suggestion.text, x, y, 'ai', nodeColor, suggestion.categoryId)
       onConnect({ source: selectedNode.id, target: newId, sourceHandle: null, targetHandle: null })
-      // categoryId が設定されている場合は updateNodeCategory を呼ぶ必要はない（addNode で設定済み）
     })
+    // 追加済みの候補を候補リストから除外する
+    const addedTexts = new Set(selectedSuggestions.map((s) => s.text))
+    setAISuggestions(aiSuggestions.filter((s) => !addedTexts.has(s.text)))
     setAIPanelOpen(false)
     setSelected(new Set())
-  }, [selectedNode, filteredSuggestions, selected, nodes, addNode, onConnect, getCategoryById, setAIPanelOpen])
+  }, [selectedNode, filteredSuggestions, selected, nodes, addNode, onConnect, getCategoryById, setAIPanelOpen, aiSuggestions, setAISuggestions])
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {
