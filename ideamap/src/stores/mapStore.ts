@@ -84,6 +84,8 @@ interface MapState {
   undo: () => void
   redo: () => void
   reset: () => void
+  pendingFitView: boolean
+  clearPendingFitView: () => void
 }
 
 const initialNodes: IdeaNode[] = [
@@ -109,6 +111,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   past: [],
   future: [],
   clipboard: [],
+  pendingFitView: false,
 
   onNodesChange: (changes) => {
     const isHistoric = changes.some(
@@ -431,7 +434,7 @@ export const useMapStore = create<MapState>((set, get) => ({
       markerStart: e.bidirectional ? ARROW : undefined,
       style: EDGE_STYLE,
     }))
-    set({ nodes: flowNodes, edges: flowEdges, past: [], future: [] })
+    set({ nodes: flowNodes, edges: flowEdges, past: [], future: [], pendingFitView: true })
   },
 
   getSerializedNodes: () =>
@@ -482,4 +485,6 @@ export const useMapStore = create<MapState>((set, get) => ({
     }),
 
   reset: () => set({ nodes: initialNodes, edges: [], past: [], future: [], clipboard: [] }),
+
+  clearPendingFitView: () => set({ pendingFitView: false }),
 }))

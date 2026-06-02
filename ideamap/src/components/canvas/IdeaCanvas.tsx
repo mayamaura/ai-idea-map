@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ReactFlow,
@@ -90,9 +90,19 @@ const edgeTypes: EdgeTypes = {
 }
 
 export function IdeaCanvas() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode } = useMapStore()
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, pendingFitView, clearPendingFitView } = useMapStore()
   const { selectedNodeId, setSelectedNodeId, openContextMenu, closeContextMenu } = useUIStore()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
+
+  useEffect(() => {
+    if (!pendingFitView) return
+    // ノードがDOMに反映されるのを待ってからfitViewを実行
+    const id = setTimeout(() => {
+      fitView({ padding: 0.2, duration: 400 })
+      clearPendingFitView()
+    }, 50)
+    return () => clearTimeout(id)
+  }, [pendingFitView, fitView, clearPendingFitView])
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
