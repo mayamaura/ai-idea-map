@@ -102,11 +102,17 @@ export function FileOpenDashboard({
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-2xl mb-3 shadow-lg">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24">
-              <line x1="7" y1="12" x2="17" y2="7" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="7" y1="12" x2="17" y2="17" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-              <circle cx="5" cy="12" r="2" fill="white" />
-              <circle cx="19" cy="6" r="2" fill="white" />
-              <circle cx="19" cy="18" r="2" fill="white" />
+              <line x1="5" y1="11" x2="12" y2="3" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="12" y1="3" x2="19" y2="11" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="5" y1="11" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="19" y1="11" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="12" y1="15" x2="12" y2="19" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="8" y1="19" x2="16" y2="19" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="9" y1="22" x2="15" y2="22" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="12" cy="3" r="1.5" fill="white" />
+              <circle cx="5" cy="11" r="1.5" fill="white" />
+              <circle cx="19" cy="11" r="1.5" fill="white" />
+              <circle cx="12" cy="15" r="2" fill="white" />
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">IdeaMap</h1>

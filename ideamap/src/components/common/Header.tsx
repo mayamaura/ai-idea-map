@@ -48,11 +48,16 @@ export function Header({
         <div className="flex items-center gap-1.5">
           <div className="w-6 h-6 bg-primary-600 rounded-md flex items-center justify-center">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <line x1="7" y1="12" x2="17" y2="7" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="7" y1="12" x2="17" y2="17" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-              <circle cx="5" cy="12" r="2" fill="white" />
-              <circle cx="19" cy="6" r="2" fill="white" />
-              <circle cx="19" cy="18" r="2" fill="white" />
+              <line x1="5" y1="11" x2="12" y2="3" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="12" y1="3" x2="19" y2="11" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="5" y1="11" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="19" y1="11" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="12" y1="15" x2="12" y2="19" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="9" y1="19" x2="15" y2="19" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="12" cy="3" r="1.5" fill="white" />
+              <circle cx="5" cy="11" r="1.5" fill="white" />
+              <circle cx="19" cy="11" r="1.5" fill="white" />
+              <circle cx="12" cy="15" r="2" fill="white" />
             </svg>
           </div>
           <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm hidden sm:block">IdeaMap</span>
