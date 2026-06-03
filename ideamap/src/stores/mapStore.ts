@@ -17,6 +17,42 @@ import type { IdeaNodeData, SerializedNode, SerializedEdge } from '../types'
 type IdeaNode = Node<IdeaNodeData>
 
 const DEFAULT_NODE_COLOR = '#ffffff'
+
+/** フリーノードをグループノードの外側へ押し出す位置を計算する */
+function computePushOut(
+  pos: { x: number; y: number },
+  measured: { width?: number; height?: number } | undefined,
+  groupNodes: IdeaNode[]
+): { x: number; y: number } {
+  const nodeW = measured?.width ?? 160
+  const nodeH = measured?.height ?? 60
+  let { x, y } = pos
+
+  for (const group of groupNodes) {
+    const gW = typeof group.style?.width === 'number' ? group.style.width : 400
+    const gH = typeof group.style?.height === 'number' ? group.style.height : 300
+    const gx = group.position.x
+    const gy = group.position.y
+
+    const overlapX = x < gx + gW && x + nodeW > gx
+    const overlapY = y < gy + gH && y + nodeH > gy
+    if (!overlapX || !overlapY) continue
+
+    // 各方向への押し出し距離を計算し、最小コストの方向へ移動
+    const dLeft = x + nodeW - gx
+    const dRight = gx + gW - x
+    const dUp = y + nodeH - gy
+    const dDown = gy + gH - y
+
+    const min = Math.min(dLeft, dRight, dUp, dDown)
+    if (min === dLeft) x = gx - nodeW
+    else if (min === dRight) x = gx + gW
+    else if (min === dUp) y = gy - nodeH
+    else y = gy + gH
+  }
+
+  return { x, y }
+}
 const MAX_HISTORY = 50
 const EDGE_COLOR = '#94a3b8'
 const ARROW: EdgeMarker = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: EDGE_COLOR }
@@ -118,13 +154,29 @@ export const useMapStore = create<MapState>((set, get) => ({
   pendingFitView: false,
 
   onNodesChange: (changes) => {
-    const isHistoric = changes.some(
+    const currentNodes = get().nodes
+    const groupNodes = currentNodes.filter((n) => n.type === 'groupNode')
+
+    // ドラッグ終了時、フリーノードがグループ枠内に入ったら押し出す
+    const processedChanges: NodeChange<IdeaNode>[] =
+      groupNodes.length > 0
+        ? changes.map((c) => {
+            if (c.type !== 'position' || c.dragging !== false || !c.position) return c
+            const node = currentNodes.find((n) => n.id === c.id)
+            if (!node || node.parentId || node.type === 'groupNode') return c
+            const corrected = computePushOut(c.position, node.measured, groupNodes)
+            if (corrected.x === c.position.x && corrected.y === c.position.y) return c
+            return { ...c, position: corrected } as NodeChange<IdeaNode>
+          })
+        : changes
+
+    const isHistoric = processedChanges.some(
       (c) =>
         (c.type === 'position' && !(c as { dragging?: boolean }).dragging) ||
         c.type === 'remove'
     )
     set((state) => {
-      const newNodes = applyNodeChanges(changes, state.nodes) as IdeaNode[]
+      const newNodes = applyNodeChanges(processedChanges, state.nodes) as IdeaNode[]
       if (isHistoric) {
         return {
           nodes: newNodes,
@@ -222,6 +274,7 @@ export const useMapStore = create<MapState>((set, get) => ({
     const updatedSelected = selected.map((n) => ({
       ...n,
       parentId: groupId,
+      extent: 'parent' as const,
       position: { x: n.position.x - minX, y: n.position.y - minY },
       selected: false,
     }))
@@ -243,6 +296,7 @@ export const useMapStore = create<MapState>((set, get) => ({
     const updatedChildren = children.map((n) => ({
       ...n,
       parentId: undefined,
+      extent: undefined,
       position: {
         x: groupNode.position.x + n.position.x,
         y: groupNode.position.y + n.position.y,
@@ -533,6 +587,7 @@ export const useMapStore = create<MapState>((set, get) => ({
         type: 'ideaNode',
         position: { x: n.x, y: n.y },
         parentId: n.parentId || undefined,
+        extent: n.parentId ? ('parent' as const) : undefined,
         data: {
           // 旧フォーマット（text フィールド）との互換処理
           title: n.title ?? (n as unknown as { text?: string }).text ?? '',
