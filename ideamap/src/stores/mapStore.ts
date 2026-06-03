@@ -60,6 +60,10 @@ interface MapState {
   onConnect: (connection: Connection) => void
   addNode: (title: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string, categoryId?: string) => string
   addConnectedNode: (parentId: string, title?: string) => string | null
+  addGroupNode: (label: string, x: number, y: number, width?: number, height?: number) => string
+  groupSelectedNodes: () => void
+  ungroupNodes: (groupId: string) => void
+  deleteGroupWithChildren: (groupId: string) => void
   updateNodeTitle: (id: string, title: string) => void
   updateNodeBody: (id: string, body: string) => void
   updateNodeColor: (id: string, color: string) => void
@@ -170,6 +174,103 @@ export const useMapStore = create<MapState>((set, get) => ({
     return id
   },
 
+  addGroupNode: (label, x, y, width = 400, height = 300) => {
+    const id = uuidv4()
+    const groupNode: IdeaNode = {
+      id,
+      type: 'groupNode',
+      position: { x, y },
+      style: { width, height },
+      data: { title: label, color: 'rgba(147, 197, 253, 0.15)', createdBy: 'user' },
+      zIndex: -1,
+    }
+    set((state) => ({
+      nodes: [groupNode, ...state.nodes],
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    }))
+    return id
+  },
+
+  groupSelectedNodes: () => {
+    const state = get()
+    const selected = state.nodes.filter(
+      (n) => n.selected && n.type !== 'groupNode' && !n.parentId
+    )
+    if (selected.length < 2) return
+
+    const PADDING = 40
+    const DEFAULT_W = 160
+    const DEFAULT_H = 60
+
+    const minX = Math.min(...selected.map((n) => n.position.x)) - PADDING
+    const minY = Math.min(...selected.map((n) => n.position.y)) - PADDING
+    const maxX = Math.max(...selected.map((n) => n.position.x + (n.measured?.width ?? DEFAULT_W))) + PADDING
+    const maxY = Math.max(...selected.map((n) => n.position.y + (n.measured?.height ?? DEFAULT_H))) + PADDING
+
+    const groupId = uuidv4()
+    const groupNode: IdeaNode = {
+      id: groupId,
+      type: 'groupNode',
+      position: { x: minX, y: minY },
+      style: { width: maxX - minX, height: maxY - minY },
+      data: { title: 'グループ', color: 'rgba(147, 197, 253, 0.15)', createdBy: 'user' },
+      zIndex: -1,
+    }
+
+    const selectedIds = new Set(selected.map((n) => n.id))
+    const updatedSelected = selected.map((n) => ({
+      ...n,
+      parentId: groupId,
+      position: { x: n.position.x - minX, y: n.position.y - minY },
+      selected: false,
+    }))
+    const otherNodes = state.nodes.filter((n) => !selectedIds.has(n.id))
+
+    set({
+      nodes: [groupNode, ...otherNodes, ...updatedSelected],
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })
+  },
+
+  ungroupNodes: (groupId) => {
+    const state = get()
+    const groupNode = state.nodes.find((n) => n.id === groupId)
+    if (!groupNode) return
+
+    const children = state.nodes.filter((n) => n.parentId === groupId)
+    const updatedChildren = children.map((n) => ({
+      ...n,
+      parentId: undefined,
+      position: {
+        x: groupNode.position.x + n.position.x,
+        y: groupNode.position.y + n.position.y,
+      },
+    }))
+    const otherNodes = state.nodes.filter((n) => n.id !== groupId && n.parentId !== groupId)
+
+    set({
+      nodes: [...otherNodes, ...updatedChildren],
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })
+  },
+
+  deleteGroupWithChildren: (groupId) =>
+    set((state) => {
+      const childIds = new Set(
+        state.nodes.filter((n) => n.parentId === groupId).map((n) => n.id)
+      )
+      childIds.add(groupId)
+      return {
+        nodes: state.nodes.filter((n) => !childIds.has(n.id)),
+        edges: state.edges.filter((e) => !childIds.has(e.source) && !childIds.has(e.target)),
+        past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+        future: [],
+      }
+    }),
+
   addConnectedNode: (parentId, title = '新しいアイデア') => {
     const state = get()
     const parent = state.nodes.find((n) => n.id === parentId)
@@ -248,6 +349,10 @@ export const useMapStore = create<MapState>((set, get) => ({
     set((state) => {
       if (ids.length === 0) return {}
       const idSet = new Set(ids)
+      // Also delete children of any group nodes being deleted
+      state.nodes.filter((n) => idSet.has(n.id) && n.type === 'groupNode').forEach((g) => {
+        state.nodes.filter((n) => n.parentId === g.id).forEach((n) => idSet.add(n.id))
+      })
       return {
         nodes: state.nodes.filter((n) => !idSet.has(n.id)),
         edges: state.edges.filter(
@@ -260,18 +365,21 @@ export const useMapStore = create<MapState>((set, get) => ({
 
   deleteSelected: () =>
     set((state) => {
-      const selNodeIds = new Set(
-        state.nodes.filter((n) => n.selected).map((n) => n.id)
-      )
+      const selNodes = state.nodes.filter((n) => n.selected)
       const hasSelEdges = state.edges.some((e) => e.selected)
-      if (selNodeIds.size === 0 && !hasSelEdges) return {}
+      if (selNodes.length === 0 && !hasSelEdges) return {}
+      const deleteIds = new Set(selNodes.map((n) => n.id))
+      // Delete children of selected group nodes
+      selNodes.filter((n) => n.type === 'groupNode').forEach((g) => {
+        state.nodes.filter((n) => n.parentId === g.id).forEach((n) => deleteIds.add(n.id))
+      })
       return {
-        nodes: state.nodes.filter((n) => !n.selected),
+        nodes: state.nodes.filter((n) => !deleteIds.has(n.id)),
         edges: state.edges.filter(
           (e) =>
             !e.selected &&
-            !selNodeIds.has(e.source) &&
-            !selNodeIds.has(e.target)
+            !deleteIds.has(e.source) &&
+            !deleteIds.has(e.target)
         ),
         past: pushPast(state.past, snapshot(state.nodes, state.edges)),
         future: [],
@@ -409,19 +517,32 @@ export const useMapStore = create<MapState>((set, get) => ({
     })),
 
   loadFromSerialized: (nodes, edges) => {
-    const flowNodes: IdeaNode[] = nodes.map((n) => ({
-      id: n.id,
-      type: 'ideaNode',
-      position: { x: n.x, y: n.y },
-      data: {
-        // 旧フォーマット（text フィールド）との互換処理
-        title: n.title ?? (n as unknown as { text?: string }).text ?? '',
-        body: n.body,
-        color: n.color,
-        createdBy: n.createdBy,
-        categoryId: n.categoryId,
-      },
-    }))
+    const flowNodes: IdeaNode[] = nodes.map((n) => {
+      if (n.nodeType === 'group') {
+        return {
+          id: n.id,
+          type: 'groupNode',
+          position: { x: n.x, y: n.y },
+          style: { width: n.width ?? 400, height: n.height ?? 300 },
+          data: { title: n.title, color: n.color || 'rgba(147, 197, 253, 0.15)', createdBy: 'user' as const },
+          zIndex: -1,
+        }
+      }
+      return {
+        id: n.id,
+        type: 'ideaNode',
+        position: { x: n.x, y: n.y },
+        parentId: n.parentId || undefined,
+        data: {
+          // 旧フォーマット（text フィールド）との互換処理
+          title: n.title ?? (n as unknown as { text?: string }).text ?? '',
+          body: n.body,
+          color: n.color,
+          createdBy: n.createdBy,
+          categoryId: n.categoryId,
+        },
+      }
+    })
     const flowEdges: Edge[] = edges.map((e) => ({
       id: e.id,
       type: 'floating',
@@ -438,16 +559,33 @@ export const useMapStore = create<MapState>((set, get) => ({
   },
 
   getSerializedNodes: () =>
-    get().nodes.map((n) => ({
-      id: n.id,
-      title: n.data.title,
-      body: n.data.body,
-      x: n.position.x,
-      y: n.position.y,
-      color: n.data.color,
-      createdBy: n.data.createdBy,
-      categoryId: n.data.categoryId,
-    })),
+    get().nodes.map((n) => {
+      if (n.type === 'groupNode') {
+        return {
+          id: n.id,
+          nodeType: 'group' as const,
+          title: n.data.title,
+          x: n.position.x,
+          y: n.position.y,
+          color: n.data.color,
+          createdBy: 'user' as const,
+          width: typeof n.style?.width === 'number' ? n.style.width : 400,
+          height: typeof n.style?.height === 'number' ? n.style.height : 300,
+        }
+      }
+      return {
+        id: n.id,
+        nodeType: 'idea' as const,
+        title: n.data.title,
+        body: n.data.body,
+        x: n.position.x,
+        y: n.position.y,
+        color: n.data.color,
+        createdBy: n.data.createdBy,
+        categoryId: n.data.categoryId,
+        parentId: n.parentId || undefined,
+      }
+    }),
 
   getSerializedEdges: () =>
     get().edges.map((e) => ({

@@ -17,6 +17,7 @@ import '@xyflow/react/dist/style.css'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { IdeaNode } from './IdeaNode'
+import { GroupNode } from './GroupNode'
 import { FloatingEdge } from './FloatingEdge'
 import { Toolbar } from '../toolbar/Toolbar'
 import { BottomNav } from '../toolbar/BottomNav'
@@ -83,6 +84,7 @@ function NodeActionBar() {
 
 const nodeTypes: NodeTypes = {
   ideaNode: IdeaNode as NodeTypes['ideaNode'],
+  groupNode: GroupNode as NodeTypes['groupNode'],
 }
 
 const edgeTypes: EdgeTypes = {
@@ -131,7 +133,8 @@ export function IdeaCanvas() {
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault()
       setSelectedNodeId(node.id)
-      openContextMenu({ type: 'node', x: e.clientX, y: e.clientY, targetId: node.id })
+      const menuType = node.type === 'groupNode' ? 'group' : 'node'
+      openContextMenu({ type: menuType, x: e.clientX, y: e.clientY, targetId: node.id })
     },
     [openContextMenu, setSelectedNodeId]
   )
@@ -160,6 +163,10 @@ export function IdeaCanvas() {
     edges.forEach((e) => {
       if (e.source === selectedNodeId) highlightIds.add(e.target)
       if (e.target === selectedNodeId) highlightIds.add(e.source)
+    })
+    // グループが選択されている場合は子ノードもハイライト
+    nodes.forEach((n) => {
+      if (n.parentId && highlightIds.has(n.parentId)) highlightIds.add(n.id)
     })
     return nodes.map((n) =>
       highlightIds.has(n.id) ? n : { ...n, style: { ...n.style, opacity: 0.15 } }

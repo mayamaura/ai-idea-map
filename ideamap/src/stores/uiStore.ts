@@ -8,7 +8,7 @@ export interface Toast {
   type: 'success' | 'error' | 'info'
 }
 
-export type ContextMenuType = 'node' | 'edge' | 'pane'
+export type ContextMenuType = 'node' | 'edge' | 'pane' | 'group'
 
 export interface ContextMenuState {
   type: ContextMenuType

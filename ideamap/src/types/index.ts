@@ -29,6 +29,7 @@ export interface MapFile {
 
 export interface SerializedNode {
   id: string
+  nodeType?: 'idea' | 'group'
   title: string
   body?: string
   x: number
@@ -36,6 +37,9 @@ export interface SerializedNode {
   color: string
   createdBy: 'user' | 'ai'
   categoryId?: string
+  width?: number
+  height?: number
+  parentId?: string
 }
 
 export interface SerializedEdge {

@@ -55,10 +55,15 @@ export function ContextMenu() {
   const {
     addNode,
     addConnectedNode,
+    addGroupNode,
+    groupSelectedNodes,
+    ungroupNodes,
+    deleteGroupWithChildren,
     deleteNode,
     deleteNodeEdges,
     copyNodes,
     paste,
+    updateNodeTitle,
     updateNodeCategory,
     deleteEdge,
     reverseEdge,
@@ -143,6 +148,19 @@ export function ContextMenu() {
   const isBidirectional = Boolean(currentEdge?.markerStart)
 
   const targetNode = type === 'node' && targetId ? nodes.find((n) => n.id === targetId) : undefined
+  const selectedIdeaNodeCount = nodes.filter((n) => n.selected && n.type !== 'groupNode').length
+
+  const handleDeleteGroupChoice = () => {
+    if (!targetId) return
+    openConfirmDialog({
+      title: 'グループを削除しますか？',
+      message: 'グループと子ノードをすべて削除するか、グループ枠のみ解除して子ノードを残すか選択してください。',
+      confirmLabel: 'グループと子を削除',
+      danger: true,
+      onConfirm: () => deleteGroupWithChildren(targetId),
+    })
+    closeContextMenu()
+  }
 
   return createPortal(
     <div
@@ -179,6 +197,13 @@ export function ContextMenu() {
               shortcut="Ctrl+C"
               onClick={run(() => targetId && copyNodes([targetId]))}
             />
+            {selectedIdeaNodeCount >= 2 && (
+              <MenuItem
+                icon="📦"
+                label={`グループ化（${selectedIdeaNodeCount}件）`}
+                onClick={run(() => groupSelectedNodes())}
+              />
+            )}
             {/* カテゴリ選択 */}
             <MenuItem icon="🏷️" label="カテゴリを変更" onClick={() => setShowCategories((v) => !v)} />
             {showCategories && (
@@ -231,11 +256,47 @@ export function ContextMenu() {
               })}
             />
             <MenuItem
+              icon="📦"
+              label="グループを作成"
+              onClick={run(() => {
+                if (flowPosition) addGroupNode('グループ', flowPosition.x - 100, flowPosition.y - 75)
+              })}
+            />
+            <MenuItem
               icon="📥"
               label="ここに貼り付け"
               shortcut="Ctrl+V"
               disabled={clipboard.length === 0}
               onClick={run(() => paste(flowPosition))}
+            />
+          </>
+        )}
+
+        {type === 'group' && (
+          <>
+            <MenuItem
+              icon="✏️"
+              label="ラベルを編集"
+              onClick={() => {
+                if (!targetId) return
+                const groupNode = nodes.find((n) => n.id === targetId)
+                const current = (groupNode?.data as { title?: string })?.title ?? ''
+                const next = window.prompt('グループ名を入力してください', current)
+                if (next !== null) updateNodeTitle(targetId, next.trim() || 'グループ')
+                closeContextMenu()
+              }}
+            />
+            <Divider />
+            <MenuItem
+              icon="📤"
+              label="グループを解除（子ノードは残す）"
+              onClick={run(() => targetId && ungroupNodes(targetId))}
+            />
+            <MenuItem
+              icon="🗑️"
+              label="グループと子ノードを削除"
+              danger
+              onClick={handleDeleteGroupChoice}
             />
           </>
         )}
