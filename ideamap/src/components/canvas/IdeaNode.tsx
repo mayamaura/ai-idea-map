@@ -26,6 +26,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const { updateNodeTitle } = useMapStore()
   const { setSelectedNodeId, setAIPanelOpen, openNodeDetail, searchQuery, activeCategoryFilters } = useUIStore()
   const nodeShape = useSettingsStore((s) => s.nodeShape)
+  const getCategoryById = useSettingsStore((s) => s.getCategoryById)
 
   // 検索・フィルター状態に応じた表示制御
   const isSearchActive = searchQuery.trim() !== ''
@@ -96,6 +97,8 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const hasBody = Boolean(nodeData.body)
   const shape = shapeClass(nodeShape)
   const width = widthClass(nodeData.title)
+  const category = nodeData.categoryId ? getCategoryById(nodeData.categoryId) : undefined
+  const showCategoryLabel = selected && category && category.id !== 'cat-none'
 
   return (
     <div
@@ -107,6 +110,14 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchEnd}
     >
+      {/* カテゴリラベル（選択時のみ表示） */}
+      {showCategoryLabel && (
+        <div className="absolute -top-7 left-0 flex items-center gap-0.5 bg-white/95 text-gray-600 px-1.5 py-0.5 rounded-md shadow-sm border border-gray-200 whitespace-nowrap z-20 pointer-events-none">
+          <span className="text-[11px]">{category!.icon}</span>
+          <span className="text-[11px] font-medium">{category!.name}</span>
+        </div>
+      )}
+
       {/* AI badge */}
       {isAI && (
         <div className="absolute -top-2 -right-2 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center z-10 shadow-sm">
