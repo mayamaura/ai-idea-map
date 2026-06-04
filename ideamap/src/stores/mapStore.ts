@@ -512,13 +512,61 @@ export const useMapStore = create<MapState>((set, get) => ({
     if (!parent) return null
     const childCount = state.edges.filter((e) => e.source === parentId).length
     const id = uuidv4()
+
+    const NODE_W = 160
+    const NODE_H = 60
+    const MARGIN = 20
+
+    let finalPosition: { x: number; y: number }
+
+    if (parent.parentId) {
+      // グループ内の子ノードが親の場合: 右→下→左→上の順で収まる位置を探す
+      const groupNode = state.nodes.find((n) => n.id === parent.parentId)
+      const gW = typeof groupNode?.style?.width === 'number' ? groupNode.style.width : 400
+      const gH = typeof groupNode?.style?.height === 'number' ? groupNode.style.height : 300
+
+      const parentW = parent.measured?.width ?? NODE_W
+      const parentH = parent.measured?.height ?? NODE_H
+      const px = parent.position.x
+      const py = parent.position.y
+
+      const candidates: Array<{ x: number; y: number }> = [
+        { x: px + parentW + MARGIN, y: py },
+        { x: px, y: py + parentH + MARGIN + childCount * (NODE_H + MARGIN) },
+        { x: px - NODE_W - MARGIN, y: py },
+        { x: px, y: py - NODE_H - MARGIN },
+      ]
+
+      const fitsInside = (pos: { x: number; y: number }) =>
+        pos.x >= 0 && pos.y >= 0 && pos.x + NODE_W <= gW && pos.y + NODE_H <= gH
+
+      const overflow = (pos: { x: number; y: number }) =>
+        Math.max(0, -pos.x) + Math.max(0, pos.x + NODE_W - gW) +
+        Math.max(0, -pos.y) + Math.max(0, pos.y + NODE_H - gH)
+
+      const clamp = (pos: { x: number; y: number }) => ({
+        x: Math.max(0, Math.min(pos.x, gW - NODE_W)),
+        y: Math.max(0, Math.min(pos.y, gH - NODE_H)),
+      })
+
+      const fitCandidate = candidates.find(fitsInside)
+      if (fitCandidate) {
+        finalPosition = fitCandidate
+      } else {
+        const best = candidates.reduce((a, b) => (overflow(a) <= overflow(b) ? a : b))
+        finalPosition = clamp(best)
+      }
+    } else {
+      finalPosition = {
+        x: parent.position.x + 280,
+        y: parent.position.y + childCount * 90,
+      }
+    }
+
     const newNode: IdeaNode = {
       id,
       type: 'ideaNode',
-      position: {
-        x: parent.position.x + 280,
-        y: parent.position.y + childCount * 90,
-      },
+      position: finalPosition,
       data: { title, color: DEFAULT_NODE_COLOR, createdBy: 'user' },
       // 親ノードがグループ内にある場合は同じグループに属させる
       ...(parent.parentId ? { parentId: parent.parentId } : {}),
