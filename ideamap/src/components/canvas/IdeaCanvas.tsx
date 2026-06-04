@@ -39,9 +39,12 @@ function NodeActionBar() {
   const nodeWidth = rfNode?.measured?.width ?? 150
   const nodeHeight = rfNode?.measured?.height ?? 60
 
+  const parentNode = storeNode.parentId ? nodes.find((n) => n.id === storeNode.parentId) : null
+  const absX = storeNode.position.x + (parentNode?.position.x ?? 0)
+  const absY = storeNode.position.y + (parentNode?.position.y ?? 0)
   const { x: screenX, y: screenY } = flowToScreenPosition({
-    x: storeNode.position.x + nodeWidth / 2,
-    y: storeNode.position.y + nodeHeight,
+    x: absX + nodeWidth / 2,
+    y: absY + nodeHeight,
   })
 
   return createPortal(
