@@ -796,7 +796,19 @@ export const useMapStore = create<MapState>((set, get) => ({
 
   setNodes: (nodes) =>
     set((state) => ({
-      nodes,
+      // グループノードは style.width/height を measured にも反映させておく
+      // レイアウト後に React Flow の ResizeObserver が古い measured と比較して
+      // 誤った dimensions change を発火するのを防ぐため
+      nodes: nodes.map((n) => {
+        if (
+          n.type === 'groupNode' &&
+          typeof n.style?.width === 'number' &&
+          typeof n.style?.height === 'number'
+        ) {
+          return { ...n, measured: { width: n.style.width, height: n.style.height } }
+        }
+        return n
+      }),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
     })),
