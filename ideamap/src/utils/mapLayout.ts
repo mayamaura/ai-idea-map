@@ -176,15 +176,29 @@ export function applyRadialLayout(
     return [...topLevel.map((n) => ({ ...n, position: { x: 0, y: 0 } })), ...childNodes]
   }
 
-  // エッジから親→子マップを構築（トップレベルノード間のみ）
+  // 子ノード→親グループのマップ（グループをまたぐエッジを親グループIDに解決するため）
+  const topLevelIds = new Set(topLevel.map((n) => n.id))
+  const childToGroup = new Map<string, string>()
+  nodes.forEach((n) => {
+    if (n.parentId && topLevelIds.has(n.parentId)) childToGroup.set(n.id, n.parentId)
+  })
+  const resolveId = (id: string) => childToGroup.get(id) ?? id
+
+  // エッジから親→子マップを構築（子ノードのエッジは親グループに解決してから追加）
   const childrenOf = new Map<string, string[]>()
   const hasParent = new Set<string>()
   topLevel.forEach((n) => childrenOf.set(n.id, []))
+  const addedEdgeKeys = new Set<string>()
   edges.forEach((e) => {
-    if (childrenOf.has(e.source) && childrenOf.has(e.target)) {
-      childrenOf.get(e.source)!.push(e.target)
-      hasParent.add(e.target)
-    }
+    const src = resolveId(e.source)
+    const tgt = resolveId(e.target)
+    if (src === tgt) return // 同グループ内エッジはスキップ
+    if (!childrenOf.has(src) || !childrenOf.has(tgt)) return
+    const key = `${src}→${tgt}`
+    if (addedEdgeKeys.has(key)) return
+    addedEdgeKeys.add(key)
+    childrenOf.get(src)!.push(tgt)
+    hasParent.add(tgt)
   })
 
   // ルート（入力エッジなし）を選択
@@ -258,6 +272,13 @@ export function applyDagreLayout(
 
   const topLevelIds = new Set(topLevel.map((n) => n.id))
 
+  // 子ノード→親グループのマップ（グループをまたぐエッジを親グループIDに解決するため）
+  const childToGroup = new Map<string, string>()
+  nodes.forEach((n) => {
+    if (n.parentId && topLevelIds.has(n.parentId)) childToGroup.set(n.id, n.parentId)
+  })
+  const resolveId = (id: string) => childToGroup.get(id) ?? id
+
   const g = new Dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({ rankdir, ranksep: 100, nodesep: 60, marginx: 40, marginy: 40 })
@@ -275,10 +296,18 @@ export function applyDagreLayout(
     g.setNode(node.id, { width: w, height: h })
   })
 
-  // 子ノードを含むエッジは除外（トップレベル間のエッジのみ）
-  edges
-    .filter((e) => topLevelIds.has(e.source) && topLevelIds.has(e.target))
-    .forEach((edge) => g.setEdge(edge.source, edge.target))
+  // 子ノードのエッジも親グループIDに解決してトップレベル間エッジとして追加
+  const addedEdgeKeys = new Set<string>()
+  edges.forEach((edge) => {
+    const src = resolveId(edge.source)
+    const tgt = resolveId(edge.target)
+    if (src === tgt) return // 同グループ内エッジはスキップ
+    if (!topLevelIds.has(src) || !topLevelIds.has(tgt)) return
+    const key = `${src}→${tgt}`
+    if (addedEdgeKeys.has(key)) return
+    addedEdgeKeys.add(key)
+    g.setEdge(src, tgt)
+  })
 
   Dagre.layout(g)
 
