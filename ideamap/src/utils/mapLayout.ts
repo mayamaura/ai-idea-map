@@ -9,6 +9,9 @@ const NODE_HEIGHT = 64
 const RADIAL_BASE_RADIUS = 220
 const RADIAL_RADIUS_INCREMENT = 190
 
+const GROUP_PADDING = 40
+const GROUP_LABEL_AREA = 36 // ラベルバッジ用の上部スペース
+
 export function calcSuggestionPositions(
   parentX: number,
   parentY: number,
@@ -33,6 +36,95 @@ export function calcSuggestionPositions(
 
     return { x, y }
   })
+}
+
+/** グループ内の子ノードを整列し、フィットするグループサイズを返す */
+function layoutGroupChildren(
+  children: Node<IdeaNodeData>[],
+  edges: Edge[],
+  rankdir: 'LR' | 'TB'
+): { children: Node<IdeaNodeData>[]; width: number; height: number } {
+  if (children.length === 0) return { children, width: 200, height: 150 }
+
+  if (children.length === 1) {
+    const positioned = [
+      { ...children[0], position: { x: GROUP_PADDING, y: GROUP_LABEL_AREA + GROUP_PADDING } },
+    ]
+    return {
+      children: positioned,
+      width: NODE_WIDTH + GROUP_PADDING * 2,
+      height: NODE_HEIGHT + GROUP_LABEL_AREA + GROUP_PADDING * 2,
+    }
+  }
+
+  const childIds = new Set(children.map((n) => n.id))
+  const innerEdges = edges.filter((e) => childIds.has(e.source) && childIds.has(e.target))
+
+  const g = new Dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir, ranksep: 60, nodesep: 40, marginx: 0, marginy: 0 })
+
+  children.forEach((node) => g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT }))
+  innerEdges.forEach((edge) => g.setEdge(edge.source, edge.target))
+
+  Dagre.layout(g)
+
+  const laidChildren = children.map((node) => {
+    const pos = g.node(node.id)
+    if (!pos) return { ...node, position: { x: 0, y: 0 } }
+    return {
+      ...node,
+      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+    }
+  })
+
+  const minX = Math.min(...laidChildren.map((n) => n.position.x))
+  const minY = Math.min(...laidChildren.map((n) => n.position.y))
+  const maxX = Math.max(...laidChildren.map((n) => n.position.x + NODE_WIDTH))
+  const maxY = Math.max(...laidChildren.map((n) => n.position.y + NODE_HEIGHT))
+
+  // 子ノードをグループ左上からオフセット（ラベル領域＋パディング分）
+  const dx = GROUP_PADDING - minX
+  const dy = GROUP_LABEL_AREA + GROUP_PADDING - minY
+
+  const positioned = laidChildren.map((n) => ({
+    ...n,
+    position: { x: n.position.x + dx, y: n.position.y + dy },
+  }))
+
+  return {
+    children: positioned,
+    width: Math.max(maxX - minX + GROUP_PADDING * 2, 200),
+    height: Math.max(maxY - minY + GROUP_LABEL_AREA + GROUP_PADDING * 2, 150),
+  }
+}
+
+/**
+ * 各グループの子ノードを内部整列し、グループサイズを更新する。
+ * 返す topLevel にはサイズ更新済みのグループノードが含まれ、
+ * 子ノードは新しい相対座標で childNodes に入る。
+ */
+function prepareGroupLayouts(
+  nodes: Node<IdeaNodeData>[],
+  edges: Edge[],
+  rankdir: 'LR' | 'TB'
+): { topLevel: Node<IdeaNodeData>[]; childNodes: Node<IdeaNodeData>[] } {
+  const childNodes: Node<IdeaNodeData>[] = []
+
+  const topLevel = nodes
+    .filter((n) => !n.parentId)
+    .map((node) => {
+      if (node.type !== 'groupNode') return node
+
+      const children = nodes.filter((c) => c.parentId === node.id)
+      if (children.length === 0) return node
+
+      const { children: laid, width, height } = layoutGroupChildren(children, edges, rankdir)
+      childNodes.push(...laid)
+      return { ...node, style: { ...node.style, width, height } }
+    })
+
+  return { topLevel, childNodes }
 }
 
 /** レイアウト後にフリーノードがグループ枠と重なっていたら押し出す */
@@ -77,9 +169,7 @@ export function applyRadialLayout(
   nodes: Node<IdeaNodeData>[],
   edges: Edge[]
 ): Node<IdeaNodeData>[] {
-  // 子ノード（parentId あり）はレイアウト対象外。グループ移動で自動追従する
-  const childNodes = nodes.filter((n) => n.parentId)
-  const topLevel = nodes.filter((n) => !n.parentId)
+  const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, 'LR')
 
   if (topLevel.length === 0) return nodes
   if (topLevel.length === 1) {
@@ -162,9 +252,7 @@ export function applyDagreLayout(
   edges: Edge[],
   rankdir: 'LR' | 'TB' = 'LR'
 ): Node<IdeaNodeData>[] {
-  // 子ノード（parentId あり）はレイアウト対象外。グループ移動で自動追従する
-  const childNodes = nodes.filter((n) => n.parentId)
-  const topLevel = nodes.filter((n) => !n.parentId)
+  const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, rankdir)
 
   if (topLevel.length === 0) return nodes
 
@@ -175,7 +263,7 @@ export function applyDagreLayout(
   g.setGraph({ rankdir, ranksep: 100, nodesep: 60, marginx: 40, marginy: 40 })
 
   topLevel.forEach((node) => {
-    // グループノードは実際のサイズを使う
+    // グループノードは内部整列後の実サイズを使う
     const w =
       node.type === 'groupNode' && typeof node.style?.width === 'number'
         ? node.style.width
