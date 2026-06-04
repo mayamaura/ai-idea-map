@@ -35,18 +35,61 @@ export function calcSuggestionPositions(
   })
 }
 
+/** レイアウト後にフリーノードがグループ枠と重なっていたら押し出す */
+function applyGroupPushOut(nodes: Node<IdeaNodeData>[]): Node<IdeaNodeData>[] {
+  const groupNodes = nodes.filter((n) => n.type === 'groupNode')
+  if (groupNodes.length === 0) return nodes
+
+  return nodes.map((node) => {
+    if (node.type === 'groupNode' || node.parentId) return node
+    let { x, y } = node.position
+    const nodeW = node.measured?.width ?? NODE_WIDTH
+    const nodeH = node.measured?.height ?? NODE_HEIGHT
+
+    for (const group of groupNodes) {
+      const gW = typeof group.style?.width === 'number' ? group.style.width : 400
+      const gH = typeof group.style?.height === 'number' ? group.style.height : 300
+      const gx = group.position.x
+      const gy = group.position.y
+
+      if (!(x < gx + gW && x + nodeW > gx && y < gy + gH && y + nodeH > gy)) continue
+
+      const dLeft = x + nodeW - gx
+      const dRight = gx + gW - x
+      const dUp = y + nodeH - gy
+      const dDown = gy + gH - y
+      const min = Math.min(dLeft, dRight, dUp, dDown)
+
+      if (min === dLeft) x = gx - nodeW
+      else if (min === dRight) x = gx + gW
+      else if (min === dUp) y = gy - nodeH
+      else y = gy + gH
+    }
+
+    return x === node.position.x && y === node.position.y
+      ? node
+      : { ...node, position: { x, y } }
+  })
+}
+
 /** ルートノード（入力エッジなし）を中心に放射状に配置するレイアウト */
 export function applyRadialLayout(
   nodes: Node<IdeaNodeData>[],
   edges: Edge[]
 ): Node<IdeaNodeData>[] {
-  if (nodes.length === 0) return nodes
-  if (nodes.length === 1) return [{ ...nodes[0], position: { x: 0, y: 0 } }]
+  // 子ノード（parentId あり）はレイアウト対象外。グループ移動で自動追従する
+  const childNodes = nodes.filter((n) => n.parentId)
+  const topLevel = nodes.filter((n) => !n.parentId)
 
-  // エッジから親→子マップを構築
+  if (topLevel.length === 0) return nodes
+  if (topLevel.length === 1) {
+    return [...topLevel.map((n) => ({ ...n, position: { x: 0, y: 0 } })), ...childNodes]
+  }
+
+  // エッジから親→子マップを構築（トップレベルノード間のみ）
   const childrenOf = new Map<string, string[]>()
   const hasParent = new Set<string>()
-  nodes.forEach((n) => childrenOf.set(n.id, []))
+  topLevel.forEach((n) => childrenOf.set(n.id, []))
   edges.forEach((e) => {
     if (childrenOf.has(e.source) && childrenOf.has(e.target)) {
       childrenOf.get(e.source)!.push(e.target)
@@ -55,7 +98,7 @@ export function applyRadialLayout(
   })
 
   // ルート（入力エッジなし）を選択
-  const rootId = nodes.find((n) => !hasParent.has(n.id))?.id ?? nodes[0].id
+  const rootId = topLevel.find((n) => !hasParent.has(n.id))?.id ?? topLevel[0].id
 
   // サブツリーサイズを計算（角度配分に使用）
   const subtreeSize = new Map<string, number>()
@@ -103,14 +146,15 @@ export function applyRadialLayout(
 
   // 到達できなかったノード（非連結・孤立）を右側に並べる
   let floatX = RADIAL_BASE_RADIUS * 2 + 100
-  for (const node of nodes) {
+  for (const node of topLevel) {
     if (!positions.has(node.id)) {
       positions.set(node.id, { x: floatX, y: 0 })
       floatX += NODE_WIDTH + 40
     }
   }
 
-  return nodes.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position }))
+  const laid = topLevel.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position }))
+  return [...applyGroupPushOut(laid), ...childNodes]
 }
 
 export function applyDagreLayout(
@@ -118,27 +162,54 @@ export function applyDagreLayout(
   edges: Edge[],
   rankdir: 'LR' | 'TB' = 'LR'
 ): Node<IdeaNodeData>[] {
-  if (nodes.length === 0) return nodes
+  // 子ノード（parentId あり）はレイアウト対象外。グループ移動で自動追従する
+  const childNodes = nodes.filter((n) => n.parentId)
+  const topLevel = nodes.filter((n) => !n.parentId)
+
+  if (topLevel.length === 0) return nodes
+
+  const topLevelIds = new Set(topLevel.map((n) => n.id))
 
   const g = new Dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({ rankdir, ranksep: 100, nodesep: 60, marginx: 40, marginy: 40 })
 
-  nodes.forEach((node) => {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+  topLevel.forEach((node) => {
+    // グループノードは実際のサイズを使う
+    const w =
+      node.type === 'groupNode' && typeof node.style?.width === 'number'
+        ? node.style.width
+        : NODE_WIDTH
+    const h =
+      node.type === 'groupNode' && typeof node.style?.height === 'number'
+        ? node.style.height
+        : NODE_HEIGHT
+    g.setNode(node.id, { width: w, height: h })
   })
-  edges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target)
-  })
+
+  // 子ノードを含むエッジは除外（トップレベル間のエッジのみ）
+  edges
+    .filter((e) => topLevelIds.has(e.source) && topLevelIds.has(e.target))
+    .forEach((edge) => g.setEdge(edge.source, edge.target))
 
   Dagre.layout(g)
 
-  return nodes.map((node) => {
+  const laid = topLevel.map((node) => {
     const pos = g.node(node.id)
     if (!pos) return node
+    const w =
+      node.type === 'groupNode' && typeof node.style?.width === 'number'
+        ? node.style.width
+        : NODE_WIDTH
+    const h =
+      node.type === 'groupNode' && typeof node.style?.height === 'number'
+        ? node.style.height
+        : NODE_HEIGHT
     return {
       ...node,
-      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+      position: { x: pos.x - w / 2, y: pos.y - h / 2 },
     }
   })
+
+  return [...applyGroupPushOut(laid), ...childNodes]
 }
