@@ -93,7 +93,7 @@ const edgeTypes: EdgeTypes = {
 
 export function IdeaCanvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, pendingFitView, clearPendingFitView } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, openContextMenu, closeContextMenu } = useUIStore()
+  const { selectedNodeId, setSelectedNodeId, openContextMenu, closeContextMenu, setDragOverGroupId } = useUIStore()
   const { screenToFlowPosition, fitView } = useReactFlow()
 
   useEffect(() => {
@@ -147,6 +147,31 @@ export function IdeaCanvas() {
     [openContextMenu]
   )
 
+  const handleNodeDrag = useCallback(
+    (_: React.MouseEvent, draggedNode: Node) => {
+      if (draggedNode.parentId) {
+        setDragOverGroupId(null)
+        return
+      }
+      const nodeW = draggedNode.measured?.width ?? 160
+      const nodeH = draggedNode.measured?.height ?? 60
+      const { x, y } = draggedNode.position
+      const groupNodes = nodes.filter((n) => n.type === 'groupNode')
+      const overlapping = groupNodes.find((g) => {
+        const gW = typeof g.style?.width === 'number' ? g.style.width : 400
+        const gH = typeof g.style?.height === 'number' ? g.style.height : 300
+        return x < g.position.x + gW && x + nodeW > g.position.x &&
+               y < g.position.y + gH && y + nodeH > g.position.y
+      })
+      setDragOverGroupId(overlapping?.id ?? null)
+    },
+    [nodes, setDragOverGroupId]
+  )
+
+  const handleNodeDragStop = useCallback(() => {
+    setDragOverGroupId(null)
+  }, [setDragOverGroupId])
+
   const handlePaneContextMenu = useCallback(
     (e: MouseEvent | React.MouseEvent) => {
       e.preventDefault()
@@ -194,6 +219,8 @@ export function IdeaCanvas() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={handleNodeClick}
+          onNodeDrag={handleNodeDrag}
+          onNodeDragStop={handleNodeDragStop}
           onPaneClick={handlePaneClick}
           onNodeContextMenu={handleNodeContextMenu}
           onEdgeContextMenu={handleEdgeContextMenu}

@@ -27,6 +27,7 @@ export interface ConfirmDialogState {
   confirmLabel?: string
   danger?: boolean
   onConfirm: () => void
+  onCancel?: () => void
 }
 
 interface UIState {
@@ -57,6 +58,9 @@ interface UIState {
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
   suggestionTypeFilter: SuggestionType[]
+  // Phase 12: グループ操作
+  dragOverGroupId: string | null
+  setDragOverGroupId: (id: string | null) => void
   // Phase 11: デバイス間連携
   isFileDashboardOpen: boolean
   isShortcutsModalOpen: boolean
@@ -122,6 +126,8 @@ export const useUIStore = create<UIState>((set) => ({
   connectionSuggestions: [],
   clusterSuggestions: [],
   suggestionTypeFilter: [],
+  dragOverGroupId: null,
+  setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
   isFileDashboardOpen: true,
   isShortcutsModalOpen: false,
   setSelectedNodeId: (id) =>

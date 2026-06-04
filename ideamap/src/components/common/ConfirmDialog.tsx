@@ -7,7 +7,10 @@ export function ConfirmDialog() {
   useEffect(() => {
     if (!confirmDialog) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeConfirmDialog()
+      if (e.key === 'Escape') {
+        confirmDialog.onCancel?.()
+        closeConfirmDialog()
+      }
       if (e.key === 'Enter') {
         confirmDialog.onConfirm()
         closeConfirmDialog()
@@ -19,17 +22,22 @@ export function ConfirmDialog() {
 
   if (!confirmDialog) return null
 
-  const { title, message, confirmLabel = '削除', danger = true, onConfirm } = confirmDialog
+  const { title, message, confirmLabel = '削除', danger = true, onConfirm, onCancel } = confirmDialog
 
   const handleConfirm = () => {
     onConfirm()
     closeConfirmDialog()
   }
 
+  const handleCancel = () => {
+    onCancel?.()
+    closeConfirmDialog()
+  }
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 animate-fade-in"
-      onClick={closeConfirmDialog}
+      onClick={handleCancel}
     >
       <div
         className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-5 animate-dialog"
@@ -39,7 +47,7 @@ export function ConfirmDialog() {
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-300 leading-relaxed">{message}</p>
         <div className="mt-5 flex justify-end gap-2">
           <button
-            onClick={closeConfirmDialog}
+            onClick={handleCancel}
             className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             キャンセル

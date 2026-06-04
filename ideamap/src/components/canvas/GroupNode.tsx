@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from 'react'
 import { NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
+import { useUIStore } from '../../stores/uiStore'
 import type { IdeaNodeData } from '../../types'
 
 function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
@@ -9,6 +10,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>
   const [editText, setEditText] = useState(nodeData.title)
   const inputRef = useRef<HTMLInputElement>(null)
   const { updateNodeTitle } = useMapStore()
+  const dragOverGroupId = useUIStore((s) => s.dragOverGroupId)
 
   useEffect(() => {
     setEditText(nodeData.title)
@@ -30,8 +32,12 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>
     updateNodeTitle(id, trimmed)
   }, [id, editText, updateNodeTitle])
 
-  const borderColor = selected ? '#3b82f6' : '#94a3b8'
-  const bgColor = nodeData.color || 'rgba(147, 197, 253, 0.15)'
+  const isDropTarget = dragOverGroupId === id
+  const borderColor = isDropTarget || selected ? '#3b82f6' : '#94a3b8'
+  const borderStyle = isDropTarget ? 'solid' : 'dashed'
+  const bgColor = isDropTarget
+    ? 'rgba(147, 197, 253, 0.35)'
+    : nodeData.color || 'rgba(147, 197, 253, 0.15)'
 
   return (
     <div
@@ -39,11 +45,12 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>
         width: '100%',
         height: '100%',
         backgroundColor: bgColor,
-        border: `2px dashed ${borderColor}`,
+        border: `2px ${borderStyle} ${borderColor}`,
         borderRadius: 12,
         position: 'relative',
         boxSizing: 'border-box',
-        transition: 'border-color 0.15s',
+        transition: 'border-color 0.15s, background-color 0.15s, border-style 0.1s',
+        boxShadow: isDropTarget ? '0 0 0 3px rgba(59, 130, 246, 0.25)' : undefined,
       }}
     >
       <NodeResizer

@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
 import type { IdeaNodeData, SerializedNode, SerializedEdge } from '../types'
+import { useUIStore } from './uiStore'
 
 type IdeaNode = Node<IdeaNodeData>
 
@@ -53,6 +54,40 @@ function computePushOut(
 
   return { x, y }
 }
+
+/** フリーノードの位置がいずれかのグループと重なるか判定し、最初にヒットしたグループを返す */
+function findOverlappingGroup(
+  pos: { x: number; y: number },
+  measured: { width?: number; height?: number } | undefined,
+  groupNodes: IdeaNode[]
+): IdeaNode | null {
+  const nodeW = measured?.width ?? 160
+  const nodeH = measured?.height ?? 60
+  const { x, y } = pos
+  for (const group of groupNodes) {
+    const gW = typeof group.style?.width === 'number' ? group.style.width : 400
+    const gH = typeof group.style?.height === 'number' ? group.style.height : 300
+    const gx = group.position.x
+    const gy = group.position.y
+    if (x < gx + gW && x + nodeW > gx && y < gy + gH && y + nodeH > gy) return group
+  }
+  return null
+}
+
+/** 子ノードの相対座標が親グループ枠の外に出ているか判定 */
+function isOutsideParent(
+  pos: { x: number; y: number },
+  measured: { width?: number; height?: number } | undefined,
+  parentGroup: IdeaNode
+): boolean {
+  const nodeW = measured?.width ?? 160
+  const nodeH = measured?.height ?? 60
+  const { x, y } = pos
+  const gW = typeof parentGroup.style?.width === 'number' ? parentGroup.style.width : 400
+  const gH = typeof parentGroup.style?.height === 'number' ? parentGroup.style.height : 300
+  return x < 0 || y < 0 || x + nodeW > gW || y + nodeH > gH
+}
+
 const MAX_HISTORY = 50
 const EDGE_COLOR = '#94a3b8'
 const ARROW: EdgeMarker = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: EDGE_COLOR }
@@ -100,6 +135,10 @@ interface MapState {
   groupSelectedNodes: () => void
   ungroupNodes: (groupId: string) => void
   deleteGroupWithChildren: (groupId: string) => void
+  addNodeToGroup: (nodeId: string, groupId: string) => void
+  removeNodeFromGroup: (nodeId: string) => void
+  pushNodeOutOfGroups: (nodeId: string) => void
+  clampNodeInsideParent: (nodeId: string) => void
   updateNodeTitle: (id: string, title: string) => void
   updateNodeBody: (id: string, body: string) => void
   updateNodeColor: (id: string, color: string) => void
@@ -157,16 +196,42 @@ export const useMapStore = create<MapState>((set, get) => ({
     const currentNodes = get().nodes
     const groupNodes = currentNodes.filter((n) => n.type === 'groupNode')
 
-    // ドラッグ終了時、フリーノードがグループ枠内に入ったら押し出す
+    let pendingDragIn: { nodeId: string; groupId: string; groupName: string } | null = null
+    let pendingDragOut: { nodeId: string; groupName: string } | null = null
+
     const processedChanges: NodeChange<IdeaNode>[] =
       groupNodes.length > 0
         ? changes.map((c) => {
             if (c.type !== 'position' || c.dragging !== false || !c.position) return c
             const node = currentNodes.find((n) => n.id === c.id)
-            if (!node || node.parentId || node.type === 'groupNode') return c
-            const corrected = computePushOut(c.position, node.measured, groupNodes)
-            if (corrected.x === c.position.x && corrected.y === c.position.y) return c
-            return { ...c, position: corrected } as NodeChange<IdeaNode>
+            if (!node || node.type === 'groupNode') return c
+
+            if (!node.parentId) {
+              // フリーノード: グループとの重なりを検出してダイアログ予約、重なりなければ押し出し
+              const overlapping = findOverlappingGroup(c.position, node.measured, groupNodes)
+              if (overlapping && !pendingDragIn) {
+                pendingDragIn = {
+                  nodeId: c.id,
+                  groupId: overlapping.id,
+                  groupName: (overlapping.data as IdeaNodeData).title || 'グループ',
+                }
+                return c // 現在位置をそのまま適用（ダイアログで確定/キャンセル）
+              }
+              const corrected = computePushOut(c.position, node.measured, groupNodes)
+              if (corrected.x === c.position.x && corrected.y === c.position.y) return c
+              return { ...c, position: corrected } as NodeChange<IdeaNode>
+            } else {
+              // 子ノード: 親グループ枠外に出ていたらダイアログ予約
+              const parentGroup = groupNodes.find((g) => g.id === node.parentId)
+              if (parentGroup && isOutsideParent(c.position, node.measured, parentGroup) && !pendingDragOut) {
+                pendingDragOut = {
+                  nodeId: c.id,
+                  groupName: (parentGroup.data as IdeaNodeData).title || 'グループ',
+                }
+                return c // 現在位置をそのまま適用（ダイアログで確定/キャンセル）
+              }
+              return c
+            }
           })
         : changes
 
@@ -186,6 +251,29 @@ export const useMapStore = create<MapState>((set, get) => ({
       }
       return { nodes: newNodes }
     })
+
+    // set() の後でダイアログを表示（React の次レンダーで反映）
+    if (pendingDragIn) {
+      const { nodeId, groupId, groupName } = pendingDragIn
+      useUIStore.getState().openConfirmDialog({
+        title: 'グループに追加',
+        message: `"${groupName}" にこのノードを追加しますか？`,
+        confirmLabel: '追加',
+        danger: false,
+        onConfirm: () => get().addNodeToGroup(nodeId, groupId),
+        onCancel: () => get().pushNodeOutOfGroups(nodeId),
+      })
+    } else if (pendingDragOut) {
+      const { nodeId, groupName } = pendingDragOut
+      useUIStore.getState().openConfirmDialog({
+        title: 'グループから外す',
+        message: `このノードを "${groupName}" から外しますか？`,
+        confirmLabel: '外す',
+        danger: false,
+        onConfirm: () => get().removeNodeFromGroup(nodeId),
+        onCancel: () => get().clampNodeInsideParent(nodeId),
+      })
+    }
   },
 
   onEdgesChange: (changes) => {
@@ -274,7 +362,6 @@ export const useMapStore = create<MapState>((set, get) => ({
     const updatedSelected = selected.map((n) => ({
       ...n,
       parentId: groupId,
-      extent: 'parent' as const,
       position: { x: n.position.x - minX, y: n.position.y - minY },
       selected: false,
     }))
@@ -309,6 +396,83 @@ export const useMapStore = create<MapState>((set, get) => ({
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
     })
+  },
+
+  addNodeToGroup: (nodeId, groupId) => {
+    set((state) => {
+      const node = state.nodes.find((n) => n.id === nodeId)
+      const groupNode = state.nodes.find((n) => n.id === groupId)
+      if (!node || !groupNode) return {}
+      const relativePos = {
+        x: node.position.x - groupNode.position.x,
+        y: node.position.y - groupNode.position.y,
+      }
+      return {
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, parentId: groupId, position: relativePos } : n
+        ),
+        past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+        future: [],
+      }
+    })
+    useUIStore.getState().addToast('グループに追加しました', 'success')
+  },
+
+  removeNodeFromGroup: (nodeId) => {
+    set((state) => {
+      const node = state.nodes.find((n) => n.id === nodeId)
+      if (!node?.parentId) return {}
+      const groupNode = state.nodes.find((n) => n.id === node.parentId)
+      if (!groupNode) return {}
+      const absolutePos = {
+        x: groupNode.position.x + node.position.x,
+        y: groupNode.position.y + node.position.y,
+      }
+      return {
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId
+            ? { ...n, parentId: undefined, extent: undefined, position: absolutePos }
+            : n
+        ),
+        past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+        future: [],
+      }
+    })
+    useUIStore.getState().addToast('グループから外しました', 'success')
+  },
+
+  pushNodeOutOfGroups: (nodeId) => {
+    const state = get()
+    const node = state.nodes.find((n) => n.id === nodeId)
+    if (!node) return
+    const groupNodes = state.nodes.filter((n) => n.type === 'groupNode')
+    const corrected = computePushOut(node.position, node.measured, groupNodes)
+    if (corrected.x !== node.position.x || corrected.y !== node.position.y) {
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === nodeId ? { ...n, position: corrected } : n)),
+      }))
+    }
+  },
+
+  clampNodeInsideParent: (nodeId) => {
+    const state = get()
+    const node = state.nodes.find((n) => n.id === nodeId)
+    if (!node?.parentId) return
+    const groupNode = state.nodes.find((n) => n.id === node.parentId)
+    if (!groupNode) return
+    const gW = typeof groupNode.style?.width === 'number' ? groupNode.style.width : 400
+    const gH = typeof groupNode.style?.height === 'number' ? groupNode.style.height : 300
+    const nodeW = node.measured?.width ?? 160
+    const nodeH = node.measured?.height ?? 60
+    const clampedPos = {
+      x: Math.max(0, Math.min(node.position.x, gW - nodeW)),
+      y: Math.max(0, Math.min(node.position.y, gH - nodeH)),
+    }
+    if (clampedPos.x !== node.position.x || clampedPos.y !== node.position.y) {
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === nodeId ? { ...n, position: clampedPos } : n)),
+      }))
+    }
   },
 
   deleteGroupWithChildren: (groupId) =>
@@ -587,7 +751,6 @@ export const useMapStore = create<MapState>((set, get) => ({
         type: 'ideaNode',
         position: { x: n.x, y: n.y },
         parentId: n.parentId || undefined,
-        extent: n.parentId ? ('parent' as const) : undefined,
         data: {
           // 旧フォーマット（text フィールド）との互換処理
           title: n.title ?? (n as unknown as { text?: string }).text ?? '',

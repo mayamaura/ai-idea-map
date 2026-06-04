@@ -59,6 +59,7 @@ export function ContextMenu() {
     groupSelectedNodes,
     ungroupNodes,
     deleteGroupWithChildren,
+    removeNodeFromGroup,
     deleteNode,
     deleteNodeEdges,
     copyNodes,
@@ -232,6 +233,13 @@ export function ContextMenu() {
               </div>
             )}
             <Divider />
+            {targetNode?.parentId && (
+              <MenuItem
+                icon="📤"
+                label="グループから外す"
+                onClick={run(() => targetId && removeNodeFromGroup(targetId))}
+              />
+            )}
             {targetId && hasConnectedEdges(targetId) && (
               <MenuItem
                 icon="✂️"
