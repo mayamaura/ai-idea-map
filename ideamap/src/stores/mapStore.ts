@@ -82,10 +82,11 @@ function isOutsideParent(
 ): boolean {
   const nodeW = measured?.width ?? 160
   const nodeH = measured?.height ?? 60
-  const { x, y } = pos
+  const centerX = pos.x + nodeW / 2
+  const centerY = pos.y + nodeH / 2
   const gW = typeof parentGroup.style?.width === 'number' ? parentGroup.style.width : 400
   const gH = typeof parentGroup.style?.height === 'number' ? parentGroup.style.height : 300
-  return x < 0 || y < 0 || x + nodeW > gW || y + nodeH > gH
+  return centerX < 0 || centerY < 0 || centerX > gW || centerY > gH
 }
 
 const MAX_HISTORY = 50
@@ -235,13 +236,29 @@ export const useMapStore = create<MapState>((set, get) => ({
           })
         : changes
 
+    // グループの resize-end を検出し、style.width/height を同期する
+    // applyNodeChanges は dimensions change で measured のみ更新し style を更新しないため、
+    // isOutsideParent・findOverlappingGroup・シリアライズが正しいサイズを参照できるよう手動で同期する
+    const groupResizeEnds = changes.filter((c) => {
+      if (c.type !== 'dimensions') return false
+      const dc = c as { id: string; resizing?: boolean; dimensions?: { width: number; height: number } }
+      return dc.resizing === false && dc.dimensions != null && groupNodes.some((g) => g.id === dc.id)
+    }) as Array<{ id: string; dimensions: { width: number; height: number } }>
+
     const isHistoric = processedChanges.some(
       (c) =>
         (c.type === 'position' && !(c as { dragging?: boolean }).dragging) ||
         c.type === 'remove'
     )
     set((state) => {
-      const newNodes = applyNodeChanges(processedChanges, state.nodes) as IdeaNode[]
+      let newNodes = applyNodeChanges(processedChanges, state.nodes) as IdeaNode[]
+      if (groupResizeEnds.length > 0) {
+        newNodes = newNodes.map((n) => {
+          const rc = groupResizeEnds.find((c) => c.id === n.id)
+          if (!rc) return n
+          return { ...n, style: { ...n.style, width: rc.dimensions.width, height: rc.dimensions.height } }
+        })
+      }
       if (isHistoric) {
         return {
           nodes: newNodes,
