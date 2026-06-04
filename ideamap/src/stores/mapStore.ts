@@ -520,6 +520,8 @@ export const useMapStore = create<MapState>((set, get) => ({
         y: parent.position.y + childCount * 90,
       },
       data: { title, color: DEFAULT_NODE_COLOR, createdBy: 'user' },
+      // 親ノードがグループ内にある場合は同じグループに属させる
+      ...(parent.parentId ? { parentId: parent.parentId } : {}),
     }
     const edge = makeEdge({
       source: parentId,
