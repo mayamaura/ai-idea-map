@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -110,13 +110,13 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchEnd}
     >
-      {/* カテゴリラベル（選択時のみ表示） */}
-      {showCategoryLabel && (
-        <div className="absolute -top-7 left-0 flex items-center gap-0.5 bg-white/95 text-gray-600 px-1.5 py-0.5 rounded-md shadow-sm border border-gray-200 whitespace-nowrap z-20 pointer-events-none">
+      {/* カテゴリラベル（選択時のみ表示・ズーム非依存） */}
+      <NodeToolbar isVisible={showCategoryLabel} position={Position.Top} align="start" offset={6}>
+        <div className="flex items-center gap-0.5 bg-white/95 text-gray-600 px-1.5 py-0.5 rounded-md shadow-sm border border-gray-200 whitespace-nowrap pointer-events-none">
           <span className="text-[11px]">{category!.icon}</span>
           <span className="text-[11px] font-medium">{category!.name}</span>
         </div>
-      )}
+      </NodeToolbar>
 
       {/* AI badge */}
       {isAI && (
