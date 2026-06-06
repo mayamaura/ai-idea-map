@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, SuggestionType } from '../types'
+import { saveDriveFileId, loadDriveFileId } from '../services/storageService'
 
 export interface Toast {
   id: string
@@ -41,6 +42,8 @@ interface UIState {
   isAILoading: boolean
   saveStatus: SaveStatus
   mapTitle: string
+  /** 現在開いている Drive ファイルの ID（null=未保存の新規/インポート）。fileId の単一の真実源 */
+  currentFileId: string | null
   toasts: Toast[]
   contextMenu: ContextMenuState | null
   confirmDialog: ConfirmDialogState | null
@@ -74,6 +77,7 @@ interface UIState {
   setAILoading: (loading: boolean) => void
   setSaveStatus: (status: SaveStatus) => void
   setMapTitle: (title: string) => void
+  setCurrentFileId: (id: string | null) => void
   addToast: (message: string, type: Toast['type']) => void
   removeToast: (id: string) => void
   openContextMenu: (menu: ContextMenuState) => void
@@ -112,6 +116,8 @@ export const useUIStore = create<UIState>((set) => ({
   isAILoading: false,
   saveStatus: 'saved',
   mapTitle: '新しいマップ',
+  // リロード後も同じファイルへ保存を継続できるよう localStorage から復元
+  currentFileId: loadDriveFileId(),
   toasts: [],
   contextMenu: null,
   confirmDialog: null,
@@ -146,6 +152,11 @@ export const useUIStore = create<UIState>((set) => ({
   setAILoading: (loading) => set({ isAILoading: loading }),
   setSaveStatus: (status) => set({ saveStatus: status }),
   setMapTitle: (title) => set({ mapTitle: title }),
+  // fileId は localStorage と常に一致させる（更新を1アクションに集約し同期漏れを防ぐ）
+  setCurrentFileId: (id) => {
+    saveDriveFileId(id)
+    set({ currentFileId: id })
+  },
   addToast: (message, type) => {
     const id = uuidv4()
     set((state) => ({ toasts: [...state.toasts, { id, message, type }] }))

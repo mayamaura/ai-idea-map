@@ -3,7 +3,7 @@ import { useMapStore } from '../stores/mapStore'
 import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { saveMap } from '../services/googleDriveService'
-import { saveMapLocally, saveDriveFileId, loadDriveFileId } from '../services/storageService'
+import { saveMapLocally } from '../services/storageService'
 import type { MapFile } from '../types'
 
 const DEBOUNCE_MS = 3000
@@ -12,7 +12,6 @@ export function useAutoSave(accessToken: string | null) {
   const { setSaveStatus } = useUIStore()
   const { autoSave } = useSettingsStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fileIdRef = useRef<string | null>(loadDriveFileId())
   const isMountedRef = useRef(true)
 
   useEffect(() => {
@@ -22,14 +21,10 @@ export function useAutoSave(accessToken: string | null) {
     }
   }, [])
 
-  const setFileId = useCallback((id: string | null) => {
-    fileIdRef.current = id
-    saveDriveFileId(id)
-  }, [])
-
   const performSave = useCallback(async () => {
     const { getSerializedNodes, getSerializedEdges } = useMapStore.getState()
-    const { mapTitle } = useUIStore.getState()
+    // fileId は uiStore を単一の真実源として都度読む（クロージャに古い値を固定しない）
+    const { mapTitle, currentFileId, setCurrentFileId } = useUIStore.getState()
 
     const mapFile: MapFile = {
       version: '1.0',
@@ -44,9 +39,10 @@ export function useAutoSave(accessToken: string | null) {
 
     if (accessToken) {
       try {
-        const newId = await saveMap(accessToken, mapTitle, mapFile, fileIdRef.current)
+        const newId = await saveMap(accessToken, mapTitle, mapFile, currentFileId)
         if (isMountedRef.current) {
-          setFileId(newId)
+          // POST で採番された id を反映し、次回以降は同じファイルへ PATCH する
+          setCurrentFileId(newId)
           setSaveStatus('saved')
         }
       } catch (err) {
@@ -64,24 +60,35 @@ export function useAutoSave(accessToken: string | null) {
     } else {
       if (isMountedRef.current) setSaveStatus('saved')
     }
-  }, [accessToken, setSaveStatus, setFileId])
+  }, [accessToken, setSaveStatus])
 
+  // データ変更・タイトル変更どちらでも同じデバウンスタイマーを共有する
+  const scheduleSave = useCallback(() => {
+    if (!autoSave) return
+    setSaveStatus('unsaved')
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setSaveStatus('saving')
+      void performSave()
+    }, DEBOUNCE_MS)
+  }, [autoSave, performSave, setSaveStatus])
+
+  // ノード・エッジの変更で保存
   useEffect(() => {
-    const unsubscribe = useMapStore.subscribe(() => {
-      if (!autoSave) return
-      setSaveStatus('unsaved')
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        setSaveStatus('saving')
-        void performSave()
-      }, DEBOUNCE_MS)
-    })
-
+    const unsubscribe = useMapStore.subscribe(() => scheduleSave())
     return () => {
       unsubscribe()
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [autoSave, performSave, setSaveStatus])
+  }, [scheduleSave])
 
-  return { fileIdRef, setFileId, performSave }
+  // マップ名（mapTitle）の変更でも保存する。
+  // uiStore は subscribeWithSelector 未使用のため (state, prev) を受け取り、
+  // mapTitle 差分のみ拾ってパネル開閉等の他UI状態変更で無駄保存しない。
+  useEffect(() => {
+    const unsubscribe = useUIStore.subscribe((state, prev) => {
+      if (state.mapTitle !== prev.mapTitle) scheduleSave()
+    })
+    return () => unsubscribe()
+  }, [scheduleSave])
 }

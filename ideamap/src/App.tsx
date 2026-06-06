@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Header } from './components/common/Header'
 import { IdeaCanvas } from './components/canvas/IdeaCanvas'
@@ -31,10 +31,10 @@ function AppInner() {
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
   const { loadApiKey, theme } = useSettingsStore()
-  const { addToast, setMapTitle, openConfirmDialog, isFileDashboardOpen } = useUIStore()
+  const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen } = useUIStore()
   const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
-  const { setFileId } = useAutoSave(googleAuth.accessToken)
+  useAutoSave(googleAuth.accessToken)
 
   useEffect(() => {
     if (googleAuth.error) {
@@ -58,6 +58,8 @@ function AppInner() {
       onConfirm: () => {
         loadFromSerialized(mapData.nodes, mapData.edges)
         setMapTitle(mapData.title)
+        // 共有URL からのインポートは新規マップ扱い。前のマップの fileId を引き継いで上書きしない
+        setCurrentFileId(null)
         addToast(`「${mapData.title}」をインポートしました`, 'success')
       },
     })
@@ -74,13 +76,6 @@ function AppInner() {
     }
   }, [theme])
 
-  const handleMapLoaded = useCallback(
-    (fileId: string) => {
-      setFileId(fileId)
-    },
-    [setFileId]
-  )
-
   return (
     <div className="flex flex-col w-full h-full bg-gray-50 dark:bg-gray-900">
       <Header
@@ -96,10 +91,7 @@ function AppInner() {
       </div>
       <SettingsPanel accessToken={googleAuth.accessToken} />
       <AISuggestionPanel />
-      <MapListPanel
-        accessToken={googleAuth.accessToken}
-        onMapLoaded={handleMapLoaded}
-      />
+      <MapListPanel accessToken={googleAuth.accessToken} />
       <NodeDetailPanel />
       <ExportImportPanel />
       <MapAnalysisPanel />
@@ -114,7 +106,6 @@ function AppInner() {
           isSignedIn={googleAuth.isSignedIn}
           isGoogleLoading={googleAuth.isLoading}
           onGoogleSignIn={googleAuth.signIn}
-          onMapLoaded={handleMapLoaded}
         />
       )}
       {showWelcome && !isFileDashboardOpen && (

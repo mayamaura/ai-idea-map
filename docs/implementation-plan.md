@@ -534,6 +534,25 @@
 
 ---
 
+### Phase 15: Google Drive 保存のデータ消失バグ修正 ✅ 完了（2026-06-06）
+
+**背景**: 新規マップ作成・インポート時に「現在開いているファイルID」が前のマップのまま残り、自動保存が前のマップを `PATCH` 上書きして消失させていた。またノード・エッジを触らずタイトルだけ変更しても保存されなかった。
+
+**原因**: fileId が `useAutoSave` 内の `useRef` と localStorage に二重管理され、新規作成・インポートでは localStorage しかクリアされず ref に旧 fileId が残存。自動保存トリガーも mapStore 変更のみで `mapTitle` 変更を拾わなかった。
+
+#### タスク
+- [x] fileId を `uiStore.currentFileId` に一元化し、`setCurrentFileId`（localStorage 同期内包）を新設
+- [x] `useAutoSave` の `fileIdRef` を廃止し `currentFileId` を参照、保存後は `setCurrentFileId` で採番 id を反映
+- [x] `useAutoSave` に `mapTitle` 変更購読を追加（差分比較・デバウンス共有）でタイトル変更も自動保存
+- [x] 新規作成・Drive ロード・ローカルインポート・共有URLインポートを `setCurrentFileId` 経由に統一（インポートは `null`）
+- [x] `onMapLoaded` の props バケツリレーを撤去
+- [x] サインアウト時に `setCurrentFileId(null)` で現在ファイル参照をクリア
+- [x] `docs/design.md` / `requirements.md` を更新
+
+**完了条件**: 新規作成・インポート後の自動保存が既存マップを上書きせず別ファイルになる。タイトル変更のみでも保存される。サインアウトで fileId がクリアされる
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。

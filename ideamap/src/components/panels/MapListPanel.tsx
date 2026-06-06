@@ -2,17 +2,15 @@ import { useState, useEffect } from 'react'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { listMaps, loadMap, deleteMap } from '../../services/googleDriveService'
-import { saveDriveFileId } from '../../services/storageService'
 import type { DriveFile } from '../../services/googleDriveService'
 import type { MapFile } from '../../types'
 
 interface MapListPanelProps {
   accessToken: string | null
-  onMapLoaded: (fileId: string) => void
 }
 
-export function MapListPanel({ accessToken, onMapLoaded }: MapListPanelProps) {
-  const { isMapListOpen, setMapListOpen, setMapTitle, setSaveStatus } = useUIStore()
+export function MapListPanel({ accessToken }: MapListPanelProps) {
+  const { isMapListOpen, setMapListOpen, setMapTitle, setSaveStatus, setCurrentFileId } = useUIStore()
   const { loadFromSerialized, reset } = useMapStore()
 
   const [files, setFiles] = useState<DriveFile[]>([])
@@ -34,7 +32,7 @@ export function MapListPanel({ accessToken, onMapLoaded }: MapListPanelProps) {
   const handleNewMap = () => {
     reset()
     setMapTitle('新しいマップ')
-    saveDriveFileId(null)
+    setCurrentFileId(null)
     setSaveStatus('unsaved')
     setMapListOpen(false)
   }
@@ -46,7 +44,7 @@ export function MapListPanel({ accessToken, onMapLoaded }: MapListPanelProps) {
       const data = (await loadMap(accessToken, file.id)) as MapFile
       loadFromSerialized(data.nodes, data.edges)
       setMapTitle(data.title || file.name.replace(/\.json$/, ''))
-      onMapLoaded(file.id)
+      setCurrentFileId(file.id)
       setSaveStatus('saved')
       setMapListOpen(false)
     } catch {

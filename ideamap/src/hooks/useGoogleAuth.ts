@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { clearDriveCache } from '../services/googleDriveService'
+import { useUIStore } from '../stores/uiStore'
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -158,6 +159,8 @@ export function useGoogleAuth() {
     localStorage.removeItem(AUTO_AUTH_FLAG)
     clearTokenFromSession()
     clearDriveCache()
+    // 別アカウントへ切替時に前アカウントの fileId へ保存しないようクリア
+    useUIStore.getState().setCurrentFileId(null)
     setState({ isSignedIn: false, accessToken: null, isLoading: false, error: null })
   }, [state.accessToken])
 

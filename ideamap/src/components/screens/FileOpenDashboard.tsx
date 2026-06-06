@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { listMaps, loadMap } from '../../services/googleDriveService'
-import { saveDriveFileId, loadRecentMaps, saveRecentMap } from '../../services/storageService'
+import { loadRecentMaps, saveRecentMap } from '../../services/storageService'
 import type { DriveFile } from '../../services/googleDriveService'
 import type { MapFile } from '../../types'
 
@@ -12,7 +12,6 @@ interface FileOpenDashboardProps {
   isSignedIn: boolean
   isGoogleLoading: boolean
   onGoogleSignIn: () => void
-  onMapLoaded: (fileId: string) => void
 }
 
 export function FileOpenDashboard({
@@ -20,9 +19,8 @@ export function FileOpenDashboard({
   isSignedIn,
   isGoogleLoading,
   onGoogleSignIn,
-  onMapLoaded,
 }: FileOpenDashboardProps) {
-  const { isFileDashboardOpen, setFileDashboardOpen, setMapTitle, setSaveStatus, addToast } = useUIStore()
+  const { isFileDashboardOpen, setFileDashboardOpen, setMapTitle, setSaveStatus, setCurrentFileId, addToast } = useUIStore()
   const { loadFromSerialized, reset } = useMapStore()
 
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([])
@@ -46,7 +44,7 @@ export function FileOpenDashboard({
   const handleNewMap = () => {
     reset()
     setMapTitle('新しいマップ')
-    saveDriveFileId(null)
+    setCurrentFileId(null)
     setSaveStatus('unsaved')
     setFileDashboardOpen(false)
   }
@@ -59,7 +57,7 @@ export function FileOpenDashboard({
       loadFromSerialized(data.nodes, data.edges)
       const title = data.title || file.name.replace(/\.json$/, '')
       setMapTitle(title)
-      onMapLoaded(file.id)
+      setCurrentFileId(file.id)
       setSaveStatus('saved')
       saveRecentMap({ fileId: file.id, title, updatedAt: file.modifiedTime })
       setFileDashboardOpen(false)
@@ -79,7 +77,7 @@ export function FileOpenDashboard({
         const data = JSON.parse(ev.target?.result as string) as MapFile
         loadFromSerialized(data.nodes, data.edges)
         setMapTitle(data.title || file.name.replace(/\.json$/, ''))
-        saveDriveFileId(null)
+        setCurrentFileId(null)
         setSaveStatus('unsaved')
         setFileDashboardOpen(false)
       } catch {

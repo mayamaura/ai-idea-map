@@ -131,7 +131,7 @@ ideamap/
 
 ### 4.2 uiStore（src/stores/uiStore.ts）
 
-UIの表示状態を管理する。副作用なし。
+UIの表示状態と、現在開いているマップのメタ情報（タイトル・fileId）を管理する。原則副作用なしだが、例外として `setCurrentFileId` のみ fileId を localStorage（`ideamap-drive-fileid`）と同期する。
 
 | 状態 | 型 | 説明 |
 |------|-----|------|
@@ -145,6 +145,7 @@ UIの表示状態を管理する。副作用なし。
 | `isAILoading` | `boolean` | AI呼び出し中フラグ |
 | `saveStatus` | `SaveStatus` | `saved \| saving \| unsaved \| error` |
 | `mapTitle` | `string` | 現在のマップタイトル |
+| `currentFileId` | `string \| null` | 現在開いている Drive ファイルの ID（null=未保存の新規/インポート）。fileId の単一の真実源。`setCurrentFileId` で localStorage と同期 |
 | `toasts` | `Toast[]` | トースト通知リスト（4秒後自動削除） |
 | `contextMenu` | `ContextMenuState \| null` | 右クリックメニューの表示状態 |
 | `confirmDialog` | `ConfirmDialogState \| null` | 確認ダイアログの表示状態 |
@@ -492,12 +493,13 @@ Google Drive/
 
 - 既存ファイル（fileId あり）: `PATCH` で上書き
 - 新規ファイル: `POST` でマルチパートアップロード
-- ファイルIDは localStorage の `driveFileId` キーにキャッシュ
+- fileId は `uiStore.currentFileId` を単一の真実源とし、`setCurrentFileId` 経由で localStorage（`ideamap-drive-fileid`）に同期する。ロード／新規作成／インポート／保存後／サインアウトはすべてこのアクションを通すため、新規作成時に前マップの fileId が残って別ファイルを上書き消失させる事故を構造的に防ぐ
 
 ### 12.4 自動保存（src/hooks/useAutoSave.ts）
 
-- `useMapStore.subscribe()` でストア変更を監視
+- `useMapStore.subscribe()`（ノード・エッジ変更）に加え、`useUIStore.subscribe()` で `mapTitle` 変更も監視（差分比較で mapTitle のみ拾い、パネル開閉等の他UI状態変更では保存しない）。両者は同一デバウンスタイマーを共有
 - デバウンス: 変更から **3000ms** 後に保存実行
+- 保存先 fileId は `uiStore.currentFileId` を参照。`POST` で採番された id は `setCurrentFileId` で反映し、次回以降は同じファイルへ `PATCH`
 - 保存優先順位: Google Drive（accessToken あり）→ localStorage（オフライン）
 - 保存ステータスは `uiStore.saveStatus` で管理しヘッダーに表示
 
