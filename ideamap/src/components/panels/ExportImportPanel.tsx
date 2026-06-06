@@ -16,7 +16,7 @@ import {
 type Tab = 'export' | 'import' | 'share'
 
 export function ExportImportPanel() {
-  const { isExportPanelOpen, setExportPanelOpen, addToast, mapTitle, setMapTitle, openConfirmDialog } =
+  const { isExportPanelOpen, setExportPanelOpen, addToast, mapTitle, setMapTitle, currentMapId, openConfirmDialog } =
     useUIStore()
   const { nodes, edges, getSerializedNodes, getSerializedEdges, loadFromSerialized } = useMapStore()
   const { getViewport } = useReactFlow()
@@ -34,12 +34,14 @@ export function ExportImportPanel() {
 
   const getMapFile = useCallback((): MapFile => ({
     version: '1.0',
+    // エクスポート時は現在の mapId を保持（なければ空文字でフォールバック）
+    mapId: currentMapId ?? '',
     title: mapTitle,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     nodes: getSerializedNodes(),
     edges: getSerializedEdges(),
-  }), [mapTitle, getSerializedNodes, getSerializedEdges])
+  }), [currentMapId, mapTitle, getSerializedNodes, getSerializedEdges])
 
   if (!isExportPanelOpen) return null
 

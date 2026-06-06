@@ -20,7 +20,7 @@ export function FileOpenDashboard({
   isGoogleLoading,
   onGoogleSignIn,
 }: FileOpenDashboardProps) {
-  const { isFileDashboardOpen, setFileDashboardOpen, setMapTitle, setSaveStatus, setCurrentFileId, addToast } = useUIStore()
+  const { isFileDashboardOpen, setFileDashboardOpen, setMapTitle, setSaveStatus, setCurrentFileId, setCurrentMapId, addToast } = useUIStore()
   const { loadFromSerialized, reset } = useMapStore()
 
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([])
@@ -45,6 +45,7 @@ export function FileOpenDashboard({
     reset()
     setMapTitle('新しいマップ')
     setCurrentFileId(null)
+    setCurrentMapId(null)
     setSaveStatus('unsaved')
     setFileDashboardOpen(false)
   }
@@ -53,11 +54,12 @@ export function FileOpenDashboard({
     if (!accessToken) return
     setIsDriveLoading(true)
     try {
-      const data = (await loadMap(accessToken, file.id)) as MapFile
+      const data = (await loadMap(accessToken, file.id)) as MapFile & { mapId?: string }
       loadFromSerialized(data.nodes, data.edges)
       const title = data.title || file.name.replace(/\.json$/, '')
       setMapTitle(title)
       setCurrentFileId(file.id)
+      setCurrentMapId(data.mapId ?? null)
       setSaveStatus('saved')
       saveRecentMap({ fileId: file.id, title, updatedAt: file.modifiedTime })
       setFileDashboardOpen(false)
@@ -74,10 +76,11 @@ export function FileOpenDashboard({
     const reader = new FileReader()
     reader.onload = (ev) => {
       try {
-        const data = JSON.parse(ev.target?.result as string) as MapFile
+        const data = JSON.parse(ev.target?.result as string) as MapFile & { mapId?: string }
         loadFromSerialized(data.nodes, data.edges)
         setMapTitle(data.title || file.name.replace(/\.json$/, ''))
         setCurrentFileId(null)
+        setCurrentMapId(data.mapId ?? null)
         setSaveStatus('unsaved')
         setFileDashboardOpen(false)
       } catch {

@@ -75,14 +75,17 @@ export async function saveMap(
   token: string,
   title: string,
   content: unknown,
-  fileId?: string | null
+  fileId?: string | null,
+  mapId?: string | null
 ): Promise<string> {
   const fileName = `${title}.json`
   const fileBlob = new Blob([JSON.stringify(content, null, 2)], { type: MIME_JSON })
+  // appProperties に mapId を保存することで、ファイル内容をダウンロードせず衝突チェックが可能
+  const appProperties = mapId ? { mapId } : undefined
 
   if (fileId) {
     const form = new FormData()
-    form.append('metadata', new Blob([JSON.stringify({ name: fileName })], { type: MIME_JSON }))
+    form.append('metadata', new Blob([JSON.stringify({ name: fileName, appProperties })], { type: MIME_JSON }))
     form.append('file', fileBlob)
     await driveRequest(`${UPLOAD_API}/files/${fileId}?uploadType=multipart`, token, {
       method: 'PATCH',
@@ -96,7 +99,7 @@ export async function saveMap(
   form.append(
     'metadata',
     new Blob(
-      [JSON.stringify({ name: fileName, mimeType: MIME_JSON, parents: [folderId] })],
+      [JSON.stringify({ name: fileName, mimeType: MIME_JSON, parents: [folderId], appProperties })],
       { type: MIME_JSON }
     )
   )
@@ -108,6 +111,19 @@ export async function saveMap(
   )
   const data = (await res.json()) as { id: string }
   return data.id
+}
+
+/** Drive ファイルの appProperties.mapId を取得する（衝突チェック用軽量メタデータ照合）*/
+export async function fetchMapAppProperties(
+  token: string,
+  fileId: string
+): Promise<{ mapId: string | null }> {
+  const res = await driveRequest(
+    `${DRIVE_API}/files/${fileId}?fields=appProperties`,
+    token
+  )
+  const data = (await res.json()) as { appProperties?: { mapId?: string } }
+  return { mapId: data.appProperties?.mapId ?? null }
 }
 
 export async function loadMap(token: string, fileId: string): Promise<unknown> {

@@ -553,6 +553,26 @@
 
 ---
 
+### Phase 16: mapId による衝突検出 ✅ 完了（2026-06-06）
+
+**背景**: マップ名が同じ別プロジェクトが Drive 上に存在したとき、または複数デバイスで同一ファイルを同時編集したとき、一方のデータが無警告で上書きされてしまう可能性があった。
+
+**解決策**: マップの論理的同一性を表す UUID（mapId）を JSON ファイルに埋め込み、Drive の `appProperties` にも保存することで、ファイル内容をダウンロードせずに軽量な衝突チェックを実現。
+
+#### タスク
+- [x] `types/index.ts`: `MapFile.mapId: string` を追加、`SaveStatus` に `'conflict'` を追加
+- [x] `uiStore.ts`: `currentMapId` + `setCurrentMapId`、`ConfirmDialogState.secondaryAction` を追加
+- [x] `googleDriveService.ts`: `saveMap` に `appProperties: { mapId }` 追加（POST/PATCH 両方）、`fetchMapAppProperties` 新関数追加
+- [x] `useAutoSave.ts`: 衝突検出ロジック組み込み（セッション初回 PATCH 前チェック + バックグラウンド 60 秒後復帰チェック）、mapId 生成（POST 時に uuidv4）、`isSuspended` 管理
+- [x] `ConfirmDialog.tsx`: `secondaryAction` ボタン（3択）を追加
+- [x] `Header.tsx`: `'conflict'` saveStatus の表示（「競合あり」オレンジ文字）を追加
+- [x] `MapListPanel.tsx` / `FileOpenDashboard.tsx`: ロード時に `setCurrentMapId` 呼び出し、新規作成・インポート時に `null` をセット
+- [x] `ExportImportPanel.tsx`: 手動エクスポート時の `MapFile` に `mapId` を含める
+
+**完了条件**: 別デバイスで上書きされたファイルを編集しようとすると衝突ダイアログが表示され、「最新版を読み込む」「上書き保存」「キャンセル」の3択で対応できる。後方互換として mapId のない旧ファイルは次回保存時に mapId が付与される。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。

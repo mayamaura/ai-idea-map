@@ -284,6 +284,7 @@ interface IdeaNodeData extends Record<string, unknown> {
 
 interface MapFile {
   version: string
+  mapId: string        // マップの論理的同一性を表す UUID（作成時に1度だけ付与、ファイル名変更後も不変）
   title: string
   createdAt: string    // ISO 8601
   updatedAt: string    // ISO 8601
@@ -318,7 +319,7 @@ interface AISuggestion {
 
 type Theme = 'light' | 'dark'
 type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
-type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'
+type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
 type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
 
@@ -494,6 +495,7 @@ Google Drive/
 - 既存ファイル（fileId あり）: `PATCH` で上書き
 - 新規ファイル: `POST` でマルチパートアップロード
 - fileId は `uiStore.currentFileId` を単一の真実源とし、`setCurrentFileId` 経由で localStorage（`ideamap-drive-fileid`）に同期する。ロード／新規作成／インポート／保存後／サインアウトはすべてこのアクションを通すため、新規作成時に前マップの fileId が残って別ファイルを上書き消失させる事故を構造的に防ぐ
+- 保存時は Drive ファイルの `appProperties: { mapId }` も更新する。`appProperties` は JSON 内容をダウンロードせずに照合できる軽量なメタデータとして衝突チェックに使用
 
 ### 12.4 自動保存（src/hooks/useAutoSave.ts）
 
@@ -502,6 +504,32 @@ Google Drive/
 - 保存先 fileId は `uiStore.currentFileId` を参照。`POST` で採番された id は `setCurrentFileId` で反映し、次回以降は同じファイルへ `PATCH`
 - 保存優先順位: Google Drive（accessToken あり）→ localStorage（オフライン）
 - 保存ステータスは `uiStore.saveStatus` で管理しヘッダーに表示
+
+### 12.5 mapId 衝突検出
+
+マップの「論理的同一性」を表す UUID（`mapId`）を利用して、別デバイスや別プロジェクトによる上書き事故を検出する。
+
+**チェックタイミング（API 頻度最適化）:**
+- セッション開始後の最初の PATCH 前（`hasCheckedThisSession` ref）
+- タブが 60 秒以上バックグラウンドになった後に復帰したとき（`visibilitychange` 監視）
+
+**衝突判定:**
+```
+fetchMapAppProperties(token, fileId) → { mapId: string | null }
+  ↓
+remote.mapId ≠ currentMapId → 衝突検出
+```
+
+**衝突時の動作:**
+1. 自動保存を `isSuspended` フラグで一時停止
+2. `saveStatus = 'conflict'`（ヘッダーに「競合あり」オレンジ表示）
+3. `ConfirmDialog` に3択ボタンを表示（`ConfirmDialogState.secondaryAction` を利用）:
+   - 「最新版を読み込む」: Drive から再ロードして自分の編集を破棄
+   - 「上書き保存」（danger）: チェックをスキップして PATCH を強制実行
+   - 「キャンセル」: 自動保存停止のまま閉じる
+
+**後方互換:**
+- `appProperties.mapId` がない旧ファイルは衝突チェックをスキップし、次回保存時に付与する
 
 ---
 

@@ -8,6 +8,7 @@ const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
   saving: { text: '保存中...', color: 'text-yellow-500' },
   unsaved: { text: '未保存', color: 'text-gray-400' },
   error: { text: '保存エラー', color: 'text-red-500' },
+  conflict: { text: '競合あり', color: 'text-orange-500' },
 }
 
 interface HeaderProps {

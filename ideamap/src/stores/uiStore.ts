@@ -29,6 +29,11 @@ export interface ConfirmDialogState {
   danger?: boolean
   onConfirm: () => void
   onCancel?: () => void
+  /** 3択が必要な場合（衝突ダイアログ等）に使うオプションの中央ボタン */
+  secondaryAction?: {
+    label: string
+    onClick: () => void
+  }
 }
 
 interface UIState {
@@ -44,6 +49,8 @@ interface UIState {
   mapTitle: string
   /** 現在開いている Drive ファイルの ID（null=未保存の新規/インポート）。fileId の単一の真実源 */
   currentFileId: string | null
+  /** 現在開いているマップの論理 ID（JSON 内 mapId と同値）。セッション内メモリのみ、localStorage 不要 */
+  currentMapId: string | null
   toasts: Toast[]
   contextMenu: ContextMenuState | null
   confirmDialog: ConfirmDialogState | null
@@ -78,6 +85,7 @@ interface UIState {
   setSaveStatus: (status: SaveStatus) => void
   setMapTitle: (title: string) => void
   setCurrentFileId: (id: string | null) => void
+  setCurrentMapId: (id: string | null) => void
   addToast: (message: string, type: Toast['type']) => void
   removeToast: (id: string) => void
   openContextMenu: (menu: ContextMenuState) => void
@@ -118,6 +126,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapTitle: '新しいマップ',
   // リロード後も同じファイルへ保存を継続できるよう localStorage から復元
   currentFileId: loadDriveFileId(),
+  currentMapId: null,
   toasts: [],
   contextMenu: null,
   confirmDialog: null,
@@ -157,6 +166,7 @@ export const useUIStore = create<UIState>((set) => ({
     saveDriveFileId(id)
     set({ currentFileId: id })
   },
+  setCurrentMapId: (id) => set({ currentMapId: id }),
   addToast: (message, type) => {
     const id = uuidv4()
     set((state) => ({ toasts: [...state.toasts, { id, message, type }] }))

@@ -20,6 +20,8 @@ export interface IdeaEdgeData {
 
 export interface MapFile {
   version: string
+  /** マップの論理的同一性を表す UUID（作成時に1度だけ付与、ファイル名変更後も不変） */
+  mapId: string
   title: string
   createdAt: string
   updatedAt: string
@@ -84,5 +86,5 @@ export interface ClusterSuggestion {
 
 export type Theme = 'light' | 'dark'
 export type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
-export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'

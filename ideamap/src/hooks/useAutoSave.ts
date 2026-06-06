@@ -1,18 +1,27 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { useMapStore } from '../stores/mapStore'
 import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
-import { saveMap } from '../services/googleDriveService'
+import { saveMap, fetchMapAppProperties, loadMap } from '../services/googleDriveService'
 import { saveMapLocally } from '../services/storageService'
 import type { MapFile } from '../types'
 
 const DEBOUNCE_MS = 3000
+/** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
+const FOCUS_RECHECK_MS = 60_000
 
 export function useAutoSave(accessToken: string | null) {
   const { setSaveStatus } = useUIStore()
   const { autoSave } = useSettingsStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMountedRef = useRef(true)
+  /** 自動保存を一時停止中（衝突ダイアログ表示中）フラグ */
+  const isSuspendedRef = useRef(false)
+  /** 今セッションで最初の PATCH 前チェックを済ませたか */
+  const hasCheckedThisSessionRef = useRef(false)
+  /** window がバックグラウンドになった時刻 */
+  const hiddenAtRef = useRef<number | null>(null)
 
   useEffect(() => {
     isMountedRef.current = true
@@ -21,13 +30,49 @@ export function useAutoSave(accessToken: string | null) {
     }
   }, [])
 
+  // currentFileId が変わったら（別ファイルをロードした）チェック済みフラグをリセット
+  useEffect(() => {
+    const unsub = useUIStore.subscribe((state, prev) => {
+      if (state.currentFileId !== prev.currentFileId) {
+        hasCheckedThisSessionRef.current = false
+        isSuspendedRef.current = false
+      }
+    })
+    return () => unsub()
+  }, [])
+
+  // タブが長時間バックグラウンドになった後に戻ったら再チェックを促す
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenAtRef.current = Date.now()
+      } else {
+        if (hiddenAtRef.current !== null && Date.now() - hiddenAtRef.current >= FOCUS_RECHECK_MS) {
+          hasCheckedThisSessionRef.current = false
+        }
+        hiddenAtRef.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
+
   const performSave = useCallback(async () => {
+    if (isSuspendedRef.current) return
+
     const { getSerializedNodes, getSerializedEdges } = useMapStore.getState()
-    // fileId は uiStore を単一の真実源として都度読む（クロージャに古い値を固定しない）
-    const { mapTitle, currentFileId, setCurrentFileId } = useUIStore.getState()
+    // fileId・mapId・mapTitle はクロージャに固定せず都度読む
+    const { mapTitle, currentFileId, currentMapId, setCurrentFileId, setCurrentMapId, openConfirmDialog, setSaveStatus: setSS } = useUIStore.getState()
+    const { loadFromSerialized } = useMapStore.getState()
+
+    // POST 新規作成の場合は mapId を確定する
+    const effectiveMapId = currentFileId
+      ? (currentMapId ?? null)
+      : (currentMapId ?? uuidv4())
 
     const mapFile: MapFile = {
       version: '1.0',
+      mapId: effectiveMapId ?? uuidv4(),
       title: mapTitle,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -39,10 +84,58 @@ export function useAutoSave(accessToken: string | null) {
 
     if (accessToken) {
       try {
-        const newId = await saveMap(accessToken, mapTitle, mapFile, currentFileId)
+        // PATCH の場合：最初の保存 or バックグラウンド復帰後に衝突チェック
+        if (currentFileId && !hasCheckedThisSessionRef.current) {
+          const remote = await fetchMapAppProperties(accessToken, currentFileId)
+          if (remote.mapId !== null && remote.mapId !== effectiveMapId) {
+            // 衝突検出：自動保存を一時停止してダイアログを表示
+            isSuspendedRef.current = true
+            if (isMountedRef.current) {
+              setSS('conflict')
+              openConfirmDialog({
+                title: `「${mapTitle}」で競合が検出されました`,
+                message:
+                  'このファイルは別のデバイスまたは別のプロジェクトの内容で更新されています。' +
+                  '自分の編集内容を上書き保存すると、Drive 上の別の内容が失われます。',
+                confirmLabel: '上書き保存',
+                danger: true,
+                secondaryAction: {
+                  label: '最新版を読み込む',
+                  onClick: async () => {
+                    // Drive から最新版を再ロード
+                    const data = (await loadMap(accessToken, currentFileId)) as MapFile & { mapId?: string }
+                    loadFromSerialized(data.nodes, data.edges)
+                    useUIStore.getState().setMapTitle(data.title || mapTitle)
+                    setCurrentMapId(data.mapId ?? null)
+                    hasCheckedThisSessionRef.current = true
+                    isSuspendedRef.current = false
+                    setSS('saved')
+                  },
+                },
+                onConfirm: () => {
+                  // 強制上書き：チェック済みにしてすぐ保存を再開
+                  hasCheckedThisSessionRef.current = true
+                  isSuspendedRef.current = false
+                  void performSave()
+                },
+                onCancel: () => {
+                  // 自動保存は停止したまま（saveStatus='conflict'）
+                },
+              })
+            }
+            return
+          }
+          hasCheckedThisSessionRef.current = true
+        }
+
+        const newId = await saveMap(accessToken, mapTitle, mapFile, currentFileId, mapFile.mapId)
         if (isMountedRef.current) {
-          // POST で採番された id を反映し、次回以降は同じファイルへ PATCH する
-          setCurrentFileId(newId)
+          if (!currentFileId) {
+            // POST で採番された id と mapId を確定
+            setCurrentFileId(newId)
+            setCurrentMapId(mapFile.mapId)
+            hasCheckedThisSessionRef.current = true
+          }
           setSaveStatus('saved')
         }
       } catch (err) {
