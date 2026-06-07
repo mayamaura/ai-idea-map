@@ -290,7 +290,7 @@ export function AISuggestionPanel() {
 
           {/* エラー */}
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 whitespace-pre-wrap">
               {error}
             </div>
           )}

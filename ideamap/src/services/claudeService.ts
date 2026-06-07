@@ -97,9 +97,17 @@ ${categoryList}
   if (content.type !== 'text') throw new Error('予期しないレスポンス形式です')
 
   const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした')
+  if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした。もう一度お試しください。')
 
-  const parsed = JSON.parse(jsonMatch[0]) as { suggestions: AISuggestion[] }
+  let parsed: { suggestions: AISuggestion[] }
+  try {
+    parsed = JSON.parse(jsonMatch[0]) as { suggestions: AISuggestion[] }
+  } catch (e) {
+    throw new Error(
+      `AIの応答形式が不正でした。もう一度お試しください。\n詳細: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    )
+  }
   if (!Array.isArray(parsed.suggestions)) throw new Error('AIからの応答形式が正しくありません')
 
   return parsed.suggestions.slice(0, req.count)
