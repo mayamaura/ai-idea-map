@@ -563,30 +563,33 @@
 
 ---
 
-### Phase 15: プレゼンテーションモード（約3日）
+### Phase 15: プレゼンテーションモード（約3日） ✅ 完了（2026-06-07）
 
 **目標**: 作成したマップをそのままプレゼンテーションに使える
 
 #### 設計方針
 - ノードに「発表順序」番号を付け、順番にズームしながら焦点を当てる
-- フルスクリーン表示＋ナビゲーションボタン（前へ/次へ）
+- ヘッダー・ツールバー非表示のフルスクリーン表示＋ナビゲーション
 - 各ノードのタイトルと本文を大きく表示するスライドビュー
 
 #### タスク
 
 **プレゼンモード UI** (`src/components/screens/PresentationMode.tsx`)
-- [ ] `IdeaNodeData` に `presentationOrder?: number` フィールドを追加
-- [ ] `uiStore` に `isPresentationMode`, `presentationNodeIds`, `currentPresentationIndex` を追加
-- [ ] ツールバーに「発表モード」ボタン追加（Ctrl+P でトグル）
-- [ ] ノード右クリック → 「発表に追加」「発表から除外」メニュー追加
-- [ ] 発表モード時：フルスクリーン、選択ノードにズーム、他ノードを暗く
-  - 「次へ」(→キー / スペース) で次のノードへfitViewアニメーション
-  - 「前へ」(←キー) で前のノードへ戻る
-  - Escキーで発表モード終了
-- [ ] 各ノード左上に発表順序番号バッジを表示（発表モード中のみ）
-- [ ] サイドパネル：現在のノードのタイトル＋本文を大きく表示（プレゼン用スライドビュー）
+- [x]✅ `uiStore` に `isPresentationMode`, `presentationNodeIds`, `presentationCurrentIndex` を追加
+- [x]✅ `uiStore` に発表モード操作アクション（`startPresentation`, `exitPresentation`, `goToNextPresentation`, `goToPrevPresentation`, `addNodeToPresentation`, `removeNodeFromPresentation`, `clearPresentationNodes`）を追加
+- [x]✅ ツールバーに「発表 (N)」ボタン追加（Ctrl+P でトグル、リスト空のとき disabled）
+- [x]✅ ノード右クリック → 「発表に追加（N番目）」「発表から除外（N番目）」メニュー追加
+- [x]✅ 発表モード時：ヘッダー・ツールバー非表示、カレントノードにfitViewズーム（600ms）、他ノードを opacity: 0.1 でdim
+- [x]✅ 「次へ」(→キー / スペース) で次のノードへfitViewアニメーション
+- [x]✅ 「前へ」(←キー) で前のノードへ戻る
+- [x]✅ Escキーで発表モード終了（発表リスト・進捗はリセット）
+- [x]✅ 各ノード右上に発表順序番号バッジを表示（発表リストに追加済みのとき常時表示）
+- [x]✅ 右スライドパネル：現在のノードのタイトル＋本文を大きく表示（プレゼン用スライドビュー）
+- [x]✅ 下部ナビバー：前へ/次へ/終了ボタン + X/N カウンター + ドットインジケーター
+- [x]✅ 発表モード中は Space/→/← 以外のショートカットをすべてブロック
+- [x]✅ `IdeaCanvas` で発表モード中 `nodesDraggable={false}` 等を設定（Space キー競合防止）
 
-**完了条件**: ノードに順序を割り当て、キーボード操作でプレゼンテーションを進められる
+**完了条件**: ノードに順序を割り当て、キーボード操作でプレゼンテーションを進められる ✅
 
 ---
 

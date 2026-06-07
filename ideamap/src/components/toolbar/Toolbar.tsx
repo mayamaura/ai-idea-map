@@ -10,7 +10,7 @@ import type { Node } from '@xyflow/react'
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
   const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen } = useUIStore()
+  const { selectedNodeId, setSelectedNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, startPresentation } = useUIStore()
   const { categories } = useSettingsStore()
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
@@ -227,6 +227,35 @@ export function Toolbar() {
           </div>
         )}
       </div>
+
+      <div className="w-px h-6 bg-gray-200 mx-1" />
+
+      {/* 発表モード */}
+      <button
+        onClick={startPresentation}
+        disabled={presentationNodeIds.length === 0}
+        title={
+          presentationNodeIds.length === 0
+            ? '右クリックメニューからノードを発表リストに追加してください'
+            : `発表モード開始 (Ctrl+P) — ${presentationNodeIds.length}件`
+        }
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
+          presentationNodeIds.length > 0
+            ? 'text-indigo-600 border-indigo-300 bg-indigo-50 hover:bg-indigo-100'
+            : 'text-gray-400 border-gray-200 cursor-not-allowed'
+        }`}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        発表
+        {presentationNodeIds.length > 0 && (
+          <span className="bg-indigo-500 text-white rounded-full text-[10px] w-4 h-4 flex items-center justify-center leading-none">
+            {presentationNodeIds.length}
+          </span>
+        )}
+      </button>
 
       <div className="w-px h-6 bg-gray-200 mx-1" />
 

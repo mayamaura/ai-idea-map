@@ -163,6 +163,9 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `isChatPanelOpen` | `boolean` | AIチャットパネルの開閉（Phase 14） |
 | `chatMessages` | `ChatMessage[]` | チャット履歴（セッションメモリのみ、最大40件）（Phase 14） |
 | `isChatLoading` | `boolean` | AIチャット応答待ちフラグ（Phase 14） |
+| `isPresentationMode` | `boolean` | 発表モード中フラグ（Phase 15） |
+| `presentationNodeIds` | `string[]` | 発表順序を保持したノードIDリスト（Phase 15） |
+| `presentationCurrentIndex` | `number` | 現在表示中のインデックス（0-based）（Phase 15） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 
@@ -190,6 +193,19 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 - `useGoogleAuth()` — Google認証状態管理
 
 テーマ適用: `settingsStore.theme` に応じて `<html>` の `dark` クラスを切替。
+
+発表モード中（`isPresentationMode: true`）: ヘッダー・NodePanel・各種サイドパネルを非表示。`PresentationMode` コンポーネントが全面オーバーレイとして表示される。
+
+### 5.1.1 PresentationMode（src/components/screens/PresentationMode.tsx）
+
+`createPortal(content, document.body)` で `<body>` 直下にレンダリング（z-index: 100）。`isPresentationMode: false` のとき `null` を返す。
+
+内部で `useReactFlow().fitView` を呼び出し、`presentationCurrentIndex` が変わるたびにカレントノードへズームアニメーション（duration: 600ms, padding: 0.4, maxZoom: 1.5）。
+
+**レイアウト:**
+- 左エリア（`flex-1`）: `pointer-events: none` でキャンバスへのクリックをスルー
+- 右スライドパネル（`w-[480px]`）: カレントノードのタイトル（text-4xl）＋本文（text-xl）＋ドットインジケーター
+- 下部ナビバー（`fixed bottom-0`）: 前へ/次へボタン、X/N カウンター、終了ボタン
 
 ### 5.2 IdeaCanvas（src/components/canvas/IdeaCanvas.tsx）
 
@@ -249,7 +265,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 | メニュー種別 | 表示項目 |
 |---|---|
-| node | 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / カテゴリを変更 / 接続線のみ削除 / ノードを削除 |
+| node | 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / 接続線のみ削除 / ノードを削除 |
 | edge | 向きを反転 / 双方向切替 / ラベルを編集 / 線を削除 |
 | pane | アイデアを作成 / ここに貼り付け |
 
@@ -573,6 +589,18 @@ remote.mapId ≠ currentMapId → 衝突検出
 | `Ctrl+V` | ペースト（36px オフセット） |
 | `Delete` / `Backspace` | 選択中ノード・エッジを削除（確認なし） |
 | `Tab` | 選択ノードから接続された子ノードを作成 |
+| `Ctrl+F` | 検索バーをトグル |
+| `Ctrl+/` | キーボードショートカット一覧を表示 |
+| `Ctrl+Shift+C` | AIチャットパネルをトグル |
+| `Ctrl+P` | 発表モード開始（発表リストが空のとき無効） |
+
+**発表モード中のショートカット（他はすべてブロック）:**
+
+| ショートカット | 動作 |
+|---|---|
+| `→` / `Space` | 次のノードへ移動 |
+| `←` | 前のノードへ戻る |
+| `Esc` | 発表モードを終了 |
 
 **抑制条件**（以下が表示中はショートカットを無効化）:
 - 設定パネル（`isSettingsOpen`）

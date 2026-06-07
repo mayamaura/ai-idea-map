@@ -11,6 +11,7 @@ import { ExportImportPanel } from './components/panels/ExportImportPanel'
 import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
 import { AIChatPanel } from './components/panels/AIChatPanel'
 import { FileOpenDashboard } from './components/screens/FileOpenDashboard'
+import { PresentationMode } from './components/screens/PresentationMode'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
@@ -32,7 +33,7 @@ function AppInner() {
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
   const { loadApiKey, theme } = useSettingsStore()
-  const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen } = useUIStore()
+  const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen, isPresentationMode } = useUIStore()
   const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
   useAutoSave(googleAuth.accessToken)
@@ -79,29 +80,36 @@ function AppInner() {
 
   return (
     <div className="flex flex-col w-full h-full bg-gray-50 dark:bg-gray-900">
-      <Header
-        isSignedIn={googleAuth.isSignedIn}
-        isGoogleLoading={googleAuth.isLoading}
-        clientIdMissing={googleAuth.clientIdMissing}
-        onGoogleSignIn={googleAuth.signIn}
-        onGoogleSignOut={googleAuth.signOut}
-      />
+      {!isPresentationMode && (
+        <Header
+          isSignedIn={googleAuth.isSignedIn}
+          isGoogleLoading={googleAuth.isLoading}
+          clientIdMissing={googleAuth.clientIdMissing}
+          onGoogleSignIn={googleAuth.signIn}
+          onGoogleSignOut={googleAuth.signOut}
+        />
+      )}
       <div className="flex flex-1 min-h-0">
         <IdeaCanvas />
-        <NodePanel />
+        {!isPresentationMode && <NodePanel />}
       </div>
-      <SettingsPanel accessToken={googleAuth.accessToken} />
-      <AISuggestionPanel />
-      <MapListPanel accessToken={googleAuth.accessToken} />
-      <NodeDetailPanel />
-      <ExportImportPanel />
-      <MapAnalysisPanel />
-      <AIChatPanel />
+      {!isPresentationMode && (
+        <>
+          <SettingsPanel accessToken={googleAuth.accessToken} />
+          <AISuggestionPanel />
+          <MapListPanel accessToken={googleAuth.accessToken} />
+          <NodeDetailPanel />
+          <ExportImportPanel />
+          <MapAnalysisPanel />
+          <AIChatPanel />
+        </>
+      )}
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />
       <SearchBar />
       <KeyboardShortcutsModal />
+      <PresentationMode />
       {isFileDashboardOpen && (
         <FileOpenDashboard
           accessToken={googleAuth.accessToken}

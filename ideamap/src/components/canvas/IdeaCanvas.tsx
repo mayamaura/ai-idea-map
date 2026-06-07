@@ -96,7 +96,16 @@ const edgeTypes: EdgeTypes = {
 
 export function IdeaCanvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, pendingFitView, clearPendingFitView } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, openContextMenu, closeContextMenu, setDragOverGroupId } = useUIStore()
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    openContextMenu,
+    closeContextMenu,
+    setDragOverGroupId,
+    isPresentationMode,
+    presentationNodeIds,
+    presentationCurrentIndex,
+  } = useUIStore()
   const { screenToFlowPosition, fitView } = useReactFlow()
 
   useEffect(() => {
@@ -185,7 +194,14 @@ export function IdeaCanvas() {
   )
 
   // フォーカスモード: 選択ノードとその直接接続だけを明るく表示
+  // 発表モード: カレントノードのみフル表示、他は opacity: 0.1
   const displayNodes = useMemo(() => {
+    if (isPresentationMode && presentationNodeIds.length > 0) {
+      const currentNodeId = presentationNodeIds[presentationCurrentIndex]
+      return nodes.map((n) =>
+        n.id === currentNodeId ? n : { ...n, style: { ...n.style, opacity: 0.1 } }
+      )
+    }
     if (!selectedNodeId) return nodes
     const highlightIds = new Set<string>([selectedNodeId])
     edges.forEach((e) => {
@@ -199,16 +215,19 @@ export function IdeaCanvas() {
     return nodes.map((n) =>
       highlightIds.has(n.id) ? n : { ...n, style: { ...n.style, opacity: 0.15 } }
     )
-  }, [nodes, edges, selectedNodeId])
+  }, [nodes, edges, selectedNodeId, isPresentationMode, presentationNodeIds, presentationCurrentIndex])
 
   const displayEdges = useMemo(() => {
+    if (isPresentationMode) {
+      return edges.map((e) => ({ ...e, style: { ...e.style, opacity: 0.05 } }))
+    }
     if (!selectedNodeId) return edges
     return edges.map((e) =>
       e.source === selectedNodeId || e.target === selectedNodeId
         ? e
         : { ...e, style: { ...e.style, opacity: 0.1 } }
     )
-  }, [edges, selectedNodeId])
+  }, [edges, selectedNodeId, isPresentationMode])
 
   const isEmpty = nodes.length === 0
 
@@ -237,6 +256,10 @@ export function IdeaCanvas() {
           panOnScroll
           minZoom={0.1}
           maxZoom={3}
+          nodesDraggable={!isPresentationMode}
+          nodesConnectable={!isPresentationMode}
+          elementsSelectable={!isPresentationMode}
+          panOnDrag={!isPresentationMode}
         >
           <Background color="#e5e7eb" gap={20} size={1} />
           <Controls showInteractive={false} className="!shadow-md !rounded-xl !border !border-gray-200" />
@@ -259,9 +282,9 @@ export function IdeaCanvas() {
           </div>
         )}
       </div>
-      <Toolbar />
-      <BottomNav />
-      <NodeActionBar />
+      {!isPresentationMode && <Toolbar />}
+      {!isPresentationMode && <BottomNav />}
+      {!isPresentationMode && <NodeActionBar />}
     </div>
   )
 }

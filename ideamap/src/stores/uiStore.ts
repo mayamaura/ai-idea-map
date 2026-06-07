@@ -71,6 +71,10 @@ interface UIState {
   isChatPanelOpen: boolean
   chatMessages: ChatMessage[]
   isChatLoading: boolean
+  // Phase 15: プレゼンテーションモード
+  isPresentationMode: boolean
+  presentationNodeIds: string[]
+  presentationCurrentIndex: number
   // Phase 12: グループ操作
   dragOverGroupId: string | null
   setDragOverGroupId: (id: string | null) => void
@@ -110,6 +114,14 @@ interface UIState {
   addChatMessage: (message: ChatMessage) => void
   setChatLoading: (loading: boolean) => void
   clearChatHistory: () => void
+  // Phase 15: プレゼンテーションモード
+  startPresentation: () => void
+  exitPresentation: () => void
+  goToNextPresentation: () => void
+  goToPrevPresentation: () => void
+  addNodeToPresentation: (nodeId: string) => void
+  removeNodeFromPresentation: (nodeId: string) => void
+  clearPresentationNodes: () => void
   // Phase 11: デバイス間連携
   setFileDashboardOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
@@ -149,6 +161,9 @@ export const useUIStore = create<UIState>((set) => ({
   isChatPanelOpen: false,
   chatMessages: [],
   isChatLoading: false,
+  isPresentationMode: false,
+  presentationNodeIds: [],
+  presentationCurrentIndex: 0,
   dragOverGroupId: null,
   setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
   isFileDashboardOpen: true,
@@ -208,6 +223,47 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-40) })),
   setChatLoading: (loading) => set({ isChatLoading: loading }),
   clearChatHistory: () => set({ chatMessages: [] }),
+  startPresentation: () =>
+    set({
+      isPresentationMode: true,
+      presentationCurrentIndex: 0,
+      isAIPanelOpen: false,
+      isChatPanelOpen: false,
+      isAnalysisPanelOpen: false,
+      isSettingsOpen: false,
+      isExportPanelOpen: false,
+      isMapListOpen: false,
+      isNodeDetailOpen: false,
+      isSearchOpen: false,
+      contextMenu: null,
+    }),
+  exitPresentation: () => set({ isPresentationMode: false, presentationCurrentIndex: 0 }),
+  goToNextPresentation: () =>
+    set((state) => ({
+      presentationCurrentIndex: Math.min(
+        state.presentationCurrentIndex + 1,
+        state.presentationNodeIds.length - 1
+      ),
+    })),
+  goToPrevPresentation: () =>
+    set((state) => ({
+      presentationCurrentIndex: Math.max(state.presentationCurrentIndex - 1, 0),
+    })),
+  addNodeToPresentation: (nodeId) =>
+    set((state) =>
+      state.presentationNodeIds.includes(nodeId)
+        ? {}
+        : { presentationNodeIds: [...state.presentationNodeIds, nodeId] }
+    ),
+  removeNodeFromPresentation: (nodeId) =>
+    set((state) => {
+      const newIds = state.presentationNodeIds.filter((id) => id !== nodeId)
+      return {
+        presentationNodeIds: newIds,
+        presentationCurrentIndex: Math.min(state.presentationCurrentIndex, Math.max(0, newIds.length - 1)),
+      }
+    }),
+  clearPresentationNodes: () => set({ presentationNodeIds: [], presentationCurrentIndex: 0 }),
   setAnalysisLoading: (loading) => set({ isAnalysisLoading: loading }),
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
   setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),

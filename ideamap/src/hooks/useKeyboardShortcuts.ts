@@ -16,6 +16,27 @@ export function useKeyboardShortcuts() {
       const map = useMapStore.getState()
       const ui = useUIStore.getState()
 
+      // 発表モード中は専用キーのみ処理（他は全てブロック）
+      if (ui.isPresentationMode) {
+        if (e.key === 'ArrowRight' || e.key === ' ') {
+          e.preventDefault()
+          ui.goToNextPresentation()
+          return
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault()
+          ui.goToPrevPresentation()
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          ui.exitPresentation()
+          return
+        }
+        e.preventDefault()
+        return
+      }
+
       // Ctrl+F: 検索バーをトグル（モーダルより優先して処理）
       if (ctrl && e.key === 'f') {
         e.preventDefault()
@@ -34,6 +55,13 @@ export function useKeyboardShortcuts() {
       if (ctrl && e.shiftKey && e.key === 'C') {
         e.preventDefault()
         ui.setChatPanelOpen(!ui.isChatPanelOpen)
+        return
+      }
+
+      // Ctrl+P: 発表モードをトグル
+      if (ctrl && e.key === 'p') {
+        e.preventDefault()
+        if (ui.presentationNodeIds.length > 0) ui.startPresentation()
         return
       }
 

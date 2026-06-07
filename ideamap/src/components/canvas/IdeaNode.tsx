@@ -24,7 +24,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { updateNodeTitle } = useMapStore()
-  const { setSelectedNodeId, setAIPanelOpen, openNodeDetail, searchQuery, activeCategoryFilters } = useUIStore()
+  const { setSelectedNodeId, setAIPanelOpen, openNodeDetail, searchQuery, activeCategoryFilters, presentationNodeIds } = useUIStore()
   const nodeShape = useSettingsStore((s) => s.nodeShape)
   const getCategoryById = useSettingsStore((s) => s.getCategoryById)
 
@@ -99,6 +99,8 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const width = widthClass(nodeData.title)
   const category = nodeData.categoryId ? getCategoryById(nodeData.categoryId) : undefined
   const showCategoryLabel = selected && category && category.id !== 'cat-none'
+  const presentationIndex = presentationNodeIds.indexOf(id)
+  const isInPresentation = presentationIndex !== -1
 
   return (
     <div
@@ -117,6 +119,15 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
           <span className="text-sm font-medium">{category!.name}</span>
         </div>
       </NodeToolbar>
+
+      {/* 発表順序バッジ（発表リストに追加済みの場合のみ表示・ズーム非依存） */}
+      {isInPresentation && (
+        <NodeToolbar isVisible={true} position={Position.Top} align="end" offset={6}>
+          <div className="flex items-center justify-center w-6 h-6 bg-indigo-600 text-white rounded-full text-xs font-bold shadow-sm pointer-events-none">
+            {presentationIndex + 1}
+          </div>
+        </NodeToolbar>
+      )}
 
       {/* AI badge */}
       {isAI && (

@@ -51,6 +51,9 @@ export function ContextMenu() {
     openNodeDetail,
     openConfirmDialog,
     selectedNodeId,
+    presentationNodeIds,
+    addNodeToPresentation,
+    removeNodeFromPresentation,
   } = useUIStore()
   const {
     addNode,
@@ -198,6 +201,22 @@ export function ContextMenu() {
               shortcut="Ctrl+C"
               onClick={run(() => targetId && copyNodes([targetId]))}
             />
+            {/* 発表モード: 追加/除外 */}
+            {targetId && (
+              presentationNodeIds.includes(targetId) ? (
+                <MenuItem
+                  icon="🎭"
+                  label={`発表から除外（${presentationNodeIds.indexOf(targetId) + 1}番目）`}
+                  onClick={run(() => removeNodeFromPresentation(targetId))}
+                />
+              ) : (
+                <MenuItem
+                  icon="🎭"
+                  label={`発表に追加（${presentationNodeIds.length + 1}番目）`}
+                  onClick={run(() => addNodeToPresentation(targetId))}
+                />
+              )
+            )}
             {selectedIdeaNodeCount >= 2 && (
               <MenuItem
                 icon="📦"
