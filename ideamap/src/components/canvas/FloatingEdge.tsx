@@ -19,6 +19,7 @@ function calcBezierArgs(source: string, target: string, getNode: (id: string) =>
   const tw = tNode.measured?.width ?? 150
   const th = tNode.measured?.height ?? 40
 
+  if (!sNode.internals.positionAbsolute || !tNode.internals.positionAbsolute) return null
   const scx = sNode.internals.positionAbsolute.x + sw / 2
   const scy = sNode.internals.positionAbsolute.y + sh / 2
   const tcx = tNode.internals.positionAbsolute.x + tw / 2

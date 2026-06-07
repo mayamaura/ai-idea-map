@@ -115,8 +115,8 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       {/* カテゴリラベル（選択時のみ表示・ズーム非依存） */}
       <NodeToolbar isVisible={showCategoryLabel} position={Position.Top} align="start" offset={6}>
         <div className="flex items-center gap-1 bg-white/95 text-gray-600 px-2 py-1 rounded-md shadow-sm border border-gray-200 whitespace-nowrap pointer-events-none">
-          <span className="text-sm">{category!.icon}</span>
-          <span className="text-sm font-medium">{category!.name}</span>
+          <span className="text-sm">{category?.icon}</span>
+          <span className="text-sm font-medium">{category?.name}</span>
         </div>
       </NodeToolbar>
 
