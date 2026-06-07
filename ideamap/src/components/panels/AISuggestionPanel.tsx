@@ -234,6 +234,18 @@ export function AISuggestionPanel() {
         </div>
 
         <div className="px-5 py-4 space-y-3">
+          {/* 選択ノードの内容 */}
+          {selectedNode && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
+              <p className="font-semibold text-gray-700 leading-snug">{selectedNode.data.title}</p>
+              {selectedNode.data.body && (
+                <p className="text-gray-500 whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto">
+                  {selectedNode.data.body}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* 追加先モード切替 */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 flex-shrink-0">追加先</span>
