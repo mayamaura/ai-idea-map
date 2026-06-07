@@ -69,22 +69,27 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 
 ---
 
-## よくある作業パターン
+## 作業パターンと必須ドキュメント更新
+
+**コードを変更したら、必ず対応するドキュメントを同じコミットまたは直後のコミットで更新すること。**
+ドキュメント更新は任意ではなく開発作業の一部として扱う。
 
 ### 新しいノードアクションを追加する
 1. `src/types/index.ts` に必要な型を追加
 2. `src/stores/mapStore.ts` にアクションを追加（`past` への push を忘れずに）
 3. `src/components/canvas/ContextMenu.tsx` にメニュー項目を追加
 4. `src/hooks/useKeyboardShortcuts.ts` にショートカットを追加（任意）
-5. `docs/design.md` の「状態管理設計」「コンテキストメニュー設計」を更新
+5. **必ず** `docs/design.md` の「状態管理設計」「コンテキストメニュー設計」を更新
+6. **必ず** `docs/requirements.md` に対応する機能要件を追記・修正
 
 ### 新しいパネル（サイドパネル）を追加する
 1. `src/stores/uiStore.ts` に `isXxxOpen` と `setXxxOpen` を追加
 2. `src/components/panels/XxxPanel.tsx` を作成
 3. `src/App.tsx` にコンポーネントを追加
-4. `docs/design.md` の「コンポーネント設計」を更新
+4. **必ず** `docs/design.md` の「コンポーネント設計」を更新
+5. **必ず** `docs/requirements.md` に対応する機能要件を追記・修正
 
 ### フェーズを完了したとき
-1. `implementation-plan.md` の該当フェーズのタスクを `[x]` にし、完了日を記録
-2. 新しい設計・型が増えていれば `design.md` を更新
-3. 新機能が要件定義に反映されていなければ `requirements.md` を更新
+1. **必ず** `docs/implementation-plan.md` の該当フェーズのタスクをすべて `[x]` にし、完了日を記録
+2. **必ず** `docs/design.md` を確認し、型定義・ストア・コンポーネントの変更を反映
+3. **必ず** `docs/requirements.md` を確認し、新機能・仕様変更を反映

@@ -477,7 +477,7 @@
 
 ---
 
-### Phase 13: AI機能の改善（約2日）
+### Phase 13: AI機能の改善（約2日） ✅ 完了（2026-06-07）
 
 **目標**: AIアイデア拡張の操作性と柔軟性を向上させ、より自然にAIと協働できるようにする
 
@@ -515,18 +515,18 @@
 - C（接続ノードの文脈）と組み合わせ、「兄弟モード」では選択した（またはAIが選んだ）親ノードと既存の兄弟ノード一覧もプロンプトに含める（AIが重複しないアイデアを出しやすくなる）
 
 #### タスク
-- [ ] `AISuggestionPanel.tsx` のカテゴリフィルター（関連/深堀り/対比/応用）UIを削除
-- [ ] `claudeService.ts` の提案カテゴリ分類・フィルタリングロジックを削除
-- [ ] `AISuggestionPanel.tsx` にユーザー指示入力欄（textarea）を追加
-- [ ] `claudeService.ts` の `expandIdea` 関数にユーザー指示パラメータを追加し、プロンプトに反映
-- [ ] `claudeService.ts` で接続ノードの文脈収集ロジックを追加（選択ノードの接続先、親ノード、既存兄弟ノードをプロンプトに含める）
-- [ ] 各提案アイテムに個別再生成ボタン（↺）を追加
-- [ ] `AISuggestionPanel.tsx` に「子ノード / 兄弟ノード」追加先トグルを追加（親なしの場合はグレーアウト）
-- [ ] `claudeService.ts` の兄弟モード用プロンプトに全親ノード情報と既存兄弟ノード一覧を含める
-- [ ] 複数親がある場合、AIレスポンスに `parentNodeId` を返させ、最適な親を選択させる（フォールバック：最初の親）
-- [ ] 兄弟モード選択時、提案の追加先ノードIDを `parentNodeId` に従って解決するロジックを `mapStore` に追加
+- [x] `AISuggestionPanel.tsx` のカテゴリフィルター（関連/深堀り/対比/応用）UIを削除
+- [x] `claudeService.ts` の提案カテゴリ分類・フィルタリングロジックを削除（`SuggestionType` 型・`AISuggestion.type` フィールドも削除）
+- [x] `AISuggestionPanel.tsx` にユーザー指示入力欄（textarea）を追加
+- [x] `claudeService.ts` の `SuggestionRequest` にユーザー指示パラメータ（`userInstruction`）を追加し、プロンプトに反映
+- [x] `claudeService.ts` で接続ノードの文脈収集ロジックを追加（`connectedNodes` を `{title, body}[]` に拡張し本文も送信）
+- [x] 各提案アイテムに個別再生成ボタン（↺）を追加（`handleRegenerate`・`buildBaseRequest` ヘルパー）
+- [x] `AISuggestionPanel.tsx` に「子ノード / 兄弟ノード」追加先トグルを追加（親なしの場合はグレーアウト）
+- [x] `claudeService.ts` の兄弟モード用プロンプトに全親ノード情報と既存兄弟ノード一覧を含める
+- [x] 複数親がある場合、AIレスポンスに `parentNodeId` を返させ、最適な親を選択させる（フォールバック：最初の親）
+- [x] 兄弟モード選択時、提案の追加先ノードIDを `parentNodeId` に従って解決するロジックを `AISuggestionPanel` の `handleAddSelected` に実装
 
-**完了条件**: フィルタリングが消え、ノード選択後に一言添えてAI拡張を依頼でき、接続ノードの文脈を踏まえた提案が得られる
+**完了条件**: フィルタリングが消え、ノード選択後に一言添えてAI拡張を依頼でき、接続ノードの文脈を踏まえた提案が得られる ✅
 
 ---
 
