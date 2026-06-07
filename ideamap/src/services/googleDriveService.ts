@@ -71,6 +71,30 @@ export async function listMaps(token: string): Promise<DriveFile[]> {
   return data.files ?? []
 }
 
+async function findMapFileId(
+  token: string,
+  fileName: string,
+  mapId: string | null | undefined,
+  folderId: string
+): Promise<string | null> {
+  if (mapId) {
+    const res = await driveRequest(
+      `${DRIVE_API}/files?q=appProperties has { key='mapId' and value='${mapId}' } and trashed=false&fields=files(id)&spaces=drive`,
+      token
+    )
+    const data = (await res.json()) as { files: { id: string }[] }
+    if (data.files.length > 0) return data.files[0].id
+  }
+
+  const escaped = fileName.replace(/'/g, "\\'")
+  const res = await driveRequest(
+    `${DRIVE_API}/files?q='${folderId}' in parents and name='${escaped}' and trashed=false&fields=files(id)&spaces=drive`,
+    token
+  )
+  const data = (await res.json()) as { files: { id: string }[] }
+  return data.files.length > 0 ? data.files[0].id : null
+}
+
 export async function saveMap(
   token: string,
   title: string,
@@ -95,6 +119,18 @@ export async function saveMap(
   }
 
   const folderId = await getOrCreateFolder(token)
+  const existingId = await findMapFileId(token, fileName, mapId, folderId)
+  if (existingId) {
+    const form = new FormData()
+    form.append('metadata', new Blob([JSON.stringify({ name: fileName, appProperties })], { type: MIME_JSON }))
+    form.append('file', fileBlob)
+    await driveRequest(`${UPLOAD_API}/files/${existingId}?uploadType=multipart`, token, {
+      method: 'PATCH',
+      body: form,
+    })
+    return existingId
+  }
+
   const form = new FormData()
   form.append(
     'metadata',
