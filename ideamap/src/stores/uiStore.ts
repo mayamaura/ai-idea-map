@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, SuggestionType } from '../types'
+import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion } from '../types'
 import { saveDriveFileId, loadDriveFileId } from '../services/storageService'
 
 export interface Toast {
@@ -67,7 +67,6 @@ interface UIState {
   mapAnalysis: MapAnalysis | null
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
-  suggestionTypeFilter: SuggestionType[]
   // Phase 12: グループ操作
   dragOverGroupId: string | null
   setDragOverGroupId: (id: string | null) => void
@@ -109,8 +108,6 @@ interface UIState {
   setMapAnalysis: (analysis: MapAnalysis | null) => void
   setConnectionSuggestions: (suggestions: ConnectionSuggestion[]) => void
   setClusterSuggestions: (suggestions: ClusterSuggestion[]) => void
-  toggleSuggestionTypeFilter: (type: SuggestionType) => void
-  clearSuggestionTypeFilters: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -140,7 +137,6 @@ export const useUIStore = create<UIState>((set) => ({
   mapAnalysis: null,
   connectionSuggestions: [],
   clusterSuggestions: [],
-  suggestionTypeFilter: [],
   dragOverGroupId: null,
   setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
   isFileDashboardOpen: true,
@@ -199,13 +195,6 @@ export const useUIStore = create<UIState>((set) => ({
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
   setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),
   setClusterSuggestions: (suggestions) => set({ clusterSuggestions: suggestions }),
-  toggleSuggestionTypeFilter: (type) =>
-    set((state) => ({
-      suggestionTypeFilter: state.suggestionTypeFilter.includes(type)
-        ? state.suggestionTypeFilter.filter((t) => t !== type)
-        : [...state.suggestionTypeFilter, type],
-    })),
-  clearSuggestionTypeFilters: () => set({ suggestionTypeFilter: [] }),
   setFileDashboardOpen: (open) => set({ isFileDashboardOpen: open }),
   setShortcutsModalOpen: (open) => set({ isShortcutsModalOpen: open }),
 }))

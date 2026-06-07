@@ -6,50 +6,83 @@ interface SuggestionRequest {
   model: AIModel
   selectedNodeTitle: string
   selectedNodeBody?: string
-  connectedNodeTitles: string[]
+  /** 接続ノードのタイトルと本文（1ホップ隣接ノード） */
+  connectedNodes: Array<{ title: string; body?: string }>
   allNodeTitles: string[]
   count: number
   categories: Category[]
+  /** ユーザーが自由記述で添えた指示（省略可） */
+  userInstruction?: string
+  /** 個別再生成時に渡す除外テキスト（重複回避） */
+  excludedTexts?: string[]
+  /** 'child'=選択ノードの子として追加 / 'sibling'=選択ノードの兄弟として追加 */
+  mode: 'child' | 'sibling'
+  /** 兄弟モード時の候補親ノード情報 */
+  parentNodes?: Array<{ id: string; title: string; body?: string }>
+  /** 兄弟モード時の既存兄弟ノード（重複回避＆文脈提供） */
+  siblingNodes?: Array<{ title: string; body?: string }>
 }
 
 export async function generateSuggestions(req: SuggestionRequest): Promise<AISuggestion[]> {
   const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
 
-  const connectedSection = req.connectedNodeTitles.length > 0
-    ? `\n【つながっているアイデア】\n${req.connectedNodeTitles.map((t) => `- ${t}`).join('\n')}`
+  const bodySection = req.selectedNodeBody
+    ? `\n【選択ノードの詳細メモ】\n${req.selectedNodeBody}`
+    : ''
+
+  const connectedSection = req.connectedNodes.length > 0
+    ? `\n【つながっているアイデア】\n${req.connectedNodes.map((n) => {
+        const bodyPreview = n.body ? `（メモ: ${n.body.slice(0, 80)}）` : ''
+        return `- ${n.title}${bodyPreview}`
+      }).join('\n')}`
     : ''
 
   const contextSection = req.allNodeTitles.length > 0
     ? `\n【マップ全体の文脈（参考）】\n${req.allNodeTitles.slice(0, 10).map((t) => `- ${t}`).join('\n')}`
     : ''
 
-  const bodySection = req.selectedNodeBody
-    ? `\n【選択ノードの詳細メモ】\n${req.selectedNodeBody}`
+  const instructionSection = req.userInstruction
+    ? `\n【あなたへの指示】\n${req.userInstruction}`
     : ''
+
+  const excludedSection = req.excludedTexts && req.excludedTexts.length > 0
+    ? `\n【除外してほしいアイデア（重複禁止）】\n${req.excludedTexts.map((t) => `- ${t}`).join('\n')}`
+    : ''
+
+  const siblingSection = (() => {
+    if (req.mode !== 'sibling' || !req.parentNodes || req.parentNodes.length === 0) return ''
+    const parentList = req.parentNodes
+      .map((p) => {
+        const bodyPreview = p.body ? `（メモ: ${p.body.slice(0, 80)}）` : ''
+        return `- [${p.id}] ${p.title}${bodyPreview}`
+      })
+      .join('\n')
+    const multiParentNote = req.parentNodes.length > 1
+      ? '\n最も適切な親ノードを1つ選び、各提案の parentNodeId フィールドに選んだノードの id を入れてください。'
+      : ''
+    const siblingList = req.siblingNodes && req.siblingNodes.length > 0
+      ? `\n【既存の兄弟アイデア（重複禁止）】\n${req.siblingNodes.map((n) => `- ${n.title}`).join('\n')}`
+      : ''
+    return `\n【このアイデアは以下の親ノードの子として追加されます】\n${parentList}${multiParentNote}${siblingList}`
+  })()
 
   const categoryList = req.categories
     .map((c) => `  "${c.id}": ${c.name}（${c.description ?? ''}）`)
     .join('\n')
 
   const prompt = `あなたはアイデア発想を助ける専門家です。
-以下のアイデアを起点に、創造的で具体的な関連アイデアを${req.count}個提案してください。${connectedSection}${contextSection}
+以下のアイデアを起点に、創造的で具体的なアイデアを${req.count}個提案してください。${connectedSection}${contextSection}${instructionSection}${excludedSection}${siblingSection}
 
 【選択されたアイデア】
 ${req.selectedNodeTitle}${bodySection}
 
-提案は多様性を持たせ、以下のタイプを組み合わせてください：
-- 関連：直接関連する概念や要素
-- 深掘り：より詳細に分解したアイデア
-- 対比：反対意見や別の視点
-- 応用：実際の活用方法や事例
-
-また、各提案に最も適したカテゴリIDを以下から選んでください：
+各提案に最も適したカテゴリIDを以下から選んでください：
 ${categoryList}
 
 必ず以下のJSON形式のみで回答してください（説明文は不要）:
 {
   "suggestions": [
-    {"text": "アイデアのテキスト", "type": "関連", "categoryId": "cat-main"},
+    {"text": "アイデアのテキスト", "categoryId": "cat-main"},
     ...
   ]
 }`

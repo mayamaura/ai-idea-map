@@ -56,11 +56,10 @@ export interface SerializedEdge {
 
 export interface AISuggestion {
   text: string
-  type: '関連' | '深掘り' | '対比' | '応用'
   categoryId?: string
+  /** 兄弟モード・複数親のとき AI が選んだ接続先の親ノード ID */
+  parentNodeId?: string
 }
-
-export type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
 
 export interface MapAnalysis {
   summary: string
