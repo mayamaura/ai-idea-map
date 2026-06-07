@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion } from '../types'
+import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatMessage } from '../types'
 import { saveDriveFileId, loadDriveFileId } from '../services/storageService'
 
 export interface Toast {
@@ -67,6 +67,10 @@ interface UIState {
   mapAnalysis: MapAnalysis | null
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
+  // Phase 14: AIチャット
+  isChatPanelOpen: boolean
+  chatMessages: ChatMessage[]
+  isChatLoading: boolean
   // Phase 12: グループ操作
   dragOverGroupId: string | null
   setDragOverGroupId: (id: string | null) => void
@@ -101,6 +105,11 @@ interface UIState {
   setExportPanelOpen: (open: boolean) => void
   // Phase 10: AI高度化
   setAnalysisPanelOpen: (open: boolean) => void
+  // Phase 14: AIチャット
+  setChatPanelOpen: (open: boolean) => void
+  addChatMessage: (message: ChatMessage) => void
+  setChatLoading: (loading: boolean) => void
+  clearChatHistory: () => void
   // Phase 11: デバイス間連携
   setFileDashboardOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
@@ -137,6 +146,9 @@ export const useUIStore = create<UIState>((set) => ({
   mapAnalysis: null,
   connectionSuggestions: [],
   clusterSuggestions: [],
+  isChatPanelOpen: false,
+  chatMessages: [],
+  isChatLoading: false,
   dragOverGroupId: null,
   setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
   isFileDashboardOpen: true,
@@ -191,6 +203,11 @@ export const useUIStore = create<UIState>((set) => ({
     })),
   setExportPanelOpen: (open) => set({ isExportPanelOpen: open }),
   setAnalysisPanelOpen: (open) => set({ isAnalysisPanelOpen: open }),
+  setChatPanelOpen: (open) => set({ isChatPanelOpen: open }),
+  addChatMessage: (message) =>
+    set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-40) })),
+  setChatLoading: (loading) => set({ isChatLoading: loading }),
+  clearChatHistory: () => set({ chatMessages: [] }),
   setAnalysisLoading: (loading) => set({ isAnalysisLoading: loading }),
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
   setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),

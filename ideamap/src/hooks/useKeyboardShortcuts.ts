@@ -30,6 +30,13 @@ export function useKeyboardShortcuts() {
         return
       }
 
+      // Ctrl+Shift+C: AIチャットパネルをトグル
+      if (ctrl && e.shiftKey && e.key === 'C') {
+        e.preventDefault()
+        ui.setChatPanelOpen(!ui.isChatPanelOpen)
+        return
+      }
+
       // モーダル・確認ダイアログ・右クリックメニュー・検索バー・エクスポートパネル表示中はキャンバス操作を抑制
       if (
         ui.isSettingsOpen ||

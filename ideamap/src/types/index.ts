@@ -87,3 +87,42 @@ export type Theme = 'light' | 'dark'
 export type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
+
+// Phase 14: AIチャット
+export type ChatActionType = 'addNode' | 'connectNodes' | 'updateNode'
+
+export interface ChatAction {
+  type: ChatActionType
+  label: string
+  /** addNode: 接続先の親ID / connectNodes: sourceId / updateNode: 対象nodeId */
+  sourceNodeId?: string
+  /** connectNodes: targetId */
+  targetNodeId?: string
+  /** addNode: 推奨カテゴリID */
+  categoryId?: string
+  /** ボタン下の補足説明 */
+  reason?: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+  actions?: ChatAction[]
+}
+
+export interface MapContext {
+  mapTitle: string
+  nodes: { id: string; title: string; body?: string; categoryId?: string }[]
+  edges: { source: string; target: string; label?: string }[]
+  categories: { id: string; name: string }[]
+}
+
+export interface ChatWithMapRequest {
+  apiKey: string
+  model: AIModel
+  messages: ChatMessage[]
+  mapContext: MapContext
+  mentionedNodeIds?: string[]
+}

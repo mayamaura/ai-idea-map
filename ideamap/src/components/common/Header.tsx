@@ -26,7 +26,7 @@ export function Header({
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
-  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setFileDashboardOpen } = useUIStore()
+  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen } = useUIStore()
   const { theme, setTheme } = useSettingsStore()
   const isOnline = useOnlineStatus()
 
@@ -147,6 +147,29 @@ export function Header({
             </span>
           </button>
         )}
+
+        {/* AIチャットボタン */}
+        <button
+          onClick={() => setChatPanelOpen(true)}
+          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors hidden sm:flex"
+          title="AIとチャット（Ctrl+Shift+C）"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span>AIチャット</span>
+        </button>
+        <button
+          onClick={() => setChatPanelOpen(true)}
+          className="p-2 rounded-lg text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors sm:hidden"
+          title="AIとチャット"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </button>
 
         {/* マップ分析ボタン */}
         <button

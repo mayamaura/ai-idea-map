@@ -9,6 +9,7 @@ import { MapListPanel } from './components/panels/MapListPanel'
 import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ExportImportPanel } from './components/panels/ExportImportPanel'
 import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
+import { AIChatPanel } from './components/panels/AIChatPanel'
 import { FileOpenDashboard } from './components/screens/FileOpenDashboard'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
@@ -95,6 +96,7 @@ function AppInner() {
       <NodeDetailPanel />
       <ExportImportPanel />
       <MapAnalysisPanel />
+      <AIChatPanel />
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />

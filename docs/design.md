@@ -68,7 +68,8 @@ ideamap/
 │   │   │   ├── SettingsPanel.tsx   # 設定パネル（カテゴリ管理含む）
 │   │   │   ├── MapListPanel.tsx    # マップ一覧パネル
 │   │   │   ├── ExportImportPanel.tsx # エクスポート/インポート/共有パネル（Phase 9）
-│   │   │   └── MapAnalysisPanel.tsx  # AIマップ分析パネル（分析・接続提案・クラスタリング）（Phase 10）
+│   │   │   ├── MapAnalysisPanel.tsx  # AIマップ分析パネル（分析・接続提案・クラスタリング）（Phase 10）
+│   │   │   └── AIChatPanel.tsx      # AIチャットパネル（継続会話・@参照・アクションボタン）（Phase 14）
 │   │   ├── toolbar/
 │   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
 │   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）
@@ -159,7 +160,9 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `mapAnalysis` | `MapAnalysis \| null` | マップ全体分析結果（Phase 10） |
 | `connectionSuggestions` | `ConnectionSuggestion[]` | 接続提案リスト（Phase 10） |
 | `clusterSuggestions` | `ClusterSuggestion[]` | クラスタリング提案リスト（Phase 10） |
-| `suggestionTypeFilter` | `SuggestionType[]` | AI提案の種別フィルター（空=全表示、Phase 10） |
+| `isChatPanelOpen` | `boolean` | AIチャットパネルの開閉（Phase 14） |
+| `chatMessages` | `ChatMessage[]` | チャット履歴（セッションメモリのみ、最大40件）（Phase 14） |
+| `isChatLoading` | `boolean` | AIチャット応答待ちフラグ（Phase 14） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 
@@ -344,6 +347,33 @@ interface ClusterSuggestion {
   categoryId: string           // 適用するカテゴリID
   nodeIds: string[]
   nodeTitles: string[]
+}
+
+// Phase 14: AIチャット
+type ChatActionType = 'addNode' | 'connectNodes' | 'updateNode'
+
+interface ChatAction {
+  type: ChatActionType
+  label: string                // ボタン表示テキスト
+  sourceNodeId?: string        // addNode: 接続先の親ID / connectNodes: source / updateNode: 対象ID
+  targetNodeId?: string        // connectNodes: target
+  categoryId?: string          // addNode: 推奨カテゴリID
+  reason?: string              // ボタン下の補足説明
+}
+
+interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string            // ISO 8601
+  actions?: ChatAction[]       // assistant のみ持つ
+}
+
+interface MapContext {
+  mapTitle: string
+  nodes: { id: string; title: string; body?: string; categoryId?: string }[]
+  edges: { source: string; target: string; label?: string }[]
+  categories: { id: string; name: string }[]
 }
 ```
 
