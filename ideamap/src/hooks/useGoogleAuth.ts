@@ -51,6 +51,7 @@ export function useGoogleAuth() {
   const [isGisReady, setIsGisReady] = useState(false)
   // 自動再認証の試行中かどうかを追跡（エラー時のフラグ削除を制御するため）
   const isAutoAuthRef = useRef(false)
+  const refreshTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return
@@ -69,6 +70,19 @@ export function useGoogleAuth() {
       }, 300)
       return () => clearInterval(id)
     }
+  }, [])
+
+  const scheduleRefreshAt = useCallback((delayMs: number) => {
+    if (refreshTimerRef.current !== null) {
+      window.clearTimeout(refreshTimerRef.current)
+    }
+    refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null
+      if (tokenClientRef.current && localStorage.getItem(AUTO_AUTH_FLAG) === 'true') {
+        isAutoAuthRef.current = true
+        tokenClientRef.current.requestAccessToken({ prompt: '' })
+      }
+    }, Math.max(delayMs, 0))
   }, [])
 
   useEffect(() => {
@@ -92,6 +106,7 @@ export function useGoogleAuth() {
         isAutoAuthRef.current = false
         const expiresIn = (response as TokenResponse & { expires_in?: number }).expires_in ?? 3600
         saveTokenToSession(response.access_token, expiresIn)
+        scheduleRefreshAt((expiresIn - 300) * 1000)
         localStorage.setItem(AUTO_AUTH_FLAG, 'true')
         setState({
           isSignedIn: true,
@@ -120,16 +135,23 @@ export function useGoogleAuth() {
     const savedToken = loadTokenFromSession()
     if (savedToken) {
       setState({ isSignedIn: true, accessToken: savedToken, isLoading: false, error: null })
-      return
-    }
-
-    // 前回サインイン済みなら prompt: '' でサイレント再認証を試みる
-    if (localStorage.getItem(AUTO_AUTH_FLAG) === 'true') {
+      const expiryStr = sessionStorage.getItem(TOKEN_EXPIRY_KEY)
+      if (expiryStr) {
+        scheduleRefreshAt(parseInt(expiryStr, 10) - Date.now())
+      }
+    } else if (localStorage.getItem(AUTO_AUTH_FLAG) === 'true') {
+      // 前回サインイン済みなら prompt: '' でサイレント再認証を試みる
       isAutoAuthRef.current = true
       setState((s) => ({ ...s, isLoading: true }))
       tokenClientRef.current.requestAccessToken({ prompt: '' })
     }
-  }, [isGisReady])
+
+    return () => {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current)
+      }
+    }
+  }, [isGisReady, scheduleRefreshAt])
 
   const signIn = useCallback(() => {
     if (!GOOGLE_CLIENT_ID) {
@@ -152,6 +174,10 @@ export function useGoogleAuth() {
   }, [])
 
   const signOut = useCallback(() => {
+    if (refreshTimerRef.current !== null) {
+      window.clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = null
+    }
     const token = state.accessToken
     if (token) {
       google.accounts.oauth2.revoke(token)
