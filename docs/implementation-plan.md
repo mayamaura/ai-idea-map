@@ -632,6 +632,29 @@
 
 ---
 
+### Phase 18: UX 小改善バッチ 🔨 実装済み（確認中）
+
+**背景**: AI生成ノードのタイトルが長すぎる・Markdownが生テキストで表示される・プレゼンテーション順序を後から編集できないという複数の小さなUX課題を一括で解決する。
+
+#### タスク
+- [x] `src/utils/markdown.ts` 新規作成: `renderMarkdownSimple` を共通ユーティリティとして抽出
+- [x] `src/types/index.ts`: `AISuggestion.text` → `AISuggestion.title` + `body?: string` に変更、`ChatAction.body?: string` 追加
+- [x] `src/services/claudeService.ts`: `generateSuggestions` のプロンプト・JSONスキーマを `title`/`body` 分離仕様に更新
+- [x] `src/stores/mapStore.ts`: `addNode()` シグネチャに `body?: string` 追加
+- [x] `src/components/panels/AISuggestionPanel.tsx`: `text` → `title` 参照を修正、提案カードにbodyプレビュー表示、addNodeにbodyを渡す
+- [x] `src/components/panels/AIChatPanel.tsx`: `handleAction` の addNode 呼び出しに `action.body` を渡す
+- [x] `src/components/panels/NodeDetailPanel.tsx`: `isPreview` デフォルト `false` → `true`、`renderMarkdownSimple` を共通ユーティリティからインポート
+- [x] `src/components/canvas/IdeaNode.tsx`: body を `renderMarkdownSimple` で整形表示（`dangerouslySetInnerHTML`、高さ制限）
+- [x] `src/components/screens/PresentationMode.tsx`: body を Markdown整形表示
+- [x] `src/stores/uiStore.ts`: `isPresentationOrderOpen` 状態 + `setPresentationOrderOpen`・`reorderPresentationNodes` アクション追加
+- [x] `src/components/panels/PresentationOrderPanel.tsx` 新規作成: 発表順序編集モーダル（↑↓・×・クリア・発表開始）
+- [x] `src/App.tsx`: `PresentationOrderPanel` を追加
+- [x] `src/components/toolbar/Toolbar.tsx`: 発表ボタンを `setPresentationOrderOpen(true)` に変更
+
+**完了条件**: AI生成ノードのタイトルが短く本文が分離される / ノード上・右パネル・プレゼン画面でMarkdownが整形表示される / ツールバー発表ボタンからパネルを開いて順序を編集・発表開始できる
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。

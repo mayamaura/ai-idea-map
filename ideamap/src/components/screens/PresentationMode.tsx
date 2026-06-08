@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import type { IdeaNodeData } from '../../types'
+import { renderMarkdownSimple } from '../../utils/markdown'
 
 export function PresentationMode() {
   const {
@@ -77,9 +78,10 @@ export function PresentationMode() {
         {/* 本文 */}
         <div className="flex-1 overflow-y-auto px-8 pb-6">
           {nodeData?.body ? (
-            <p className="text-xl text-white/70 leading-relaxed whitespace-pre-wrap break-words">
-              {nodeData.body}
-            </p>
+            <div
+              className="text-xl text-white/70 leading-relaxed break-words presentation-body"
+              dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(nodeData.body) }}
+            />
           ) : (
             <p className="text-lg text-white/20 italic">本文なし</p>
           )}

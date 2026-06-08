@@ -10,7 +10,7 @@ import type { Node } from '@xyflow/react'
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
   const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, startPresentation } = useUIStore()
+  const { selectedNodeId, setSelectedNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen } = useUIStore()
   const { categories } = useSettingsStore()
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
@@ -232,12 +232,12 @@ export function Toolbar() {
 
       {/* 発表モード */}
       <button
-        onClick={startPresentation}
+        onClick={() => setPresentationOrderOpen(true)}
         disabled={presentationNodeIds.length === 0}
         title={
           presentationNodeIds.length === 0
             ? '右クリックメニューからノードを発表リストに追加してください'
-            : `発表モード開始 (Ctrl+P) — ${presentationNodeIds.length}件`
+            : `発表順序を編集 / 発表開始 (Ctrl+P) — ${presentationNodeIds.length}件`
         }
         className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
           presentationNodeIds.length > 0

@@ -73,6 +73,7 @@ interface UIState {
   isChatLoading: boolean
   // Phase 15: プレゼンテーションモード
   isPresentationMode: boolean
+  isPresentationOrderOpen: boolean
   presentationNodeIds: string[]
   presentationCurrentIndex: number
   // Phase 12: グループ操作
@@ -121,7 +122,9 @@ interface UIState {
   goToPrevPresentation: () => void
   addNodeToPresentation: (nodeId: string) => void
   removeNodeFromPresentation: (nodeId: string) => void
+  reorderPresentationNodes: (fromIndex: number, toIndex: number) => void
   clearPresentationNodes: () => void
+  setPresentationOrderOpen: (open: boolean) => void
   // Phase 11: デバイス間連携
   setFileDashboardOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
@@ -162,6 +165,7 @@ export const useUIStore = create<UIState>((set) => ({
   chatMessages: [],
   isChatLoading: false,
   isPresentationMode: false,
+  isPresentationOrderOpen: false,
   presentationNodeIds: [],
   presentationCurrentIndex: 0,
   dragOverGroupId: null,
@@ -263,7 +267,15 @@ export const useUIStore = create<UIState>((set) => ({
         presentationCurrentIndex: Math.min(state.presentationCurrentIndex, Math.max(0, newIds.length - 1)),
       }
     }),
+  reorderPresentationNodes: (fromIndex, toIndex) =>
+    set((state) => {
+      const ids = [...state.presentationNodeIds]
+      const [moved] = ids.splice(fromIndex, 1)
+      ids.splice(toIndex, 0, moved)
+      return { presentationNodeIds: ids }
+    }),
   clearPresentationNodes: () => set({ presentationNodeIds: [], presentationCurrentIndex: 0 }),
+  setPresentationOrderOpen: (open) => set({ isPresentationOrderOpen: open }),
   setAnalysisLoading: (loading) => set({ isAnalysisLoading: loading }),
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
   setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),

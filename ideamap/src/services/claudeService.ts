@@ -82,10 +82,11 @@ ${categoryList}
 必ず以下のJSON形式のみで回答してください（説明文は不要）:
 {
   "suggestions": [
-    {"text": "アイデアのテキスト", "categoryId": "cat-main"},
+    {"title": "簡潔なタイトル（20字以内）", "body": "補足説明・詳細（省略可）", "categoryId": "cat-main"},
     ...
   ]
-}`
+}
+title は短く端的に。詳細・補足・具体例は body に記述してください。body が不要なら省略できます。`
 
   const message = await client.messages.create({
     model: req.model,

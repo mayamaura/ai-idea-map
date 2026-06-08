@@ -63,13 +63,14 @@ ideamap/
 │   │   │   └── ContextMenu.tsx     # 右クリックコンテキストメニュー
 │   │   ├── panels/
 │   │   │   ├── NodePanel.tsx       # ノード選択時のサイドパネル（簡易表示）
-│   │   │   ├── NodeDetailPanel.tsx # ノード詳細パネル（タイトル・本文・カテゴリ編集）
-│   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル（種別フィルタ・提案数スライダー付き）
+│   │   │   ├── NodeDetailPanel.tsx # ノード詳細パネル（タイトル・本文・カテゴリ編集、デフォルトプレビューモード）
+│   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル（title+body分離表示、種別フィルタ・提案数スライダー付き）
 │   │   │   ├── SettingsPanel.tsx   # 設定パネル（カテゴリ管理含む）
 │   │   │   ├── MapListPanel.tsx    # マップ一覧パネル
 │   │   │   ├── ExportImportPanel.tsx # エクスポート/インポート/共有パネル（Phase 9）
 │   │   │   ├── MapAnalysisPanel.tsx  # AIマップ分析パネル（分析・接続提案・クラスタリング）（Phase 10）
-│   │   │   └── AIChatPanel.tsx      # AIチャットパネル（継続会話・@参照・アクションボタン）（Phase 14）
+│   │   │   ├── AIChatPanel.tsx      # AIチャットパネル（継続会話・@参照・アクションボタン）（Phase 14）
+│   │   │   └── PresentationOrderPanel.tsx # 発表順序編集モーダル（↑↓ボタン・削除・発表開始）（Phase 18）
 │   │   ├── toolbar/
 │   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
 │   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）
@@ -97,7 +98,8 @@ ideamap/
 │   │   └── index.ts                # 型定義
 │   └── utils/
 │       ├── mapLayout.ts            # ノード自動配置ロジック（dagre・円形配置）
-│       └── encryption.ts           # APIキーの暗号化・復号（AES-GCM）
+│       ├── encryption.ts           # APIキーの暗号化・復号（AES-GCM）
+│       └── markdown.ts             # Markdown→HTML変換ユーティリティ（Phase 18）
 ├── .env.example
 ├── package.json
 ├── tsconfig.json
@@ -122,7 +124,7 @@ ideamap/
 | `clipboard` | `IdeaNode[]` | コピー用クリップボード |
 
 主要アクション:
-- `addNode`, `addConnectedNode` — ノード追加（`addNode` に `categoryId` 引数追加）
+- `addNode`, `addConnectedNode` — ノード追加（`addNode(title, x, y, createdBy?, color?, categoryId?, body?)` — Phase 18で `body` 追加）
 - `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory` — ノード更新
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
@@ -164,6 +166,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `chatMessages` | `ChatMessage[]` | チャット履歴（セッションメモリのみ、最大40件）（Phase 14） |
 | `isChatLoading` | `boolean` | AIチャット応答待ちフラグ（Phase 14） |
 | `isPresentationMode` | `boolean` | 発表モード中フラグ（Phase 15） |
+| `isPresentationOrderOpen` | `boolean` | 発表順序編集モーダルの開閉（Phase 18） |
 | `presentationNodeIds` | `string[]` | 発表順序を保持したノードIDリスト（Phase 15） |
 | `presentationCurrentIndex` | `number` | 現在表示中のインデックス（0-based）（Phase 15） |
 
@@ -331,8 +334,8 @@ interface SerializedEdge {
 }
 
 interface AISuggestion {
-  text: string
-  type: '関連' | '深掘り' | '対比' | '応用'
+  title: string        // 短いタイトル（20字以内）
+  body?: string        // 補足説明・詳細（省略可）
   categoryId?: string  // AIが自動判定したカテゴリID
 }
 
@@ -374,6 +377,7 @@ interface ChatAction {
   sourceNodeId?: string        // addNode: 接続先の親ID / connectNodes: source / updateNode: 対象ID
   targetNodeId?: string        // connectNodes: target
   categoryId?: string          // addNode: 推奨カテゴリID
+  body?: string                // addNode: ノードの本文（Phase 18追加）
   reason?: string              // ボタン下の補足説明
 }
 

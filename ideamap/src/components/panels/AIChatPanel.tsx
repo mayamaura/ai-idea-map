@@ -175,7 +175,7 @@ export function AIChatPanel() {
       const x = parent ? parent.position.x + 220 : 100
       const y = parent ? parent.position.y : 100
       const cat = action.categoryId ? getCategoryById(action.categoryId) : undefined
-      const newId = addNode(action.label, x, y, 'ai', cat?.color ?? '#ffffff', action.categoryId)
+      const newId = addNode(action.label, x, y, 'ai', cat?.color ?? '#ffffff', action.categoryId, action.body)
       if (action.sourceNodeId) {
         onConnect({ source: action.sourceNodeId, target: newId, sourceHandle: null, targetHandle: null })
       }

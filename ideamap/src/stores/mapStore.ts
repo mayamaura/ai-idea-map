@@ -130,7 +130,7 @@ interface MapState {
   onNodesChange: (changes: NodeChange<IdeaNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
-  addNode: (title: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string, categoryId?: string) => string
+  addNode: (title: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string, categoryId?: string, body?: string) => string
   addConnectedNode: (parentId: string, title?: string) => string | null
   addGroupNode: (label: string, x: number, y: number, width?: number, height?: number) => string
   groupSelectedNodes: () => void
@@ -315,13 +315,13 @@ export const useMapStore = create<MapState>((set, get) => ({
       future: [],
     })),
 
-  addNode: (title, x, y, createdBy = 'user', color = DEFAULT_NODE_COLOR, categoryId) => {
+  addNode: (title, x, y, createdBy = 'user', color = DEFAULT_NODE_COLOR, categoryId, body) => {
     const id = uuidv4()
     const newNode: IdeaNode = {
       id,
       type: 'ideaNode',
       position: { x, y },
-      data: { title, color, createdBy, categoryId },
+      data: { title, color, createdBy, categoryId, body: body || undefined },
     }
     set((state) => ({
       nodes: [...state.nodes, newNode],

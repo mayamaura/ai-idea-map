@@ -4,6 +4,7 @@ import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import type { IdeaNodeData } from '../../types'
+import { renderMarkdownSimple } from '../../utils/markdown'
 
 function shapeClass(shape: string): string {
   if (shape === 'ellipse') return 'rounded-full'
@@ -186,11 +187,13 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
               <p className="text-sm text-gray-800 leading-snug break-words select-none">
                 {nodeData.title}
               </p>
-              {/* 本文プレビュー（先頭2行） */}
+              {/* 本文プレビュー（Markdown整形・先頭2行相当） */}
               {hasBody && (
-                <p className="text-xs text-gray-500 leading-snug break-words select-none mt-1 line-clamp-2 opacity-75">
-                  {nodeData.body}
-                </p>
+                <div
+                  className="text-xs text-gray-500 leading-snug select-none mt-1 opacity-75 overflow-hidden"
+                  style={{ maxHeight: '2.6rem' }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(nodeData.body!) }}
+                />
               )}
             </>
           )}

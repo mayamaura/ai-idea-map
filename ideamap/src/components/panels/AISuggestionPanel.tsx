@@ -107,7 +107,7 @@ export function AISuggestionPanel() {
       const suggestions = await generateSuggestions(req)
       const existingTitles = new Set(nodes.map((n) => n.data.title.trim().toLowerCase()))
       const newSuggestions = suggestions.filter(
-        (s) => !existingTitles.has(s.text.trim().toLowerCase()),
+        (s) => !existingTitles.has(s.title.trim().toLowerCase()),
       )
       setAISuggestions(newSuggestions)
       setSelected(new Set(newSuggestions.map((_, i) => i)))
@@ -126,7 +126,7 @@ export function AISuggestionPanel() {
       try {
         const baseReq = buildBaseRequest()
         if (!baseReq) return
-        const excludedTexts = aiSuggestions.filter((_, i) => i !== idx).map((s) => s.text)
+        const excludedTexts = aiSuggestions.filter((_, i) => i !== idx).map((s) => s.title)
         const newSuggestions = await generateSuggestions({
           ...baseReq,
           count: 1,
@@ -165,7 +165,7 @@ export function AISuggestionPanel() {
       const { x, y } = positions[idx]
       const cat = suggestion.categoryId ? getCategoryById(suggestion.categoryId) : undefined
       const nodeColor = cat?.color ?? '#f3f4ff'
-      const newId = addNode(suggestion.text, x, y, 'ai', nodeColor, suggestion.categoryId)
+      const newId = addNode(suggestion.title, x, y, 'ai', nodeColor, suggestion.categoryId, suggestion.body)
 
       if (addMode === 'sibling' && parentNodeIds.length > 0) {
         // 複数親のとき AI が parentNodeId を返すのでそれを使う。なければ最初の親へ
@@ -179,8 +179,8 @@ export function AISuggestionPanel() {
       }
     })
 
-    const addedTexts = new Set(selectedSuggestions.map((s) => s.text))
-    setAISuggestions(aiSuggestions.filter((s) => !addedTexts.has(s.text)))
+    const addedTitles = new Set(selectedSuggestions.map((s) => s.title))
+    setAISuggestions(aiSuggestions.filter((s) => !addedTitles.has(s.title)))
     setAIPanelOpen(false)
     setSelected(new Set())
   }, [
@@ -343,7 +343,10 @@ export function AISuggestionPanel() {
                         className="mt-0.5 accent-primary-600 flex-shrink-0"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-700">{suggestion.text}</p>
+                        <p className="text-sm font-medium text-gray-800">{suggestion.title}</p>
+                        {suggestion.body && (
+                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{suggestion.body}</p>
+                        )}
                         {cat && (
                           <div className="flex items-center gap-1.5 mt-1">
                             <span

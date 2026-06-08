@@ -55,7 +55,8 @@ export interface SerializedEdge {
 }
 
 export interface AISuggestion {
-  text: string
+  title: string
+  body?: string
   categoryId?: string
   /** 兄弟モード・複数親のとき AI が選んだ接続先の親ノード ID */
   parentNodeId?: string
@@ -100,6 +101,8 @@ export interface ChatAction {
   targetNodeId?: string
   /** addNode: 推奨カテゴリID */
   categoryId?: string
+  /** addNode: ノードの本文（body） */
+  body?: string
   /** ボタン下の補足説明 */
   reason?: string
 }

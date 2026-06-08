@@ -18,6 +18,7 @@ import { ConfirmDialog } from './components/common/ConfirmDialog'
 import { WelcomeModal } from './components/common/WelcomeModal'
 import { SearchBar } from './components/common/SearchBar'
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal'
+import { PresentationOrderPanel } from './components/panels/PresentationOrderPanel'
 import { useSettingsStore } from './stores/settingsStore'
 import { useUIStore } from './stores/uiStore'
 import { useMapStore } from './stores/mapStore'
@@ -109,6 +110,7 @@ function AppInner() {
       <ConfirmDialog />
       <SearchBar />
       <KeyboardShortcutsModal />
+      <PresentationOrderPanel />
       <PresentationMode />
       {isFileDashboardOpen && (
         <FileOpenDashboard
