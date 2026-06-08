@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
@@ -13,11 +14,39 @@ export function PresentationOrderPanel() {
     startPresentation,
   } = useUIStore()
   const { nodes } = useMapStore()
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const dragNode = useRef<number | null>(null)
 
   if (!isPresentationOrderOpen) return null
 
   const getTitle = (id: string) =>
     nodes.find((n) => n.id === id)?.data.title ?? '（削除済みノード）'
+
+  const handleDragStart = (idx: number) => {
+    setDragIndex(idx)
+    dragNode.current = idx
+  }
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    if (dragNode.current !== idx) setDragOverIndex(idx)
+  }
+
+  const handleDrop = (idx: number) => {
+    if (dragNode.current !== null && dragNode.current !== idx) {
+      reorderPresentationNodes(dragNode.current, idx)
+    }
+    setDragIndex(null)
+    setDragOverIndex(null)
+    dragNode.current = null
+  }
+
+  const handleDragEnd = () => {
+    setDragIndex(null)
+    setDragOverIndex(null)
+    dragNode.current = null
+  }
 
   const content = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -44,46 +73,76 @@ export function PresentationOrderPanel() {
               ノードを右クリックして「発表に追加」してください。
             </p>
           ) : (
-            <ol className="space-y-2">
-              {presentationNodeIds.map((id, idx) => (
-                <li
-                  key={id}
-                  className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2"
-                >
-                  <span className="w-6 h-6 flex-shrink-0 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">
-                    {idx + 1}
-                  </span>
-                  <span className="flex-1 text-sm text-gray-700 dark:text-gray-200 truncate">
-                    {getTitle(id)}
-                  </span>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => reorderPresentationNodes(idx, idx - 1)}
-                      disabled={idx === 0}
-                      className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-20"
-                      title="上へ"
+            <>
+              <p className="text-xs text-gray-400 mb-2">
+                ドラッグして順番を変更できます
+              </p>
+              <ol className="space-y-2">
+                {presentationNodeIds.map((id, idx) => (
+                  <li
+                    key={id}
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDrop={() => handleDrop(idx)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-colors select-none ${
+                      dragIndex === idx
+                        ? 'opacity-40 bg-gray-100 dark:bg-gray-600/50'
+                        : dragOverIndex === idx
+                        ? 'bg-indigo-50 dark:bg-indigo-900/40 ring-2 ring-indigo-300 dark:ring-indigo-600'
+                        : 'bg-gray-50 dark:bg-gray-700/50'
+                    }`}
+                  >
+                    {/* ドラッグハンドル */}
+                    <span
+                      className="text-gray-300 dark:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0"
+                      title="ドラッグして並び替え"
                     >
-                      ↑
-                    </button>
-                    <button
-                      onClick={() => reorderPresentationNodes(idx, idx + 1)}
-                      disabled={idx === presentationNodeIds.length - 1}
-                      className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-20"
-                      title="下へ"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      onClick={() => removeNodeFromPresentation(id)}
-                      className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600"
-                      title="発表から除外"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ol>
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="9" cy="6" r="1.5" />
+                        <circle cx="15" cy="6" r="1.5" />
+                        <circle cx="9" cy="12" r="1.5" />
+                        <circle cx="15" cy="12" r="1.5" />
+                        <circle cx="9" cy="18" r="1.5" />
+                        <circle cx="15" cy="18" r="1.5" />
+                      </svg>
+                    </span>
+                    <span className="w-6 h-6 flex-shrink-0 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-200 truncate">
+                      {getTitle(id)}
+                    </span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => reorderPresentationNodes(idx, idx - 1)}
+                        disabled={idx === 0}
+                        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-20"
+                        title="上へ"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => reorderPresentationNodes(idx, idx + 1)}
+                        disabled={idx === presentationNodeIds.length - 1}
+                        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-20"
+                        title="下へ"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => removeNodeFromPresentation(id)}
+                        className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600"
+                        title="発表から除外"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </div>
 
