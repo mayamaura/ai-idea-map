@@ -124,6 +124,7 @@ interface UIState {
   removeNodeFromPresentation: (nodeId: string) => void
   reorderPresentationNodes: (fromIndex: number, toIndex: number) => void
   clearPresentationNodes: () => void
+  setPresentationNodeIds: (ids: string[]) => void
   setPresentationOrderOpen: (open: boolean) => void
   // Phase 11: デバイス間連携
   setFileDashboardOpen: (open: boolean) => void
@@ -275,6 +276,7 @@ export const useUIStore = create<UIState>((set) => ({
       return { presentationNodeIds: ids }
     }),
   clearPresentationNodes: () => set({ presentationNodeIds: [], presentationCurrentIndex: 0 }),
+  setPresentationNodeIds: (ids) => set({ presentationNodeIds: ids, presentationCurrentIndex: 0 }),
   setPresentationOrderOpen: (open) => set({ isPresentationOrderOpen: open }),
   setAnalysisLoading: (loading) => set({ isAnalysisLoading: loading }),
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),

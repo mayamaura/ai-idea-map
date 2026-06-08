@@ -62,7 +62,7 @@ export function useAutoSave(accessToken: string | null) {
 
     const { getSerializedNodes, getSerializedEdges } = useMapStore.getState()
     // fileId・mapId・mapTitle はクロージャに固定せず都度読む
-    const { mapTitle, currentFileId, currentMapId, setCurrentFileId, setCurrentMapId, openConfirmDialog, setSaveStatus: setSS } = useUIStore.getState()
+    const { mapTitle, currentFileId, currentMapId, setCurrentFileId, setCurrentMapId, openConfirmDialog, setSaveStatus: setSS, presentationNodeIds } = useUIStore.getState()
     const { loadFromSerialized } = useMapStore.getState()
 
     // POST 新規作成の場合は mapId を確定する
@@ -78,6 +78,7 @@ export function useAutoSave(accessToken: string | null) {
       updatedAt: new Date().toISOString(),
       nodes: getSerializedNodes(),
       edges: getSerializedEdges(),
+      presentationNodeIds: presentationNodeIds.length > 0 ? presentationNodeIds : undefined,
     }
 
     saveMapLocally(mapFile)
@@ -105,6 +106,7 @@ export function useAutoSave(accessToken: string | null) {
                     // Drive から最新版を再ロード
                     const data = (await loadMap(accessToken, currentFileId)) as MapFile & { mapId?: string }
                     loadFromSerialized(data.nodes, data.edges)
+                    useUIStore.getState().setPresentationNodeIds(data.presentationNodeIds ?? [])
                     useUIStore.getState().setMapTitle(data.title || mapTitle)
                     setCurrentMapId(data.mapId ?? null)
                     hasCheckedThisSessionRef.current = true
@@ -175,12 +177,17 @@ export function useAutoSave(accessToken: string | null) {
     }
   }, [scheduleSave])
 
-  // マップ名（mapTitle）の変更でも保存する。
+  // mapTitle / presentationNodeIds の変更でも保存する。
   // uiStore は subscribeWithSelector 未使用のため (state, prev) を受け取り、
-  // mapTitle 差分のみ拾ってパネル開閉等の他UI状態変更で無駄保存しない。
+  // 差分のみ拾ってパネル開閉等の他UI状態変更で無駄保存しない。
   useEffect(() => {
     const unsubscribe = useUIStore.subscribe((state, prev) => {
-      if (state.mapTitle !== prev.mapTitle) scheduleSave()
+      if (
+        state.mapTitle !== prev.mapTitle ||
+        state.presentationNodeIds !== prev.presentationNodeIds
+      ) {
+        scheduleSave()
+      }
     })
     return () => unsubscribe()
   }, [scheduleSave])

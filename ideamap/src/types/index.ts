@@ -27,6 +27,8 @@ export interface MapFile {
   updatedAt: string
   nodes: SerializedNode[]
   edges: SerializedEdge[]
+  /** 発表順（ノードIDの配列）。省略時は空リストとして扱う */
+  presentationNodeIds?: string[]
 }
 
 export interface SerializedNode {

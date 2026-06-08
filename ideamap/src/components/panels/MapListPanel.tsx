@@ -10,7 +10,7 @@ interface MapListPanelProps {
 }
 
 export function MapListPanel({ accessToken }: MapListPanelProps) {
-  const { isMapListOpen, setMapListOpen, setMapTitle, setSaveStatus, setCurrentFileId, setCurrentMapId } = useUIStore()
+  const { isMapListOpen, setMapListOpen, setMapTitle, setSaveStatus, setCurrentFileId, setCurrentMapId, setPresentationNodeIds } = useUIStore()
   const { loadFromSerialized, reset } = useMapStore()
 
   const [files, setFiles] = useState<DriveFile[]>([])
@@ -44,6 +44,7 @@ export function MapListPanel({ accessToken }: MapListPanelProps) {
     try {
       const data = (await loadMap(accessToken, file.id)) as MapFile & { mapId?: string }
       loadFromSerialized(data.nodes, data.edges)
+      setPresentationNodeIds(data.presentationNodeIds ?? [])
       setMapTitle(data.title || file.name.replace(/\.json$/, ''))
       setCurrentFileId(file.id)
       setCurrentMapId(data.mapId ?? null)
