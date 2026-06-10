@@ -27,6 +27,15 @@ export function MapListPanel({ accessToken }: MapListPanelProps) {
       .finally(() => setIsLoading(false))
   }, [isMapListOpen, accessToken])
 
+  useEffect(() => {
+    if (!isMapListOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMapListOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isMapListOpen, setMapListOpen])
+
   if (!isMapListOpen) return null
 
   const handleNewMap = () => {
