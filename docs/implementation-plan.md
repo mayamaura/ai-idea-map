@@ -655,6 +655,338 @@
 
 ---
 
+### Phase 19: Google認証UXの改善（約2日）
+
+**目標**: 認証切れ・エラー時にユーザーが迷わず復帰でき、接続状態が常に明確である
+
+**背景（現状の課題）**:
+- Drive保存が401になると「再度サインインしてください」トーストが出るだけで、復帰にはヘッダーのボタンを自分で探す必要がある
+- アクセストークン更新タイマー（`setTimeout`）はバックグラウンドタブでブラウザにスロットリングされるため、タブ復帰直後の保存が401になることがある
+- `useGoogleAuth` の `error_callback` で `err.type`（`popup_failed_to_open` 等）が英語の生文字列のままトースト表示される
+- どのGoogleアカウントで接続しているか画面のどこにも表示されない
+- サインアウトが確認なしで即実行され、Drive自動保存が止まることの説明がない
+
+#### タスク
+
+**A. トーストのアクションボタン対応（共通基盤・B と Phase 20 以降で使用）**
+- [ ] `src/stores/uiStore.ts`: `Toast` インターフェースに `action?: { label: string; onClick: () => void }` を追加。`addToast` のシグネチャを `addToast(message, type, action?)` に拡張（action 付きトーストは自動消滅を 4秒→8秒 に延長）
+- [ ] `src/components/common/Toast.tsx`: `toast.action` があればメッセージの下に小さなボタン（primary色・下線スタイル）を表示。クリックで `action.onClick()` を実行してから `removeToast(id)`
+
+**B. 401時のサイレント再認証＋保存の自動リトライ**
+- [ ] `src/hooks/useGoogleAuth.ts`: `silentReauth(): void` を追加して return オブジェクトに含める。実装: `localStorage.getItem(AUTO_AUTH_FLAG) === 'true'` かつ `tokenClientRef.current` が存在する場合のみ、`isAutoAuthRef.current = true` をセットして `requestAccessToken({ prompt: '' })` を呼ぶ。条件を満たさない場合は何もしない
+- [ ] `src/hooks/useAutoSave.ts`: シグネチャを `useAutoSave(accessToken: string | null, auth: { silentReauth: () => void; signIn: () => void })` に変更
+  - `reauthAttemptedRef = useRef(false)` を追加
+  - `performSave` の 401 エラー時: `reauthAttemptedRef.current === false` なら ① `reauthAttemptedRef.current = true` ② `pendingRetryRef.current = true` ③ `auth.silentReauth()` を呼び、**トーストは出さない**（saveStatus は `'error'` のままにする）
+  - 既に `reauthAttemptedRef.current === true` の場合（サイレント再認証後も401）: 「Googleドライブの認証が切れました」トーストを **「再接続」アクション付き**（`action.onClick = auth.signIn`）で表示
+  - `useEffect(() => { ... }, [accessToken])` を追加: accessToken が non-null に変化したとき `reauthAttemptedRef.current = false` にリセットし、`pendingRetryRef.current === true` なら `pendingRetryRef.current = false` にして `scheduleSave()` で保存をリトライ
+- [ ] `src/App.tsx`: `useAutoSave(googleAuth.accessToken, { silentReauth: googleAuth.silentReauth, signIn: googleAuth.signIn })` に呼び出しを変更
+
+**C. バックグラウンド復帰時のトークン失効チェック**
+- [ ] `src/hooks/useGoogleAuth.ts`: `isGisReady` 後の `useEffect` 内で `visibilitychange` リスナーを追加。`document.hidden === false` になったとき sessionStorage の `TOKEN_EXPIRY_KEY` を読み、**失効済みまたは残り5分未満** かつ `AUTO_AUTH_FLAG === 'true'` なら `requestAccessToken({ prompt: '' })`（`isAutoAuthRef.current = true` を立てる）。十分残っていれば何もしない。クリーンアップでリスナー解除
+
+**D. 接続アカウント（メールアドレス）の表示**
+- [ ] `src/hooks/useGoogleAuth.ts`: `SCOPES` を `'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email'` に変更。トークン取得成功時（callback内）に `fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer <token>' } })` で `email` を取得し、state に `userEmail: string | null` を追加して保存。取得失敗は無視（email 表示なしで継続）。`localStorage.setItem('googleUserEmail', email)` にも保存し、`signOut` で削除。`GoogleAuthState` 型と return に `userEmail` を追加
+- [ ] `src/components/common/Header.tsx`: 「接続済み」ボタンをクリックでドロップダウンメニュー表示に変更（Toolbar の整列メニューと同じ「外クリックで閉じる」パターン）。メニュー内容: ①メールアドレス（クリック不可・truncate・text-xs gray） ②区切り線 ③「マップ一覧」（`setMapListOpen(true)`） ④「サインアウト」（下記F の確認ダイアログ）。既存の独立「マップ一覧」ボタンはこのドロップダウンに統合して削除（モバイル用アイコンボタンは残す）
+- [ ] `src/components/screens/FileOpenDashboard.tsx`: 未サインイン時、`localStorage.getItem('googleUserEmail')` があればサインインボタンの下に「前回: xxx@gmail.com」を text-xs gray で表示
+
+**E. 認証エラーメッセージの日本語化**
+- [ ] `src/hooks/useGoogleAuth.ts`: `function friendlyAuthError(type: string): string | null` を追加し `error_callback` で使用。マッピング: `popup_closed` → `null`（表示しない・現状維持） / `popup_failed_to_open` → 「ポップアップがブロックされました。ブラウザのポップアップ設定を確認してください」 / `access_denied` → 「Googleへのアクセスが許可されませんでした」 / その他 → 「Google認証でエラーが発生しました（{type}）」
+
+**F. サインアウト確認ダイアログ**
+- [ ] `src/components/common/Header.tsx`: サインアウト押下時に直接 `onGoogleSignOut()` せず `openConfirmDialog({ title: 'サインアウト', message: 'Googleドライブへの自動保存が停止します。編集内容はこの端末のローカルには保存され続けます。', confirmLabel: 'サインアウト', danger: true, onConfirm: onGoogleSignOut })` を呼ぶ
+
+**ドキュメント更新**
+- [ ] `docs/design.md` の認証まわりの設計（silentReauth・userEmail・visibilitychange チェック）を更新
+- [ ] `docs/requirements.md` に「認証切れ時の自動復帰」「接続アカウント表示」要件を追記
+
+**完了条件**: トークン失効後の保存がユーザー操作なしで再開される。サイレント再認証も失敗した場合はトーストの「再接続」1クリックで復帰できる。接続中のGoogleアカウントが確認できる
+
+---
+
+### Phase 20: ファイル保存・読み込みUXの改善（約2日）
+
+**目標**: 「前回の続き」へ確実に戻れ、保存状態がいつでも把握・操作できる
+
+**背景（現状の課題）**:
+- `useAutoSave` は常に localStorage にも保存している（`saveMapLocally`）のに、起動ダッシュボードに「前回の作業を再開」がなく、**未サインイン・オフラインだと前回の作業に戻る手段がない**（最重要）
+- `FileOpenDashboard` に閉じるボタンがなく、ヘッダーから誤って開くとマップを選び直すしかない
+- 手動保存（Ctrl+S）がなく、3秒デバウンス中にタブを閉じると Drive に保存されない。`beforeunload` 警告もない
+- ダッシュボードの Drive ファイル一覧から削除・複製ができない（削除は `MapListPanel` のみ）
+- 保存先が Drive なのかローカルのみなのかの表示がない
+
+#### タスク
+
+**A. 「前回の作業を再開」カード（最優先）**
+- [ ] `src/services/storageService.ts`: `loadMapLocally()` の戻り値を `MapFile | null` に型付けし、`nodes` が配列でない場合は `null` を返す検証を追加
+- [ ] `src/components/screens/FileOpenDashboard.tsx`: Drive セクションの**上**に「前回の作業を再開」カードを追加。`loadMapLocally()` が non-null のとき表示し、タイトル・`updatedAt`（formatDate）・ノード数を表示。サインイン状態に関係なく（オフラインでも）表示する
+  - クリック時: `loadFromSerialized(data.nodes, data.edges)` → `setMapTitle(data.title)` → `setCurrentMapId(data.mapId ?? null)` → `setPresentationNodeIds(data.presentationNodeIds ?? [])` → `setSaveStatus('saved')` → `setFileDashboardOpen(false)`
+  - **注意**: `currentFileId` は localStorage から復元済みのため触らない（同じ Drive ファイルへの保存を継続させる）
+
+**B. ダッシュボードを閉じられるように**
+- [ ] `FileOpenDashboard.tsx`: カード右上に X ボタンを追加して `setFileDashboardOpen(false)`。表示条件は `useMapStore` の `nodes.length > 0`（初回起動でまだ何も開いていないときは非表示）。同条件で Esc キーでも閉じる（`useEffect` で keydown 購読・クリーンアップ必須）
+
+**C. 手動保存（Ctrl+S）**
+- [ ] `src/stores/uiStore.ts`: `saveRequestId: number`（初期値0）と `requestSave: () => void`（`set((s) => ({ saveRequestId: s.saveRequestId + 1 }))`）を追加
+- [ ] `src/hooks/useAutoSave.ts`: `useEffect` で `saveRequestId` の変化を購読（`useUIStore.subscribe` の差分比較パターン）。変化したらデバウンスタイマーをクリアして即 `setSaveStatus('saving')` → `void performSave()`。**`autoSave` 設定が off でも手動保存は実行する**
+- [ ] `src/hooks/useKeyboardShortcuts.ts`: `Ctrl+S` → `e.preventDefault()` + `ui.requestSave()`。モーダル表示中の抑制チェック**より前**に配置（どの画面でも保存できるように）
+- [ ] `src/components/common/KeyboardShortcutsModal.tsx`: Ctrl+S の行を追加
+
+**D. 保存先と最終保存時刻の表示**
+- [ ] `src/stores/uiStore.ts`: `lastSavedAt: string | null` + `setLastSavedAt(iso: string)` を追加。`useAutoSave.performSave` の成功パス（Drive成功時とローカルのみ成功時の両方）でセット
+- [ ] `src/components/common/Header.tsx`: 保存ステータス表示を「保存済み · Drive」「保存済み · ローカル」形式に変更（判定: `isSignedIn && currentFileId` → Drive、それ以外 → ローカル。Header は props で `isSignedIn` を受け取り済み）。`title` 属性に「最終保存 HH:mm:ss / クリックで今すぐ保存」を設定し、クリックで `requestSave()`（`cursor-pointer` 付与）
+
+**E. ファイル一覧の行操作（削除・複製）と絞り込み**
+- [ ] `FileOpenDashboard.tsx`: 各 Drive ファイル行に hover で表示（`group-hover:opacity-100`）される「複製」「削除」アイコンボタンを追加（行クリックの open と干渉しないよう `stopPropagation`）
+  - 削除: `openConfirmDialog`（danger・ファイル名入りメッセージ）→ `deleteMap(accessToken, file.id)` → 一覧再取得。削除対象が `currentFileId` と一致したら `setCurrentFileId(null)` + `setCurrentMapId(null)`
+  - 複製: `loadMap(accessToken, file.id)` で内容取得 → `mapId: uuidv4()`・`title: 元タイトル + ' のコピー'` に書き換え → `saveMap(accessToken, newTitle, newContent, null, newMapId)` → 一覧再取得。処理中はスピナー表示
+- [ ] Drive ファイルが8件超のとき、一覧上部に絞り込み input を表示（ファイル名部分一致・大文字小文字無視・ローカル state）
+
+**F. タブを閉じる際の未保存ガード**
+- [ ] `src/App.tsx`: `useEffect`（マウント時1回）で `beforeunload` を購読。ハンドラ内で `useUIStore.getState().saveStatus` を読み、`'unsaved'` または `'saving'` のとき `e.preventDefault()` + `e.returnValue = ''`。クリーンアップで解除
+
+**ドキュメント更新**
+- [ ] `docs/design.md` のストレージ設計（saveRequestId・lastSavedAt・ローカル復元フロー）を更新
+- [ ] `docs/requirements.md` に「前回の作業を再開」「手動保存」「未保存ガード」要件を追記
+
+**完了条件**: オフライン・未サインインでも前回の作業に1クリックで復帰できる。Ctrl+S で即時保存でき、未保存のままタブを閉じようとすると警告される。ダッシュボードから削除・複製ができる
+
+---
+
+### Phase 21: レイアウト・整列機能の強化（約3日）
+
+**目標**: 手動配置の微調整が簡単になり、自動整列の挙動が追える
+
+**背景（現状の課題）**:
+- 自動整列は全ノード一括のみで、複数選択したノードを揃える・等間隔に並べる手段がない
+- 整列実行時にノードが瞬間移動し、どのノードがどこへ動いたか追えない
+- **不具合**: `FloatingEdge.tsx` が `label`・`markerStart` を `BaseEdge` に渡しておらず、エッジの「ラベルを編集」「双方向」が**機能していない**（mapStore 側のデータは正しく更新されるが描画されない）
+- ツールバーの「ノード追加」がビューポート左上付近固定で、既存ノードと重なりやすい
+- グリッドスナップがない
+
+#### タスク
+
+**A. FloatingEdge の不具合修正（ラベル・双方向矢印）**
+- [ ] `src/components/canvas/FloatingEdge.tsx`: `EdgeProps` から `label` と `markerStart` も受け取り、`markerStart` は `BaseEdge` にそのまま渡す。`getBezierPath(args)` の返り値を `[edgePath, labelX, labelY]` で受け、`label` があれば `@xyflow/react` の `EdgeLabelRenderer` で `transform: translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` の位置に白背景（dark対応）の小ラベル（text-xs・px-1.5・rounded）を描画
+- [ ] 動作確認: エッジ右クリック→「ラベルを編集」の文字が線上に表示される。「双方向」で両端に矢印が付く。保存→再読込後も維持される
+
+**B. 複数選択ノードの整列・分布**
+- [ ] `src/stores/mapStore.ts` にアクションを追加:
+  ```ts
+  alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
+  distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
+  ```
+  - 対象: `selected && type !== 'groupNode'` かつ **`parentId === undefined`** のノードのみ（グループ子ノードは座標系が異なるため除外）。対象が2未満（distribute は3未満）なら何もしない
+  - サイズは `n.measured ?? { width: 160, height: 60 }` を使用
+  - `left`: 最小 `position.x` に揃える / `right`: 最大 `position.x + width` に右端を揃える / `center-h`: 各ノード中心xの平均値に中心を揃える / `top`・`bottom`・`center-v` は y 軸で同様
+  - `distribute`: 対象を中心座標でソートし、両端ノードは固定、中間ノードの**中心**が等間隔になるよう配置
+  - 変更前スナップショットを `past` に push（既存アクションと同じパターン）
+- [ ] `src/components/canvas/ContextMenu.tsx`: ノードメニューで `nodes.filter((n) => n.selected && !n.parentId && n.type !== 'groupNode').length >= 2` のとき「整列」セクション（Divider区切り）を追加: 「⬅ 左揃え」「⬆ 上揃え」「↔ 左右中央」「↕ 上下中央」、3個以上なら「⇿ 横に等間隔」「⇳ 縦に等間隔」も表示。各項目はアクション実行後 `closeContextMenu()`
+
+**C. 整列アニメーション**
+- [ ] `src/stores/mapStore.ts` に追加:
+  ```ts
+  setNodesNoHistory: (nodes: IdeaNode[]) => void  // set({ nodes }) のみ。履歴に積まない
+  commitNodesWithHistory: (originalNodes: IdeaNode[], finalNodes: IdeaNode[]) => void
+  // → set((state) => ({ nodes: finalNodes, past: pushPast(state.past, { nodes: [...originalNodes], edges: [...state.edges] }), future: [] }))
+  ```
+- [ ] `src/utils/mapLayout.ts` に追加:
+  ```ts
+  export function animateNodePositions(
+    from: Node<IdeaNodeData>[],
+    to: Node<IdeaNodeData>[],
+    onFrame: (nodes: Node<IdeaNodeData>[]) => void,
+    onDone: () => void,
+    duration = 400
+  ): () => void  // キャンセル関数を返す
+  ```
+  - `requestAnimationFrame` ループ。`easeInOutCubic(t)` で補間。`to` の各ノードについて `from` に同 id があれば position を補間、なければ `to` の値をそのまま使う。最終フレームで `onDone()`
+- [ ] `src/components/toolbar/Toolbar.tsx`: `handleRadialLayout` / `handleDagreLayout` を変更:
+  1. `const original = nodes`（現在配列を保持）
+  2. `const laid = applyXxx(...)`
+  3. `animateNodePositions(original, laid, setNodesNoHistory, () => { commitNodesWithHistory(original, laid); fitView({ padding: 0.15, duration: 400 }) })`
+  4. 実行中フラグ（`useRef<boolean>`）で多重実行をガード（アニメーション中は整列メニューの再実行を無視）
+  - **重要**: アニメーション中の各フレームは履歴に積まないこと。整列後に Undo を1回押すと整列前の配置に戻ることを確認する
+
+**D. グリッドスナップ**
+- [ ] `src/stores/settingsStore.ts`: `snapToGrid: boolean`（default `false`）+ `setSnapToGrid` を追加し、`partialize` にも含める
+- [ ] `src/components/canvas/IdeaCanvas.tsx`: `<ReactFlow snapToGrid={snapToGrid} snapGrid={[20, 20]} ...>` を追加
+- [ ] `src/components/toolbar/Toolbar.tsx`: 整列ドロップダウン内の末尾に Divider ＋「グリッドにスナップ」トグル項目（有効時は ✓ を表示。クリックしてもメニューは閉じない）
+
+**E. ノード追加位置の改善（重なり回避）**
+- [ ] `src/utils/mapLayout.ts`: `export function findFreePosition(desired: { x: number; y: number }, existingNodes: Node<IdeaNodeData>[]): { x: number; y: number }` を追加 — desired を起点に、既存ノードと `|dx| < 200 && |dy| < 80` で重なる間、y を 90px ずつ下にずらす（最大10回）
+- [ ] `src/components/toolbar/Toolbar.tsx` `handleAddNode`: `getViewport` 計算をやめ、`screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })` で画面中央に変更し、`findFreePosition` を通してから `addNode`
+- [ ] `src/stores/mapStore.ts` `addConnectedNode`: グループ外分岐の `finalPosition` 決定後に `findFreePosition(finalPosition, state.nodes)` を適用
+
+**F. エッジスタイル設定（任意・低優先）**
+- [ ] `src/stores/settingsStore.ts`: `edgeStyle: 'bezier' | 'smoothstep' | 'straight'`（default `'bezier'`）+ setter + partialize
+- [ ] `src/components/canvas/FloatingEdge.tsx`: `useSettingsStore((s) => s.edgeStyle)` を参照し `getBezierPath` / `getSmoothStepPath` / `getStraightPath` を切り替え（引数 `args` は共通で流用可）
+- [ ] `src/components/panels/SettingsPanel.tsx`: ノード形状設定の隣に3択UIを追加（既存の nodeShape と同じUIパターン）
+
+**ドキュメント更新**
+- [ ] `docs/design.md` の「状態管理設計」（mapStore 新アクション）「コンテキストメニュー設計」（整列セクション）を更新
+- [ ] `docs/requirements.md` に整列・スナップ・エッジスタイル要件を追記
+
+**完了条件**: 複数選択→右クリックで整列・等間隔配置ができ、自動整列がアニメーションし Undo 1回で戻る。エッジラベルと双方向矢印が表示される
+
+---
+
+### Phase 22: アイデア編集UXの改善（約3日）
+
+**目標**: キーボードとダブルクリックだけでテンポよくマップを広げられる
+
+**背景（現状の課題）**:
+- **到達不能コード**: `IdeaNode.tsx` のインライン編集（`isEditing`）は blur/Escape で false にする処理だけ残っており、true にする経路が存在しない（ダブルクリックは詳細モーダルに割り当て済み）。タイトルを1行直すだけでもモーダルを開く必要がある
+- 新規ノード作成後にタイトル編集が自動で始まらず、「新しいアイデア」のまま放置されがち
+- マインドマップ定番の Enter（兄弟ノード追加）がない（Tab の子追加はある）
+- 矢印キーでノード間の選択移動ができない
+- `NodeDetailPanel` が Esc・背景クリックで閉じない
+- コピー&ペーストでノード間のエッジが複製されない（ノードだけバラバラに貼り付く）
+
+#### タスク
+
+**A. インライン編集の復活（ダブルクリック＝タイトル編集）**
+- [ ] `src/stores/uiStore.ts`: `editingNodeId: string | null` + `setEditingNodeId(id: string | null)` を追加
+- [ ] `src/components/canvas/IdeaNode.tsx`: ローカル `isEditing` state を廃止し `useUIStore` の `editingNodeId === id` で編集状態を判定。`handleDoubleClick` を `openNodeDetail(id)` から `setEditingNodeId(id)` に変更。blur / Enter（Shiftなし）/ Escape で `setEditingNodeId(null)`（既存のコミット・復元ロジックは維持）
+- [ ] 詳細モーダルへの導線を維持・補強: NodeActionBar「詳細」・右クリック「詳細を開く」は既存のまま。`IdeaNode` の📝本文バッジに `onClick={(e) => { e.stopPropagation(); openNodeDetail(id) }}` を追加し `cursor-pointer` に
+- [ ] `src/hooks/useKeyboardShortcuts.ts`: `F2` で `ui.selectedNodeId` があれば `ui.setEditingNodeId(ui.selectedNodeId)`
+- [ ] `src/components/canvas/ContextMenu.tsx`: ノードメニューの先頭付近に「✏️ 名前を変更」（shortcut表示 `F2`）を追加 → `setEditingNodeId(targetId)` + `closeContextMenu()`
+- [ ] 確認: 編集中（textarea フォーカス中）は既存の `isEditing` ガードによりショートカットが発火しないこと
+
+**B. 作成直後に編集モード開始**
+- 対象経路: ①キャンバスダブルクリック（`IdeaCanvas.handleDoubleClickOnPane`）②ツールバー「ノード追加」③Tab（子追加）④右クリック「アイデアを作成」「アイデアを作成（接続）」⑤Enter（兄弟追加・下記C）
+- [ ] 各経路で `addNode` / `addConnectedNode` の返り値 id を受けて `setSelectedNodeId(id)` + `setEditingNodeId(id)` を呼ぶ
+- [ ] `IdeaNode` の textarea は表示時に `select()` されるため、そのままタイプすれば「新しいアイデア」が上書きされる（既存挙動を確認）
+
+**C. Enter で兄弟ノード追加**
+- [ ] `src/stores/mapStore.ts`: `addSiblingNode(nodeId: string): string | null` を追加 — `edges.find((e) => e.target === nodeId)` で最初の親エッジを探す。親があれば `addConnectedNode(親id)` を呼んで返す。親がなければ選択ノードの直下（`x` 同じ、`y + (measured?.height ?? 60) + 30`、`findFreePosition` 適用）に独立ノードを作成して id を返す
+- [ ] `src/hooks/useKeyboardShortcuts.ts`: 修飾キーなし `Enter`（`ui.selectedNodeId` あり・編集中でない・モーダル抑制チェック通過後）→ `addSiblingNode` → 返り値 id を選択＋編集開始
+- [ ] `src/components/common/KeyboardShortcutsModal.tsx`: Enter / F2 / 矢印キーの行を追加
+
+**D. 矢印キーによるノード選択移動**
+- [ ] `src/stores/mapStore.ts`: `selectOnlyNode(id: string): void` を追加（全ノードの `selected` フラグを `n.id === id` に設定する単純 `set`。履歴に積まない）
+- [ ] `src/hooks/useKeyboardShortcuts.ts`: 矢印キー（`ui.selectedNodeId` あり・修飾なし）で方向別の最近傍ノードへ選択を移動:
+  - 現在ノードの絶対中心 `(cx, cy)`（`parentId` があれば親グループ position を加算）から各候補ノード中心へのベクトル `(dx, dy)` を計算
+  - ArrowRight: `dx > 0` かつ `|dy| <= |dx| * 1.2` を満たす候補のうちユークリッド距離最小のノード。他の方向も同様（軸を入れ替え）
+  - 候補は `type !== 'groupNode'` のノードのみ。該当なしなら何もしない（`preventDefault` もしない）
+  - 移動先確定時: `e.preventDefault()` → `map.selectOnlyNode(id)` + `ui.setSelectedNodeId(id)`
+
+**E. 詳細モーダル（NodeDetailPanel）の操作性**
+- [ ] `src/components/panels/NodeDetailPanel.tsx`: close 処理を `commitAndClose()` に集約（`titleInput`/`bodyInput` の未コミット値を `updateNodeTitle`/`updateNodeBody` で保存してから `closeNodeDetail()`。blur が走らない閉じ方への対策）
+- [ ] 背景（最外 div）クリックで `commitAndClose()`（内側カードは既存の `stopPropagation` あり）
+- [ ] `useEffect` の keydown で Escape → `commitAndClose()`。本文 textarea 内 `Ctrl+Enter` → `commitAndClose()`
+
+**F. コピー&ペーストでエッジも複製**
+- [ ] `src/stores/mapStore.ts`: `clipboard` を `{ nodes: IdeaNode[]; edges: Edge[] }` に変更（初期値 `{ nodes: [], edges: [] }`・`reset` も更新）
+  - `copyNodes`: 選択ノードに加えて、`source`・`target` の両方が選択集合に含まれるエッジも保存
+  - `paste`: `Map<oldId, newId>` を作ってノードを複製した後、保存エッジを `makeEdge({ source: map.get(e.source)!, target: map.get(e.target)!, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }, Boolean(e.markerStart))` で再生成し `label` も引き継ぐ
+- [ ] `src/hooks/useKeyboardShortcuts.ts` と `src/components/canvas/ContextMenu.tsx` の `clipboard.length` 参照を `clipboard.nodes.length` に修正（参照箇所を grep して全て直す）
+
+**ドキュメント更新**
+- [ ] `docs/design.md` の「状態管理設計」（editingNodeId・clipboard 構造変更・新アクション）と「コンテキストメニュー設計」（名前を変更）を更新
+- [ ] `docs/requirements.md` のノード編集要件（ダブルクリック挙動の変更・キーボード操作）を修正・追記
+
+**完了条件**: ダブルクリックでその場でタイトル編集でき、Enter / Tab / F2 / 矢印キーだけで連続的にマップを広げられる。コピペで接続ごと複製される
+
+---
+
+### Phase 23: AI連携UXの改善（約3日）
+
+**目標**: AI機能の待ち時間・失敗・結果確認のストレスをなくす
+
+**背景（現状の課題）**:
+- APIキー未設定のままAIパネルを開くと、実行ボタンを押した後にエラーで知らされる（事前ガイドがない）
+- チャット応答が全文一括表示で長い応答の体感が悪い。生成のキャンセルもできない
+- `generateSuggestions` の `max_tokens: 1024` では提案数が多い（8〜10件＋body付き）場合に JSON が途中で切れて解析エラーになりうる
+- API エラー（401/429/529/ネットワーク）が生メッセージのまま表示される
+- 提案をマップに追加しても画面外に配置されると気づけない
+- `chatWithMap` がマップコンテキストを最初のユーザーメッセージに埋め込んでおり、`system` パラメータを使っていない
+
+#### タスク
+
+**A. APIキー未設定時のガイド**
+- [ ] `src/components/panels/AISuggestionPanel.tsx` / `AIChatPanel.tsx` / `MapAnalysisPanel.tsx`: `useSettingsStore` の `apiKey` が空文字のとき、パネル本文を空状態UIに差し替える: 🔑アイコン＋「Claude APIキーが必要です」見出し＋「AI機能を使うには Anthropic の APIキーを設定してください」1行＋「設定を開く」ボタン（`setSettingsOpen(true)`）。実行ボタン・入力欄は表示しない
+
+**B. エラーメッセージの共通整形**
+- [ ] `src/services/claudeService.ts`: 末尾に追加:
+  ```ts
+  export function toFriendlyAIError(e: unknown): string
+  ```
+  `Anthropic.APIError` を `instanceof` 判定し `status` で分岐: 401 → 「APIキーが無効です。設定画面で確認してください」 / 429 → 「レート制限に達しました。1分ほど待ってから再試行してください」 / 529 → 「Claude APIが混雑しています。しばらく待ってから再試行してください」 / `Anthropic.APIConnectionError` → 「ネットワークエラーです。接続を確認してください」 / それ以外は `e instanceof Error ? e.message : 'エラーが発生しました'`
+- [ ] `AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` の catch 節をすべて `toFriendlyAIError(e)` に統一
+
+**C. チャットのストリーミング表示＋停止ボタン＋system化**
+- [ ] `src/services/claudeService.ts`: `chatWithMap` のシグネチャを変更:
+  ```ts
+  export async function chatWithMap(
+    req: ChatWithMapRequest,
+    onText?: (partialText: string) => void,
+    signal?: AbortSignal
+  ): Promise<{ content: string; actions: ChatAction[] }>
+  ```
+  - `systemContext` を messages への埋め込みではなく `system` パラメータで渡す（毎回最新のマップが反映され、履歴の改変が不要になる）。`messages` は会話履歴をそのまま渡す
+  - `client.messages.stream({ model, max_tokens: 2048, system, messages }, { signal })` を使用。`text` デルタを蓄積し、`onText(累積テキストから /```actions[\s\S]*$/ を除去したもの)` を都度呼ぶ（actions ブロックの途中表示を防ぐ）
+  - 完了後は従来どおり actions をパースして返す。Abort 時はそれまでの content（actions は空配列）を返す
+- [ ] `src/stores/uiStore.ts`: `updateLastChatMessage(content: string)` を追加（`chatMessages` 末尾が assistant ならその `content` を置換）
+- [ ] `src/components/panels/AIChatPanel.tsx`: 送信時に空 content の assistant メッセージを先に `addChatMessage` → `onText` で `updateLastChatMessage`。完了時に actions を最終メッセージに反映。`isChatLoading` 中は送信ボタンを「■ 停止」表示に変え、クリックで `AbortController.abort()`（`useRef<AbortController | null>` で保持）
+
+**D. 提案生成の堅牢化とキャンセル**
+- [ ] `src/services/claudeService.ts`: `generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` の `max_tokens` を `2048` に引き上げ
+- [ ] `generateSuggestions(req, signal?: AbortSignal)` に signal を追加（`client.messages.create({...}, { signal })`）
+- [ ] `src/components/panels/AISuggestionPanel.tsx`: 生成中（`isAILoading`）はローディング表示の横に「キャンセル」ボタンを表示。abort 時はローディング解除のみ（エラー表示しない。`e.name === 'AbortError'` または `Anthropic.APIUserAbortError` を判定）
+
+**E. 提案追加後のフォーカス移動**
+- [ ] `src/components/panels/AISuggestionPanel.tsx`: `useReactFlow()` の `fitView` を使い、`handleAddSelected` 完了後に `fitView({ nodes: [{ id: 選択ノードid }, ...追加ノードidの配列], padding: 0.3, duration: 500 })` を実行（追加先が兄弟モードの場合は親ノード id を含める）
+
+**ドキュメント更新**
+- [ ] `docs/design.md` の「AIサービス設計」（chatWithMap の system 化・ストリーミング・toFriendlyAIError）を更新
+- [ ] `docs/requirements.md` のAI機能要件（ストリーミング・キャンセル・エラー表示）を追記
+
+**完了条件**: APIキー未設定でも迷わず設定に辿り着ける。チャットが逐次表示され停止できる。提案10件でも解析エラーにならず、追加後に追加先へ視点が移動する
+
+---
+
+### Phase 24: 全般UX・品質改善（約2日）
+
+**目標**: 個別機能に属さない横断的な体験品質を引き上げる（追加提案分）
+
+**背景（現状の課題）**:
+- ダークモード対応が Header・一部パネルのみで、Toolbar / NodeActionBar / キャンバス背景・MiniMap / 整列ドロップダウン等がライト配色固定（ダークテーマにすると混在して見える）
+- ノード数が増えると画面外ノードも全て DOM 描画される
+- ウェルカドモーダルにキーボード操作の案内がない
+
+#### タスク
+
+**A. ダークモードの網羅**
+- [ ] `src/components/toolbar/Toolbar.tsx`: コンテナ（`bg-white border-gray-200`）とすべてのボタン・ドロップダウンに `dark:` クラスを追加（`dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700` 等。Header・既存パネルの配色に合わせる）
+- [ ] `src/components/canvas/IdeaCanvas.tsx`:
+  - `NodeActionBar` のコンテナ・ボタンに dark クラス追加
+  - `useSettingsStore((s) => s.theme)` を参照し、`<Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} ...>` に変更
+  - `MiniMap` / `Controls` に theme 条件で `!bg-gray-800` 系クラスを付与（className を三項演算子で切替）
+  - エンプティ状態のテキストに `dark:text-gray-500` 等を追加
+- [ ] `src/components/common/SearchBar.tsx` / `ConfirmDialog.tsx` / `Toast.tsx` / `ContextMenu.tsx` の dark 対応漏れを確認して補完（ContextMenu は MenuItem に dark クラスあり・コンテナ側を確認）
+- [ ] 確認方法: テーマを切り替えて全UI（ツールバー・メニュー・モーダル・トースト・キャンバス）を目視確認
+
+**B. 大規模マップのパフォーマンス**
+- [ ] `src/components/canvas/IdeaCanvas.tsx`: `<ReactFlow onlyRenderVisibleElements ...>` を追加（画面外ノードの DOM 描画をスキップ）
+- [ ] 動作確認: 100ノード規模のマップでパン・ズームが滑らかなこと。発表モード・検索ハイライトに副作用がないこと（`onlyRenderVisibleElements` は画面外ノードを非表示にするだけで状態は保持される）
+
+**C. ウェルカム・ヘルプ導線**
+- [ ] `src/components/common/WelcomeModal.tsx`: 3ステップの末尾に「`Ctrl+/` でいつでもショートカット一覧を表示できます」の1行を追加
+- [ ] `src/components/common/KeyboardShortcutsModal.tsx`: Phase 19〜23 で追加したショートカット（Ctrl+S / Enter / F2 / 矢印キー）が漏れなく載っていることを確認
+
+**ドキュメント更新**
+- [ ] `docs/design.md`（テーマ設計・パフォーマンス方針）、`docs/requirements.md`（非機能要件: ダークモード網羅・大規模マップ）を更新
+
+**完了条件**: ダークテーマで配色の混在がなくなる。100ノード規模でも操作が滑らか
+
+---
+
+### Phase 19〜24 の実装順について
+
+各フェーズは独立して実装可能（依存は Phase 19-A のトースト基盤 → 19-B のみ）。推奨順序は効果の大きい順に **20（ファイル）→ 22（編集）→ 19（認証）→ 23（AI）→ 21（レイアウト）→ 24（全般）**。ただし Phase 21-A（FloatingEdge のラベル・双方向矢印の不具合修正）だけは独立した小修正なので最初に着手してよい。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
@@ -707,10 +1039,21 @@ npm run dev
 | Phase 13 | AI機能の改善 | 2日 |
 | Phase 14 | AIチャット & マップ対話 | 3日 |
 | Phase 15 | プレゼンテーションモード | 3日 |
+| Phase 16 | Google Drive 保存のデータ消失バグ修正 | 1日 ✅ |
+| Phase 17 | mapId による衝突検出 | 1日 ✅ |
+| Phase 18 | UX 小改善バッチ | 1日 |
+| Phase 19 | Google認証UXの改善 | 2日 |
+| Phase 20 | ファイル保存・読み込みUXの改善 | 2日 |
+| Phase 21 | レイアウト・整列機能の強化 | 3日 |
+| Phase 22 | アイデア編集UXの改善 | 3日 |
+| Phase 23 | AI連携UXの改善 | 3日 |
+| Phase 24 | 全般UX・品質改善 | 2日 |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |
 | **Phase 12-15 合計** | | **約11日** |
-| **全体合計** | | **約39日** |
+| **Phase 16-18 合計** | | **約3日** |
+| **Phase 19-24 合計（UX改善）** | | **約15日** |
+| **全体合計** | | **約57日** |
 
 ---
 
@@ -729,3 +1072,8 @@ npm run dev
 | APIキー同期パスワードの忘れ | パスワードを忘れた場合はDriveから読み込めなくなる（APIキーを再入力すれば継続利用可能）。UIに「パスワードを忘れた場合は再入力してください」と明示する |
 | GIS Token自動再認証の失敗 | prompt:'' でポップアップが開く場合（ブラウザ設定によりブロックされることがある）は、ユーザーにサインインボタンを提示してフォールバック |
 | Drive settings.json の競合 | 複数デバイスから同時に設定を保存した場合は上書きになる（現実的に同時操作は稀なため許容。APIキーは同一のことがほとんど） |
+| Phase 19: userinfo.email スコープ追加による再同意 | 既存ユーザーは初回のみ同意ポップアップが再表示される。サイレント再認証が新スコープで失敗した場合はサインインボタンへフォールバック（既存の error_callback フローで担保） |
+| Phase 21: 整列アニメーション中の Undo 不整合 | アニメーションフレームは `setNodesNoHistory` で履歴に積まず、完了時に `commitNodesWithHistory(original, laid)` で変更前スナップショットを明示的に渡す。実行中フラグで多重実行を防止 |
+| Phase 22: Enter 兄弟追加と既存操作の競合 | input/textarea フォーカス中は既存の isEditing ガードで除外。ConfirmDialog の Enter 確認とはモーダル抑制チェックの順序で共存させる |
+| Phase 23: ストリーミング中の actions ブロック露出 | 表示用テキストから ```actions 以降を正規表現で除去してから onText に渡し、パースは完了後にのみ実行する |
+| Phase 23: chatWithMap の system 化による挙動変化 | 旧履歴（コンテキスト埋め込み済み第1メッセージ）はセッション内のみ保持のため移行処理は不要。チャット履歴クリアで初期化できる |
