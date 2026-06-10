@@ -44,17 +44,17 @@ export function FileOpenDashboard({
   }, [isFileDashboardOpen, accessToken])
 
   // マップを開いた後の再表示時のみ Esc で閉じられる（初回起動時は閉じる先がない）
+  // hasActiveMap をクロージャで持たず getState() で都度読むことでスタレ値を防ぐ
   useEffect(() => {
-    if (!isFileDashboardOpen || !hasActiveMap) return
     const onKey = (e: KeyboardEvent) => {
-      // 削除確認ダイアログ表示中はそちらの Esc を優先
-      if (e.key === 'Escape' && !useUIStore.getState().confirmDialog) {
+      const { hasActiveMap: active, confirmDialog } = useUIStore.getState()
+      if (e.key === 'Escape' && active && !confirmDialog) {
         setFileDashboardOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isFileDashboardOpen, hasActiveMap, setFileDashboardOpen])
+  }, [setFileDashboardOpen])
 
   if (!isFileDashboardOpen) return null
 
