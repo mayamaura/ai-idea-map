@@ -26,11 +26,17 @@ export function Header({
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
-  const { mapTitle, setMapTitle, saveStatus, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen } = useUIStore()
+  const { mapTitle, setMapTitle, saveStatus, currentFileId, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen } = useUIStore()
   const { theme, setTheme } = useSettingsStore()
   const isOnline = useOnlineStatus()
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
+
+  const saveTarget = isSignedIn && currentFileId ? 'Drive' : 'ローカル'
+  const lastSavedTime = lastSavedAt
+    ? new Date(lastSavedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null
+  const saveTooltip = `${lastSavedTime ? `最終保存 ${lastSavedTime} / ` : ''}クリックで今すぐ保存`
 
   return (
     <div className="flex-shrink-0 z-10">
@@ -84,9 +90,13 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className={`text-xs ${saveStatusLabel[saveStatus].color} hidden sm:block`}>
-          {saveStatusLabel[saveStatus].text}
-        </span>
+        <button
+          onClick={() => requestSave()}
+          className={`text-xs ${saveStatusLabel[saveStatus].color} hidden sm:block cursor-pointer hover:underline`}
+          title={saveTooltip}
+        >
+          {saveStatusLabel[saveStatus].text} · {saveTarget}
+        </button>
 
         {/* Google Drive ボタン */}
         {isSignedIn ? (

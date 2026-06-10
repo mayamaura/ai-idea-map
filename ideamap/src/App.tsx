@@ -34,7 +34,7 @@ function AppInner() {
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
   const { loadApiKey, theme } = useSettingsStore()
-  const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen, isPresentationMode } = useUIStore()
+  const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen, setFileDashboardOpen, isPresentationMode } = useUIStore()
   const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
   useAutoSave(googleAuth.accessToken)
@@ -64,9 +64,24 @@ function AppInner() {
         // 共有URL からのインポートは新規マップ扱い。前のマップの fileId を引き継いで上書きしない
         setCurrentFileId(null)
         addToast(`「${mapData.title}」をインポートしました`, 'success')
+        // ダッシュボードを閉じてインポートしたマップを表示（開いたままだと別マップ選択で上書きされる）
+        setFileDashboardOpen(false)
       },
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 未保存（デバウンス待ち・保存中）のままタブを閉じようとしたら警告する
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      const status = useUIStore.getState().saveStatus
+      if (status === 'unsaved' || status === 'saving') {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
   // Apply dark/light theme to <html>

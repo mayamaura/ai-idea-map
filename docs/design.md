@@ -146,7 +146,10 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `nodeDetailId` | `string \| null` | 詳細パネルで表示中のノードID |
 | `aiSuggestions` | `AISuggestion[]` | AI提案リスト |
 | `isAILoading` | `boolean` | AI呼び出し中フラグ |
-| `saveStatus` | `SaveStatus` | `saved \| saving \| unsaved \| error` |
+| `saveStatus` | `SaveStatus` | `saved \| saving \| unsaved \| error \| conflict` |
+| `saveRequestId` | `number` | 手動保存トリガー（Phase 20）。`requestSave()` でインクリメントされ、useAutoSave がデバウンスをスキップして即時保存する |
+| `lastSavedAt` | `string \| null` | 最後に保存が成功した時刻（ISO文字列）。ヘッダーの保存ステータスのツールチップに表示（Phase 20） |
+| `hasActiveMap` | `boolean` | このセッションでマップを開いた/作成したことがあるか。ダッシュボードの「キャンバスに戻る」ボタン・Esc閉じの表示判定に使用。`setFileDashboardOpen(false)` 時に自動で true になる（閉じる経路はマップ選択後のみのため）（Phase 20） |
 | `mapTitle` | `string` | 現在のマップタイトル |
 | `currentFileId` | `string \| null` | 現在開いている Drive ファイルの ID（null=未保存の新規/インポート）。fileId の単一の真実源。`setCurrentFileId` で localStorage と同期 |
 | `toasts` | `Toast[]` | トースト通知リスト（4秒後自動削除） |
@@ -551,9 +554,20 @@ Google Drive/
 
 - `useMapStore.subscribe()`（ノード・エッジ変更）に加え、`useUIStore.subscribe()` で `mapTitle` 変更も監視（差分比較で mapTitle のみ拾い、パネル開閉等の他UI状態変更では保存しない）。両者は同一デバウンスタイマーを共有
 - デバウンス: 変更から **3000ms** 後に保存実行
+- **手動保存（Phase 20）**: `uiStore.saveRequestId` の変化も購読し、変化時はデバウンスをスキップして即時保存する。`settingsStore.autoSave` が off でも手動保存は常に実行される。トリガーは `Ctrl+S` とヘッダーの保存ステータスクリック
 - 保存先 fileId は `uiStore.currentFileId` を参照。`POST` で採番された id は `setCurrentFileId` で反映し、次回以降は同じファイルへ `PATCH`
-- 保存優先順位: Google Drive（accessToken あり）→ localStorage（オフライン）
-- 保存ステータスは `uiStore.saveStatus` で管理しヘッダーに表示
+- 保存優先順位: Google Drive（accessToken あり）→ localStorage（オフライン）。localStorage への保存（`saveMapLocally`）は Drive 保存の成否に関わらず毎回実行される
+- 保存ステータスは `uiStore.saveStatus` で管理しヘッダーに表示。表示は「保存済み · Drive」「保存済み · ローカル」形式（`isSignedIn && currentFileId` → Drive）。保存成功時に `uiStore.lastSavedAt` を更新し、ツールチップに最終保存時刻を表示
+- **未保存ガード（Phase 20）**: `App.tsx` で `beforeunload` を購読し、`saveStatus` が `unsaved`/`saving` のときタブを閉じる前に警告する
+
+### 12.4.1 ローカル復元とファイルダッシュボード（Phase 20）
+
+- `storageService.loadMapLocally()` は `MapFile | null` を返す（`nodes`/`edges` が配列でない壊れたデータは null）
+- `FileOpenDashboard` 最上部に「前回の作業を再開」カードを表示（サインイン・オンライン状態に関係なく表示）。クリックで localStorage のマップを復元する。このとき `currentFileId` は触らない（localStorage から復元済みの値を維持し、同じ Drive ファイルへの保存を継続）
+- ダッシュボードは `hasActiveMap` が true のとき右上の X ボタンまたは Esc で閉じられる（初回起動時は閉じる先がないため非表示）
+- Drive ファイル一覧の各行に hover で「複製」「削除」ボタンを表示。削除は確認ダイアログ経由で、開いているファイルを削除した場合は `currentFileId`/`currentMapId` をクリアする。複製は新しい `mapId` を採番し、同名ファイルへの PATCH 上書きを避けるため「{title} のコピー (n)」形式で名前を一意化する
+- Drive ファイルが8件を超えると名前の部分一致絞り込み input を表示
+- **z-index 規約**: ダッシュボード z-60（portal）< ConfirmDialog z-70 < Toast z-80。ダッシュボード上から確認ダイアログ・トーストが使えるようにするための順序
 
 ### 12.5 mapId 衝突検出
 
@@ -587,6 +601,7 @@ remote.mapId ≠ currentMapId → 衝突検出
 
 | ショートカット | 動作 |
 |---|---|
+| `Ctrl+S` | 今すぐ保存（テキスト入力中・モーダル表示中でも有効。ブラウザの保存ダイアログを抑止） |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Ctrl+C` | 選択中ノードをクリップボードにコピー |

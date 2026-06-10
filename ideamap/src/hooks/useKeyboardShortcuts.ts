@@ -10,11 +10,20 @@ export function useKeyboardShortcuts() {
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
-      if (isEditing) return
 
       const ctrl = e.ctrlKey || e.metaKey
       const map = useMapStore.getState()
       const ui = useUIStore.getState()
+
+      // Ctrl+S: 今すぐ保存。テキスト入力中・モーダル表示中でも有効
+      // （ブラウザの「ページを保存」ダイアログの抑止を兼ねる）
+      if (ctrl && e.key === 's') {
+        e.preventDefault()
+        ui.requestSave()
+        return
+      }
+
+      if (isEditing) return
 
       // 発表モード中は専用キーのみ処理（他は全てブロック）
       if (ui.isPresentationMode) {

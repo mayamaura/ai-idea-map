@@ -1,16 +1,22 @@
+import type { MapFile } from '../types'
+
 const CURRENT_MAP_KEY = 'ideamap-current-map'
 const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
 
-export function saveMapLocally(data: unknown): void {
+export function saveMapLocally(data: MapFile): void {
   try {
     localStorage.setItem(CURRENT_MAP_KEY, JSON.stringify(data))
   } catch {}
 }
 
-export function loadMapLocally(): unknown | null {
+export function loadMapLocally(): MapFile | null {
   try {
     const raw = localStorage.getItem(CURRENT_MAP_KEY)
-    return raw ? (JSON.parse(raw) as unknown) : null
+    if (!raw) return null
+    const data = JSON.parse(raw) as MapFile
+    // 壊れたデータや旧フォーマットを「再開」候補に出さないための最低限の検証
+    if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) return null
+    return data
   } catch {
     return null
   }

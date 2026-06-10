@@ -11,6 +11,7 @@ const SHORTCUTS: { section: string; rows: ShortcutRow[] }[] = [
   {
     section: '基本操作',
     rows: [
+      { keys: ['Ctrl', 'S'], description: '今すぐ保存' },
       { keys: ['Ctrl', 'Z'], description: '元に戻す（Undo）' },
       { keys: ['Ctrl', 'Y'], description: 'やり直し（Redo）' },
       { keys: ['Ctrl', 'C'], description: '選択ノードをコピー' },

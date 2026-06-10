@@ -46,6 +46,12 @@ interface UIState {
   aiSuggestions: AISuggestion[]
   isAILoading: boolean
   saveStatus: SaveStatus
+  /** 手動保存トリガー。インクリメントされるたびに useAutoSave が即時保存する */
+  saveRequestId: number
+  /** 最後に保存が成功した時刻（ISO文字列）。Drive・ローカルどちらの保存でも更新 */
+  lastSavedAt: string | null
+  /** このセッションでマップを開いた/作成したことがあるか（ダッシュボードの「閉じる」表示判定用） */
+  hasActiveMap: boolean
   mapTitle: string
   /** 現在開いている Drive ファイルの ID（null=未保存の新規/インポート）。fileId の単一の真実源 */
   currentFileId: string | null
@@ -91,6 +97,8 @@ interface UIState {
   setAISuggestions: (suggestions: AISuggestion[]) => void
   setAILoading: (loading: boolean) => void
   setSaveStatus: (status: SaveStatus) => void
+  requestSave: () => void
+  setLastSavedAt: (iso: string) => void
   setMapTitle: (title: string) => void
   setCurrentFileId: (id: string | null) => void
   setCurrentMapId: (id: string | null) => void
@@ -145,6 +153,9 @@ export const useUIStore = create<UIState>((set) => ({
   aiSuggestions: [],
   isAILoading: false,
   saveStatus: 'saved',
+  saveRequestId: 0,
+  lastSavedAt: null,
+  hasActiveMap: false,
   mapTitle: '新しいマップ',
   // リロード後も同じファイルへ保存を継続できるよう localStorage から復元
   currentFileId: loadDriveFileId(),
@@ -188,6 +199,8 @@ export const useUIStore = create<UIState>((set) => ({
   setAISuggestions: (suggestions) => set({ aiSuggestions: suggestions }),
   setAILoading: (loading) => set({ isAILoading: loading }),
   setSaveStatus: (status) => set({ saveStatus: status }),
+  requestSave: () => set((state) => ({ saveRequestId: state.saveRequestId + 1 })),
+  setLastSavedAt: (iso) => set({ lastSavedAt: iso }),
   setMapTitle: (title) => set({ mapTitle: title }),
   // fileId は localStorage と常に一致させる（更新を1アクションに集約し同期漏れを防ぐ）
   setCurrentFileId: (id) => {
@@ -282,6 +295,12 @@ export const useUIStore = create<UIState>((set) => ({
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
   setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),
   setClusterSuggestions: (suggestions) => set({ clusterSuggestions: suggestions }),
-  setFileDashboardOpen: (open) => set({ isFileDashboardOpen: open }),
+  // ダッシュボードが閉じる＝マップを開いた/作成した直後なので hasActiveMap を立てる
+  // （閉じる経路はマップ選択・新規作成・インポート・「キャンバスに戻る」のみ）
+  setFileDashboardOpen: (open) =>
+    set((state) => ({
+      isFileDashboardOpen: open,
+      hasActiveMap: open ? state.hasActiveMap : true,
+    })),
   setShortcutsModalOpen: (open) => set({ isShortcutsModalOpen: open }),
 }))

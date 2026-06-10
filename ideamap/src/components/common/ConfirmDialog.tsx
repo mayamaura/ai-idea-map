@@ -41,7 +41,8 @@ export function ConfirmDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 animate-fade-in"
+      // ファイルダッシュボード（z-60・portal）の上にも表示できるよう z-70
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 animate-fade-in"
       onClick={handleCancel}
     >
       <div

@@ -139,6 +139,7 @@ export function useAutoSave(accessToken: string | null) {
             hasCheckedThisSessionRef.current = true
           }
           setSaveStatus('saved')
+          useUIStore.getState().setLastSavedAt(new Date().toISOString())
         }
       } catch (err) {
         if (isMountedRef.current) {
@@ -153,7 +154,10 @@ export function useAutoSave(accessToken: string | null) {
         }
       }
     } else {
-      if (isMountedRef.current) setSaveStatus('saved')
+      if (isMountedRef.current) {
+        setSaveStatus('saved')
+        useUIStore.getState().setLastSavedAt(new Date().toISOString())
+      }
     }
   }, [accessToken, setSaveStatus])
 
@@ -176,6 +180,19 @@ export function useAutoSave(accessToken: string | null) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [scheduleSave])
+
+  // 手動保存（Ctrl+S / ヘッダークリック）。デバウンスをスキップして即保存する。
+  // autoSave 設定が off でも手動保存は常に実行する
+  useEffect(() => {
+    const unsubscribe = useUIStore.subscribe((state, prev) => {
+      if (state.saveRequestId !== prev.saveRequestId) {
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        setSaveStatus('saving')
+        void performSave()
+      }
+    })
+    return () => unsubscribe()
+  }, [performSave, setSaveStatus])
 
   // mapTitle / presentationNodeIds の変更でも保存する。
   // uiStore は subscribeWithSelector 未使用のため (state, prev) を受け取り、
