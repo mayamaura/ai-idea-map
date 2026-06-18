@@ -703,7 +703,7 @@
 
 ---
 
-### Phase 20: ファイル保存・読み込みUXの改善（約2日） 🔨 実装済み（確認中）
+### Phase 20: ファイル保存・読み込みUXの改善（約2日） ✅ 完了（2026-06-18）
 
 **目標**: 「前回の続き」へ確実に戻れ、保存状態がいつでも把握・操作できる
 
@@ -717,41 +717,41 @@
 #### タスク
 
 **A. 「前回の作業を再開」カード（最優先）**
-- [x] `src/services/storageService.ts`: `loadMapLocally()` の戻り値を `MapFile | null` に型付けし、`nodes` が配列でない場合は `null` を返す検証を追加
-- [x] `src/components/screens/FileOpenDashboard.tsx`: Drive セクションの**上**に「前回の作業を再開」カードを追加。`loadMapLocally()` が non-null のとき表示し、タイトル・`updatedAt`（formatDate）・ノード数を表示。サインイン状態に関係なく（オフラインでも）表示する
+- [x]✅ `src/services/storageService.ts`: `loadMapLocally()` の戻り値を `MapFile | null` に型付けし、`nodes` が配列でない場合は `null` を返す検証を追加
+- [x]✅ `src/components/screens/FileOpenDashboard.tsx`: Drive セクションの**上**に「前回の作業を再開」カードを追加。`loadMapLocally()` が non-null のとき表示し、タイトル・`updatedAt`（formatDate）・ノード数を表示。サインイン状態に関係なく（オフラインでも）表示する
   - クリック時: `loadFromSerialized(data.nodes, data.edges)` → `setMapTitle(data.title)` → `setCurrentMapId(data.mapId ?? null)` → `setPresentationNodeIds(data.presentationNodeIds ?? [])` → `setSaveStatus('saved')` → `setFileDashboardOpen(false)`
   - **注意**: `currentFileId` は localStorage から復元済みのため触らない（同じ Drive ファイルへの保存を継続させる）
 
 **B. ダッシュボードを閉じられるように**
-- [x] `FileOpenDashboard.tsx`: 右上に X ボタンを追加して `setFileDashboardOpen(false)`。同条件で Esc キーでも閉じる（削除確認ダイアログ表示中の Esc はそちらを優先）
+- [x]✅ `FileOpenDashboard.tsx`: 右上に X ボタンを追加して `setFileDashboardOpen(false)`。同条件で Esc キーでも閉じる（削除確認ダイアログ表示中の Esc はそちらを優先）
   - 実装変更: 表示条件は `nodes.length > 0` ではなく `uiStore.hasActiveMap`（新設）を使用。mapStore は初期状態でもルートノードを1件持つため `nodes.length > 0` では初回起動を判別できない。`hasActiveMap` は `setFileDashboardOpen(false)` 時に自動で true になる（閉じる経路はマップ選択・新規作成・インポート後のみという不変条件を利用）
 
 **C. 手動保存（Ctrl+S）**
-- [x] `src/stores/uiStore.ts`: `saveRequestId: number`（初期値0）と `requestSave: () => void`（`set((s) => ({ saveRequestId: s.saveRequestId + 1 }))`）を追加
-- [x] `src/hooks/useAutoSave.ts`: `useEffect` で `saveRequestId` の変化を購読（`useUIStore.subscribe` の差分比較パターン）。変化したらデバウンスタイマーをクリアして即 `setSaveStatus('saving')` → `void performSave()`。**`autoSave` 設定が off でも手動保存は実行する**
-- [x] `src/hooks/useKeyboardShortcuts.ts`: `Ctrl+S` → `e.preventDefault()` + `ui.requestSave()`。モーダル抑制チェックより前・テキスト入力中（`isEditing`）ガードよりも前に配置（入力中でもブラウザの保存ダイアログを抑止して保存できるように）
-- [x] `src/components/common/KeyboardShortcutsModal.tsx`: Ctrl+S の行を追加
+- [x]✅ `src/stores/uiStore.ts`: `saveRequestId: number`（初期値0）と `requestSave: () => void`（`set((s) => ({ saveRequestId: s.saveRequestId + 1 }))`）を追加
+- [x]✅ `src/hooks/useAutoSave.ts`: `useEffect` で `saveRequestId` の変化を購読（`useUIStore.subscribe` の差分比較パターン）。変化したらデバウンスタイマーをクリアして即 `setSaveStatus('saving')` → `void performSave()`。**`autoSave` 設定が off でも手動保存は実行する**
+- [x]✅ `src/hooks/useKeyboardShortcuts.ts`: `Ctrl+S` → `e.preventDefault()` + `ui.requestSave()`。モーダル抑制チェックより前・テキスト入力中（`isEditing`）ガードよりも前に配置（入力中でもブラウザの保存ダイアログを抑止して保存できるように）
+- [x]✅ `src/components/common/KeyboardShortcutsModal.tsx`: Ctrl+S の行を追加
 
 **D. 保存先と最終保存時刻の表示**
-- [x] `src/stores/uiStore.ts`: `lastSavedAt: string | null` + `setLastSavedAt(iso: string)` を追加。`useAutoSave.performSave` の成功パス（Drive成功時とローカルのみ成功時の両方）でセット
-- [x] `src/components/common/Header.tsx`: 保存ステータス表示を「保存済み · Drive」「保存済み · ローカル」形式に変更（判定: `isSignedIn && currentFileId` → Drive、それ以外 → ローカル）。`title` 属性に「最終保存 HH:mm:ss / クリックで今すぐ保存」を設定し、クリックで `requestSave()`
+- [x]✅ `src/stores/uiStore.ts`: `lastSavedAt: string | null` + `setLastSavedAt(iso: string)` を追加。`useAutoSave.performSave` の成功パス（Drive成功時とローカルのみ成功時の両方）でセット
+- [x]✅ `src/components/common/Header.tsx`: 保存ステータス表示を「保存済み · Drive」「保存済み · ローカル」形式に変更（判定: `isSignedIn && currentFileId` → Drive、それ以外 → ローカル）。`title` 属性に「最終保存 HH:mm:ss / クリックで今すぐ保存」を設定し、クリックで `requestSave()`
 
 **E. ファイル一覧の行操作（削除・複製）と絞り込み**
-- [x] `FileOpenDashboard.tsx`: 各 Drive ファイル行に hover で表示（`group-hover:opacity-100`）される「複製」「削除」アイコンボタンを追加（行クリックの open と干渉しないよう `stopPropagation`。行は button のネスト回避のため div + onClick に変更）
+- [x]✅ `FileOpenDashboard.tsx`: 各 Drive ファイル行に hover で表示（`group-hover:opacity-100`）される「複製」「削除」アイコンボタンを追加（行クリックの open と干渉しないよう `stopPropagation`。行は button のネスト回避のため div + onClick に変更）
   - 削除: `openConfirmDialog`（danger・ファイル名入りメッセージ）→ `deleteMap(accessToken, file.id)` → 一覧から除去。削除対象が `currentFileId` と一致したら `setCurrentFileId(null)` + `setCurrentMapId(null)`
   - 複製: `loadMap(accessToken, file.id)` で内容取得 → `mapId: uuidv4()`・`title: 元タイトル + ' のコピー'`（同名がある場合は連番付与で一意化。saveMap の同名 PATCH 上書きを回避）→ `saveMap(..., null, newMapId)` → 一覧再取得。処理中はスピナー表示
-- [x] Drive ファイルが8件超のとき、一覧上部に絞り込み input を表示（ファイル名部分一致・大文字小文字無視・ローカル state）
+- [x]✅ Drive ファイルが8件超のとき、一覧上部に絞り込み input を表示（ファイル名部分一致・大文字小文字無視・ローカル state）
 
 **F. タブを閉じる際の未保存ガード**
-- [x] `src/App.tsx`: `useEffect`（マウント時1回）で `beforeunload` を購読。ハンドラ内で `useUIStore.getState().saveStatus` を読み、`'unsaved'` または `'saving'` のとき `e.preventDefault()` + `e.returnValue = ''`。クリーンアップで解除
+- [x]✅ `src/App.tsx`: `useEffect`（マウント時1回）で `beforeunload` を購読。ハンドラ内で `useUIStore.getState().saveStatus` を読み、`'unsaved'` または `'saving'` のとき `e.preventDefault()` + `e.returnValue = ''`。クリーンアップで解除
 
 **実装中に行った付随修正**
-- [x] z-index 調整: `ConfirmDialog` を z-60 → z-70、`Toast` を z-50 → z-80 に変更（ダッシュボード z-60 portal の上に確認ダイアログ・トーストが表示されるように）
-- [x] `FileOpenDashboard` の Drive 読み込み・JSONインポートで `presentationNodeIds` を復元（MapListPanel は復元していたがダッシュボード側が欠落していた）。新規作成時は発表リストをクリア
+- [x]✅ z-index 調整: `ConfirmDialog` を z-60 → z-70、`Toast` を z-50 → z-80 に変更（ダッシュボード z-60 portal の上に確認ダイアログ・トーストが表示されるように）
+- [x]✅ `FileOpenDashboard` の Drive 読み込み・JSONインポートで `presentationNodeIds` を復元（MapListPanel は復元していたがダッシュボード側が欠落していた）。新規作成時は発表リストをクリア
 
 **ドキュメント更新**
-- [x] `docs/design.md` のストレージ設計（saveRequestId・lastSavedAt・hasActiveMap・ローカル復元フロー・z-index 規約・Ctrl+S）を更新
-- [x] `docs/requirements.md` に「2.3.1.1 保存・復元のUX（Phase 20）」を追記、複製・削除要件を更新
+- [x]✅ `docs/design.md` のストレージ設計（saveRequestId・lastSavedAt・hasActiveMap・ローカル復元フロー・z-index 規約・Ctrl+S）を更新
+- [x]✅ `docs/requirements.md` に「2.3.1.1 保存・復元のUX（Phase 20）」を追記、複製・削除要件を更新
 
 **完了条件**: オフライン・未サインインでも前回の作業に1クリックで復帰できる。Ctrl+S で即時保存でき、未保存のままタブを閉じようとすると警告される。ダッシュボードから削除・複製ができる
 
