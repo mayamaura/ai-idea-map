@@ -127,6 +127,8 @@ interface UIState {
   addChatMessage: (message: ChatMessage) => void
   setChatLoading: (loading: boolean) => void
   clearChatHistory: () => void
+  /** chatMessages 末尾が assistant メッセージの場合、その content を置換する */
+  updateLastChatMessage: (content: string) => void
   // Phase 15: プレゼンテーションモード
   startPresentation: () => void
   exitPresentation: () => void
@@ -249,6 +251,14 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-40) })),
   setChatLoading: (loading) => set({ isChatLoading: loading }),
   clearChatHistory: () => set({ chatMessages: [] }),
+  updateLastChatMessage: (content) =>
+    set((state) => {
+      const msgs = state.chatMessages
+      if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'assistant') return {}
+      const updated = [...msgs]
+      updated[updated.length - 1] = { ...updated[updated.length - 1], content }
+      return { chatMessages: updated }
+    }),
   startPresentation: () =>
     set({
       isPresentationMode: true,

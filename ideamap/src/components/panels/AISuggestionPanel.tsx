@@ -1,8 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import { useReactFlow } from '@xyflow/react'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { generateSuggestions } from '../../services/claudeService'
+import { generateSuggestions, toFriendlyAIError } from '../../services/claudeService'
+import Anthropic from '@anthropic-ai/sdk'
 import { calcSuggestionPositions } from '../../utils/mapLayout'
 import type { AISuggestion } from '../../types'
 
@@ -16,16 +18,19 @@ export function AISuggestionPanel() {
     isAILoading,
     setAILoading,
     addToast,
+    setSettingsOpen,
   } = useUIStore()
   const { nodes, edges, addNode, onConnect } = useMapStore()
   const { apiKey, aiModel, suggestionCount, setSuggestionCount, categories, getCategoryById } =
     useSettingsStore()
+  const { fitView } = useReactFlow()
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [userInstruction, setUserInstruction] = useState('')
   const [addMode, setAddMode] = useState<'child' | 'sibling'>('child')
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
 
@@ -90,21 +95,27 @@ export function AISuggestionPanel() {
     addMode,
   ])
 
+  const handleCancel = () => {
+    abortRef.current?.abort()
+  }
+
   const handleFetch = useCallback(async () => {
     if (!selectedNode || !apiKey) {
-      setError(
-        apiKey ? 'ノードが選択されていません' : 'APIキーが設定されていません。設定画面から入力してください。',
-      )
+      setError(apiKey ? 'ノードが選択されていません' : 'APIキーが設定されていません。設定画面から入力してください。')
       return
     }
     setError(null)
     setAILoading(true)
     setAISuggestions([])
     setSelected(new Set())
+
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
     try {
       const req = buildBaseRequest()
       if (!req) return
-      const suggestions = await generateSuggestions(req)
+      const suggestions = await generateSuggestions(req, ctrl.signal)
       const existingTitles = new Set(nodes.map((n) => n.data.title.trim().toLowerCase()))
       const newSuggestions = suggestions.filter(
         (s) => !existingTitles.has(s.title.trim().toLowerCase()),
@@ -112,9 +123,18 @@ export function AISuggestionPanel() {
       setAISuggestions(newSuggestions)
       setSelected(new Set(newSuggestions.map((_, i) => i)))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'エラーが発生しました')
+      // キャンセル時はエラー表示しない
+      if (
+        e instanceof Anthropic.APIUserAbortError ||
+        (e as { name?: string })?.name === 'AbortError'
+      ) {
+        // nothing
+      } else {
+        setError(toFriendlyAIError(e))
+      }
     } finally {
       setAILoading(false)
+      abortRef.current = null
     }
   }, [selectedNode, apiKey, nodes, buildBaseRequest, setAILoading, setAISuggestions])
 
@@ -136,7 +156,7 @@ export function AISuggestionPanel() {
           setAISuggestions(aiSuggestions.map((s, i) => (i === idx ? newSuggestions[0] : s)))
         }
       } catch (e) {
-        addToast(e instanceof Error ? e.message : '再生成に失敗しました', 'error')
+        addToast(toFriendlyAIError(e), 'error')
       } finally {
         setRegeneratingIdx(null)
       }
@@ -161,11 +181,14 @@ export function AISuggestionPanel() {
       nodes,
     )
 
+    const addedIds: string[] = []
+
     selectedSuggestions.forEach((suggestion, idx) => {
       const { x, y } = positions[idx]
       const cat = suggestion.categoryId ? getCategoryById(suggestion.categoryId) : undefined
       const nodeColor = cat?.color ?? '#f3f4ff'
       const newId = addNode(suggestion.title, x, y, 'ai', nodeColor, suggestion.categoryId, suggestion.body)
+      addedIds.push(newId)
 
       if (addMode === 'sibling' && parentNodeIds.length > 0) {
         // 複数親のとき AI が parentNodeId を返すのでそれを使う。なければ最初の親へ
@@ -183,6 +206,21 @@ export function AISuggestionPanel() {
     setAISuggestions(aiSuggestions.filter((s) => !addedTitles.has(s.title)))
     setAIPanelOpen(false)
     setSelected(new Set())
+
+    // 追加後に追加先ノードへ視点を移動する
+    // addNode は Zustand を更新するが React Flow への反映は次フレームになるため rAF でラップ
+    const focusIds =
+      addMode === 'sibling'
+        ? [...parentNodeIds, ...addedIds]
+        : [selectedNode.id, ...addedIds]
+
+    requestAnimationFrame(() => {
+      fitView({
+        nodes: focusIds.map((id) => ({ id })),
+        padding: 0.3,
+        duration: 500,
+      })
+    })
   }, [
     selectedNode,
     aiSuggestions,
@@ -195,6 +233,7 @@ export function AISuggestionPanel() {
     getCategoryById,
     setAIPanelOpen,
     setAISuggestions,
+    fitView,
   ])
 
   const toggleSelect = (idx: number) => {
@@ -233,207 +272,239 @@ export function AISuggestionPanel() {
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-3">
-          {/* 選択ノードの内容 */}
-          {selectedNode && (
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
-              <p className="font-semibold text-gray-700 leading-snug">{selectedNode.data.title}</p>
-              {selectedNode.data.body && (
-                <p className="text-gray-500 whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto">
-                  {selectedNode.data.body}
-                </p>
+        {/* APIキー未設定時の空状態 */}
+        {!apiKey ? (
+          <div className="flex flex-col items-center justify-center px-5 py-10 text-center gap-4">
+            <span className="text-4xl">🔑</span>
+            <h3 className="text-sm font-semibold text-gray-800">
+              Claude APIキーが必要です
+            </h3>
+            <p className="text-xs text-gray-500">
+              AI機能を使うには Anthropic の APIキーを設定してください
+            </p>
+            <button
+              onClick={() => {
+                setAIPanelOpen(false)
+                setSettingsOpen(true)
+              }}
+              className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
+            >
+              設定を開く
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-4 space-y-3">
+              {/* 選択ノードの内容 */}
+              {selectedNode && (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
+                  <p className="font-semibold text-gray-700 leading-snug">{selectedNode.data.title}</p>
+                  {selectedNode.data.body && (
+                    <p className="text-gray-500 whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto">
+                      {selectedNode.data.body}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* 追加先モード切替 */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 flex-shrink-0">追加先</span>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                  <button
+                    onClick={() => setAddMode('child')}
+                    className={`px-3 py-1.5 transition-colors ${
+                      addMode === 'child'
+                        ? 'bg-primary-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    子ノード
+                  </button>
+                  <button
+                    onClick={() => setAddMode('sibling')}
+                    disabled={!hasParent}
+                    title={!hasParent ? 'このノードは親を持ちません' : undefined}
+                    className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${
+                      addMode === 'sibling'
+                        ? 'bg-primary-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    兄弟ノード
+                  </button>
+                </div>
+              </div>
+
+              {/* 提案数スライダー */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 flex-shrink-0">提案数</span>
+                <input
+                  type="range"
+                  min={3}
+                  max={10}
+                  value={suggestionCount}
+                  onChange={(e) => setSuggestionCount(Number(e.target.value))}
+                  className="flex-1 accent-primary-600"
+                />
+                <span className="text-xs font-medium text-gray-700 w-5 text-right">
+                  {suggestionCount}
+                </span>
+              </div>
+
+              {/* フリーテキスト指示入力 */}
+              <textarea
+                value={userInstruction}
+                onChange={(e) => setUserInstruction(e.target.value)}
+                placeholder="どのようなアイデアが欲しいですか？（例: 実装コストが低いもの）"
+                rows={2}
+                className="w-full text-xs p-2.5 border border-gray-200 rounded-lg resize-none placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-400 focus:border-primary-400"
+              />
+
+              {/* エラー */}
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 whitespace-pre-wrap">
+                  {error}
+                </div>
+              )}
+
+              {/* ローディング */}
+              {isAILoading && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                    <button
+                      onClick={handleCancel}
+                      className="px-3 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-500">アイデアを生成中...</p>
+                </div>
+              )}
+
+              {/* 提案リスト */}
+              {!isAILoading && aiSuggestions.length > 0 && (
+                <>
+                  <p className="text-xs text-gray-400">
+                    採用するアイデアを選択してください（{aiSuggestions.length}件）
+                  </p>
+                  <div className="space-y-2">
+                    {aiSuggestions.map((suggestion: AISuggestion, idx) => {
+                      const cat = suggestion.categoryId
+                        ? getCategoryById(suggestion.categoryId)
+                        : undefined
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => toggleSelect(idx)}
+                          className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                            selected.has(idx)
+                              ? 'border-primary-300 bg-primary-50'
+                              : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected.has(idx)}
+                            onChange={() => {}}
+                            className="mt-0.5 accent-primary-600 flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800">{suggestion.title}</p>
+                            {suggestion.body && (
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{suggestion.body}</p>
+                            )}
+                            {cat && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span
+                                  className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border border-gray-200"
+                                  style={{ backgroundColor: cat.color }}
+                                >
+                                  <span className="text-[11px] leading-none">{cat.icon}</span>
+                                  <span className="text-gray-700">{cat.name}</span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          {/* 個別再生成ボタン */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRegenerate(idx)
+                            }}
+                            disabled={regeneratingIdx !== null || isAILoading}
+                            title="この提案を再生成"
+                            className="p-1 mt-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 transition-colors"
+                          >
+                            {regeneratingIdx === idx ? (
+                              <svg
+                                className="w-3.5 h-3.5 animate-spin"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* 初期状態 */}
+              {!isAILoading && aiSuggestions.length === 0 && !error && (
+                <div className="text-center py-8 text-sm text-gray-400">
+                  <span className="text-3xl mb-2 block">💡</span>
+                  ボタンを押してAIにアイデアを提案してもらいましょう
+                </div>
               )}
             </div>
-          )}
 
-          {/* 追加先モード切替 */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 flex-shrink-0">追加先</span>
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+            {/* フッターボタン */}
+            <div className="px-5 py-4 border-t border-gray-100 space-y-2">
+              {aiSuggestions.length > 0 && !isAILoading && (
+                <button
+                  onClick={handleAddSelected}
+                  disabled={selected.size === 0}
+                  className="w-full py-2.5 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  選択した{selected.size}個を追加
+                </button>
+              )}
               <button
-                onClick={() => setAddMode('child')}
-                className={`px-3 py-1.5 transition-colors ${
-                  addMode === 'child'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                onClick={handleFetch}
+                disabled={isAILoading || regeneratingIdx !== null}
+                className="w-full py-2.5 border border-primary-300 text-primary-600 text-sm font-medium rounded-xl hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                子ノード
-              </button>
-              <button
-                onClick={() => setAddMode('sibling')}
-                disabled={!hasParent}
-                title={!hasParent ? 'このノードは親を持ちません' : undefined}
-                className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${
-                  addMode === 'sibling'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                } disabled:opacity-40 disabled:cursor-not-allowed`}
-              >
-                兄弟ノード
+                {aiSuggestions.length > 0 ? '再生成' : 'AIに提案してもらう'}
               </button>
             </div>
-          </div>
-
-          {/* 提案数スライダー */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-500 flex-shrink-0">提案数</span>
-            <input
-              type="range"
-              min={3}
-              max={10}
-              value={suggestionCount}
-              onChange={(e) => setSuggestionCount(Number(e.target.value))}
-              className="flex-1 accent-primary-600"
-            />
-            <span className="text-xs font-medium text-gray-700 w-5 text-right">
-              {suggestionCount}
-            </span>
-          </div>
-
-          {/* フリーテキスト指示入力 */}
-          <textarea
-            value={userInstruction}
-            onChange={(e) => setUserInstruction(e.target.value)}
-            placeholder="どのようなアイデアが欲しいですか？（例: 実装コストが低いもの）"
-            rows={2}
-            className="w-full text-xs p-2.5 border border-gray-200 rounded-lg resize-none placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-400 focus:border-primary-400"
-          />
-
-          {/* エラー */}
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 whitespace-pre-wrap">
-              {error}
-            </div>
-          )}
-
-          {/* ローディング */}
-          {isAILoading && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-              <p className="text-sm text-gray-500">アイデアを生成中...</p>
-            </div>
-          )}
-
-          {/* 提案リスト */}
-          {!isAILoading && aiSuggestions.length > 0 && (
-            <>
-              <p className="text-xs text-gray-400">
-                採用するアイデアを選択してください（{aiSuggestions.length}件）
-              </p>
-              <div className="space-y-2">
-                {aiSuggestions.map((suggestion: AISuggestion, idx) => {
-                  const cat = suggestion.categoryId
-                    ? getCategoryById(suggestion.categoryId)
-                    : undefined
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => toggleSelect(idx)}
-                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                        selected.has(idx)
-                          ? 'border-primary-300 bg-primary-50'
-                          : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(idx)}
-                        onChange={() => {}}
-                        className="mt-0.5 accent-primary-600 flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">{suggestion.title}</p>
-                        {suggestion.body && (
-                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{suggestion.body}</p>
-                        )}
-                        {cat && (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span
-                              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border border-gray-200"
-                              style={{ backgroundColor: cat.color }}
-                            >
-                              <span className="text-[11px] leading-none">{cat.icon}</span>
-                              <span className="text-gray-700">{cat.name}</span>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      {/* 個別再生成ボタン */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleRegenerate(idx)
-                        }}
-                        disabled={regeneratingIdx !== null || isAILoading}
-                        title="この提案を再生成"
-                        className="p-1 mt-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 transition-colors"
-                      >
-                        {regeneratingIdx === idx ? (
-                          <svg
-                            className="w-3.5 h-3.5 animate-spin"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                            />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {/* 初期状態 */}
-          {!isAILoading && aiSuggestions.length === 0 && !error && (
-            <div className="text-center py-8 text-sm text-gray-400">
-              <span className="text-3xl mb-2 block">💡</span>
-              ボタンを押してAIにアイデアを提案してもらいましょう
-            </div>
-          )}
-        </div>
-
-        {/* フッターボタン */}
-        <div className="px-5 py-4 border-t border-gray-100 space-y-2">
-          {aiSuggestions.length > 0 && !isAILoading && (
-            <button
-              onClick={handleAddSelected}
-              disabled={selected.size === 0}
-              className="w-full py-2.5 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              選択した{selected.size}個を追加
-            </button>
-          )}
-          <button
-            onClick={handleFetch}
-            disabled={isAILoading || regeneratingIdx !== null}
-            className="w-full py-2.5 border border-primary-300 text-primary-600 text-sm font-medium rounded-xl hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {aiSuggestions.length > 0 ? '再生成' : 'AIに提案してもらう'}
-          </button>
-        </div>
+          </>
+        )}
       </div>
     </div>
   )

@@ -501,6 +501,57 @@ const parsed = JSON.parse(jsonMatch[0]) as { suggestions: AISuggestion[] }
 return parsed.suggestions.slice(0, req.count)
 ```
 
+### 9.4 各関数の仕様（Phase 23）
+
+| 関数 | max_tokens | 備考 |
+|---|---|---|
+| `generateSuggestions(req, signal?)` | 2048 | signal で途中キャンセル可 |
+| `analyzeMap` | 2048 | |
+| `suggestConnections` | 2048 | |
+| `suggestClusters` | 2048 | |
+| `chatWithMap(req, onText?, signal?)` | 2048 | ストリーミング + system パラメータ化 |
+
+### 9.5 chatWithMap のストリーミング設計（Phase 23）
+
+```typescript
+export async function chatWithMap(
+  req: ChatWithMapRequest,
+  onText?: (partialText: string) => void,
+  signal?: AbortSignal,
+): Promise<{ content: string; actions: ChatAction[] }>
+```
+
+- `systemContext`（マップコンテキスト文字列）を **`system` パラメータ**で渡す。`messages` は会話履歴をそのままマップ（最初のユーザーメッセージへの埋め込みなし）。
+- `client.messages.stream({ model, max_tokens: 2048, system, messages }, { signal })` で逐次受信。
+- `onText` コールバックには `/```actions[\s\S]*$/` を除去した累積テキストを都度渡す（actions ブロックの途中表示防止）。
+- Abort 時（`APIUserAbortError` または `signal.aborted`）: それまでの累積テキスト（actions 除去済み）を `content` として返す。`actions: []`。throw しない。
+- 完了後: `/```actions\n([\s\S]*?)\n```/` で actions をパースして返す。
+
+### 9.6 toFriendlyAIError（Phase 23）
+
+```typescript
+export function toFriendlyAIError(e: unknown): string
+```
+
+エラー種別の優先判定順（`APIConnectionError` は `APIError` のサブクラスのため先に検査）:
+
+| 条件 | メッセージ |
+|---|---|
+| `e instanceof Anthropic.APIConnectionError` | 「ネットワークエラーです。接続を確認してください」 |
+| `e instanceof Anthropic.APIError` / status 401 | 「APIキーが無効です。設定画面で確認してください」 |
+| status 429 | 「レート制限に達しました。1分ほど待ってから再試行してください」 |
+| status 529 | 「Claude APIが混雑しています。しばらく待ってから再試行してください」 |
+| 他の `APIError` | `e.message` |
+| fallback | `e instanceof Error ? e.message : 'エラーが発生しました'` |
+
+### 9.7 updateLastChatMessage（uiStore — Phase 23）
+
+```typescript
+updateLastChatMessage: (content: string) => void
+```
+
+`chatMessages` 配列の末尾メッセージが `role === 'assistant'` の場合のみ、その `content` を置換した新配列をセットする。ストリーミング中にデルタを逐次反映するために使用。
+
 ---
 
 ## 10. APIキー暗号化設計（src/utils/encryption.ts）
