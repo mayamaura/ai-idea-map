@@ -11,7 +11,7 @@ export function ToastContainer() {
         <div
           key={toast.id}
           className={`
-            flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium
+            flex items-start gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium
             pointer-events-auto animate-slide-in
             ${toast.type === 'error' ? 'bg-red-500 text-white' : ''}
             ${toast.type === 'success' ? 'bg-green-500 text-white' : ''}
@@ -36,10 +36,23 @@ export function ToastContainer() {
                 d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           )}
-          <span>{toast.message}</span>
+          <div className="flex flex-col gap-1 flex-1">
+            <span>{toast.message}</span>
+            {toast.action && (
+              <button
+                onClick={() => {
+                  toast.action!.onClick()
+                  removeToast(toast.id)
+                }}
+                className="self-start text-xs font-semibold underline text-primary-200 hover:text-white transition-colors"
+              >
+                {toast.action.label}
+              </button>
+            )}
+          </div>
           <button
             onClick={() => removeToast(toast.id)}
-            className="ml-2 opacity-70 hover:opacity-100 transition-opacity"
+            className="ml-2 opacity-70 hover:opacity-100 transition-opacity flex-shrink-0"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

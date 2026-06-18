@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
@@ -15,6 +16,7 @@ interface HeaderProps {
   isSignedIn: boolean
   isGoogleLoading: boolean
   clientIdMissing: boolean
+  userEmail: string | null
   onGoogleSignIn: () => void
   onGoogleSignOut: () => void
 }
@@ -23,12 +25,29 @@ export function Header({
   isSignedIn,
   isGoogleLoading,
   clientIdMissing,
+  userEmail,
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
-  const { mapTitle, setMapTitle, saveStatus, currentFileId, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen } = useUIStore()
+  const { mapTitle, setMapTitle, saveStatus, currentFileId, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore()
   const { theme, setTheme } = useSettingsStore()
   const isOnline = useOnlineStatus()
+
+  // 「接続済み」ドロップダウンメニュー
+  const [showAccountMenu, setShowAccountMenu] = useState(false)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
+
+  // メニュー外クリックで閉じる（Toolbar と同じパターン）
+  useEffect(() => {
+    if (!showAccountMenu) return
+    const handler = (e: MouseEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Element)) {
+        setShowAccountMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showAccountMenu])
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
@@ -37,6 +56,17 @@ export function Header({
     ? new Date(lastSavedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : null
   const saveTooltip = `${lastSavedTime ? `最終保存 ${lastSavedTime} / ` : ''}クリックで今すぐ保存`
+
+  const handleSignOut = () => {
+    setShowAccountMenu(false)
+    openConfirmDialog({
+      title: 'サインアウト',
+      message: 'Googleドライブへの自動保存が停止します。編集内容はこの端末のローカルには保存され続けます。',
+      confirmLabel: 'サインアウト',
+      danger: true,
+      onConfirm: onGoogleSignOut,
+    })
+  }
 
   return (
     <div className="flex-shrink-0 z-10">
@@ -101,17 +131,7 @@ export function Header({
         {/* Google Drive ボタン */}
         {isSignedIn ? (
           <>
-            <button
-              onClick={() => setMapListOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors hidden sm:flex"
-              title="マップ一覧"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              <span>マップ一覧</span>
-            </button>
+            {/* モバイル用アイコンボタン（マップ一覧）は残す */}
             <button
               onClick={() => setMapListOpen(true)}
               className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors sm:hidden"
@@ -122,14 +142,55 @@ export function Header({
                   d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
             </button>
-            <button
-              onClick={onGoogleSignOut}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-600 border border-green-200 bg-green-50 rounded-lg hover:bg-green-100 transition-colors hidden sm:flex"
-              title="Googleドライブ接続済み"
-            >
-              <GoogleIcon />
-              <span>接続済み</span>
-            </button>
+
+            {/* デスクトップ: 「接続済み」ボタン → クリックでドロップダウン */}
+            <div ref={accountMenuRef} className="relative hidden sm:block">
+              <button
+                onClick={() => setShowAccountMenu((v) => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-600 border border-green-200 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+                title="接続済み — クリックでメニュー"
+              >
+                <GoogleIcon />
+                <span>接続済み</span>
+                <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showAccountMenu && (
+                <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
+                  {/* メールアドレス（クリック不可） */}
+                  {userEmail && (
+                    <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 truncate select-none">
+                      {userEmail}
+                    </div>
+                  )}
+                  <div className="border-t border-gray-100 dark:border-gray-700" />
+                  {/* マップ一覧 */}
+                  <button
+                    onClick={() => { setShowAccountMenu(false); setMapListOpen(true) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    マップ一覧
+                  </button>
+                  {/* サインアウト */}
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    サインアウト
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         ) : clientIdMissing ? (
           <button

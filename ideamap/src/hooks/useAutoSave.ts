@@ -11,7 +11,10 @@ const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
 const FOCUS_RECHECK_MS = 60_000
 
-export function useAutoSave(accessToken: string | null) {
+export function useAutoSave(
+  accessToken: string | null,
+  auth: { silentReauth: () => void; signIn: () => void }
+) {
   const { setSaveStatus } = useUIStore()
   const { autoSave } = useSettingsStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -22,6 +25,10 @@ export function useAutoSave(accessToken: string | null) {
   const hasCheckedThisSessionRef = useRef(false)
   /** window がバックグラウンドになった時刻 */
   const hiddenAtRef = useRef<number | null>(null)
+  /** 401 後にサイレント再認証を既に試みたか（二重リトライを防ぐ） */
+  const reauthAttemptedRef = useRef(false)
+  /** サイレント再認証後に保存を再試行する必要があるか */
+  const pendingRetryRef = useRef(false)
 
   useEffect(() => {
     isMountedRef.current = true
@@ -144,13 +151,26 @@ export function useAutoSave(accessToken: string | null) {
       } catch (err) {
         if (isMountedRef.current) {
           const isAuthError = err instanceof Error && err.message.includes('401')
-          setSaveStatus('error')
-          useUIStore.getState().addToast(
-            isAuthError
-              ? 'Googleドライブの認証が切れました。再度サインインしてください。'
-              : 'Googleドライブへの保存に失敗しました',
-            'error'
-          )
+          if (isAuthError) {
+            if (!reauthAttemptedRef.current) {
+              // 初回401: サイレント再認証を試みる。トーストは表示しない
+              reauthAttemptedRef.current = true
+              pendingRetryRef.current = true
+              auth.silentReauth()
+              setSaveStatus('error')
+            } else {
+              // 再認証後も401: ユーザーに手動再接続を促すトーストを表示
+              setSaveStatus('error')
+              useUIStore.getState().addToast(
+                'Googleドライブの認証が切れました',
+                'error',
+                { label: '再接続', onClick: auth.signIn }
+              )
+            }
+          } else {
+            setSaveStatus('error')
+            useUIStore.getState().addToast('Googleドライブへの保存に失敗しました', 'error')
+          }
         }
       }
     } else {
@@ -159,7 +179,7 @@ export function useAutoSave(accessToken: string | null) {
         useUIStore.getState().setLastSavedAt(new Date().toISOString())
       }
     }
-  }, [accessToken, setSaveStatus])
+  }, [accessToken, setSaveStatus, auth])
 
   // データ変更・タイトル変更どちらでも同じデバウンスタイマーを共有する
   const scheduleSave = useCallback(() => {
@@ -171,6 +191,17 @@ export function useAutoSave(accessToken: string | null) {
       void performSave()
     }, DEBOUNCE_MS)
   }, [autoSave, performSave, setSaveStatus])
+
+  // accessToken が non-null になったとき再認証フラグをリセットし、必要なら保存をリトライ
+  useEffect(() => {
+    if (accessToken !== null) {
+      reauthAttemptedRef.current = false
+      if (pendingRetryRef.current) {
+        pendingRetryRef.current = false
+        scheduleSave()
+      }
+    }
+  }, [accessToken, scheduleSave])
 
   // ノード・エッジの変更で保存
   useEffect(() => {

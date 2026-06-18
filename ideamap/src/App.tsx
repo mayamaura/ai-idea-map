@@ -37,7 +37,7 @@ function AppInner() {
   const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen, setFileDashboardOpen, isPresentationMode } = useUIStore()
   const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
-  useAutoSave(googleAuth.accessToken)
+  useAutoSave(googleAuth.accessToken, { silentReauth: googleAuth.silentReauth, signIn: googleAuth.signIn })
 
   useEffect(() => {
     if (googleAuth.error) {
@@ -101,6 +101,7 @@ function AppInner() {
           isSignedIn={googleAuth.isSignedIn}
           isGoogleLoading={googleAuth.isLoading}
           clientIdMissing={googleAuth.clientIdMissing}
+          userEmail={googleAuth.userEmail}
           onGoogleSignIn={googleAuth.signIn}
           onGoogleSignOut={googleAuth.signOut}
         />

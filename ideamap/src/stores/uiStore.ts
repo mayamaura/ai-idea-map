@@ -7,6 +7,7 @@ export interface Toast {
   id: string
   message: string
   type: 'success' | 'error' | 'info'
+  action?: { label: string; onClick: () => void }
 }
 
 export type ContextMenuType = 'node' | 'edge' | 'pane' | 'group'
@@ -105,7 +106,7 @@ interface UIState {
   setMapTitle: (title: string) => void
   setCurrentFileId: (id: string | null) => void
   setCurrentMapId: (id: string | null) => void
-  addToast: (message: string, type: Toast['type']) => void
+  addToast: (message: string, type: Toast['type'], action?: Toast['action']) => void
   removeToast: (id: string) => void
   openContextMenu: (menu: ContextMenuState) => void
   closeContextMenu: () => void
@@ -213,12 +214,14 @@ export const useUIStore = create<UIState>((set) => ({
     set({ currentFileId: id })
   },
   setCurrentMapId: (id) => set({ currentMapId: id }),
-  addToast: (message, type) => {
+  addToast: (message, type, action?) => {
     const id = uuidv4()
-    set((state) => ({ toasts: [...state.toasts, { id, message, type }] }))
+    set((state) => ({ toasts: [...state.toasts, { id, message, type, action }] }))
+    // action 付きトーストはユーザーが操作しやすいよう8秒、通常は4秒
+    const duration = action ? 8000 : 4000
     setTimeout(() => {
       set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }))
-    }, 4000)
+    }, duration)
   },
   removeToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),

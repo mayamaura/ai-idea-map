@@ -198,7 +198,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 
 `ReactFlowProvider` でアプリ全体をラップ。`AppInner` で以下のフックを最上位でマウント:
 - `useKeyboardShortcuts()` — グローバルキーイベント
-- `useAutoSave(accessToken)` — マップ変更監視と自動保存
+- `useAutoSave(accessToken, auth)` — マップ変更監視と自動保存。`auth: { silentReauth, signIn }` を受け取り、401 時のサイレント再認証・リトライを担う（Phase 19）
 - `useGoogleAuth()` — Google認証状態管理
 
 テーマ適用: `settingsStore.theme` に応じて `<html>` の `dark` クラスを切替。
@@ -541,8 +541,29 @@ return parsed.suggestions.slice(0, req.count)
 
 - Google Identity Services (GIS) の Token モデルを採用
 - クライアントID: `VITE_GOOGLE_CLIENT_ID` 環境変数で管理（ユーザー設定不要）
-- スコープ: `https://www.googleapis.com/auth/drive.file`
+- スコープ: `https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email`
 - アクセストークン取得後、Drive API を直接 fetch
+- トークン取得成功時に Google の userinfo エンドポイントへ fetch してメールアドレスを取得。`userEmail: string | null` を `GoogleAuthState` に追加し、`localStorage['googleUserEmail']` に永続化（サインアウト時削除）
+- `Header` コンポーネントに `userEmail` を prop で渡し、「接続済み」ボタンのドロップダウンメニューに表示する
+- `FileOpenDashboard` の未サインイン時エリアに `localStorage['googleUserEmail']` があれば「前回: xxx@gmail.com」を表示
+
+#### 12.1.1 サイレント再認証（Phase 19）
+
+- `useGoogleAuth` が返す `silentReauth(): void`: `AUTO_AUTH_FLAG === 'true'` かつ `tokenClientRef.current` が存在する場合のみ `requestAccessToken({ prompt: '' })` を呼ぶ。条件不成立の場合は何もしない
+- `useAutoSave` が Drive 保存で 401 を受けたとき:
+  - 初回 401: `reauthAttemptedRef = true`、`pendingRetryRef = true` を立て `auth.silentReauth()` を呼ぶ。トーストは表示しない
+  - `accessToken` が non-null になったとき（再認証成功）: `reauthAttemptedRef = false` にリセットし、`pendingRetryRef === true` なら保存をリトライ
+  - サイレント再認証後も 401（`reauthAttemptedRef === true` の再入り）: 「再接続」アクションボタン付きトーストを表示（`auth.signIn` を呼ぶ）
+
+#### 12.1.2 バックグラウンド復帰時のトークン失効チェック（Phase 19）
+
+- `useGoogleAuth` の `isGisReady` effect 内に `visibilitychange` リスナーを追加
+- タブが前面に戻ったとき（`document.hidden === false`）、`sessionStorage[TOKEN_EXPIRY_KEY]` を読み、`Date.now() >= expiry`（失効済み: EXPIRY_BUFFER_MS 分の余裕は保存済み）かつ `AUTO_AUTH_FLAG === 'true'` なら `requestAccessToken({ prompt: '' })` を発行（`isAutoAuthRef.current = true` を立てる）
+
+#### 12.1.3 認証エラーメッセージの日本語化（Phase 19）
+
+- `friendlyAuthError(type: string): string | null` を `useGoogleAuth.ts` 内に定義し `error_callback` で使用
+- `popup_closed` → `null`（表示しない） / `popup_failed_to_open` → ポップアップブロック案内 / `access_denied` → アクセス拒否案内 / 他 → 「Google認証でエラーが発生しました（{type}）」
 
 ### 12.2 フォルダ管理
 

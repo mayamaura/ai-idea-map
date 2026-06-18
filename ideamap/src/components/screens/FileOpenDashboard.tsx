@@ -281,9 +281,16 @@ export function FileOpenDashboard({
             </div>
 
             {!isSignedIn && !isGoogleLoading && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 pb-2">
-                サインインするとDriveのマップを開けます
-              </p>
+              <div className="pb-2">
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  サインインするとDriveのマップを開けます
+                </p>
+                {localStorage.getItem('googleUserEmail') && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    前回: {localStorage.getItem('googleUserEmail')}
+                  </p>
+                )}
+              </div>
             )}
 
             {isSignedIn && (
