@@ -655,7 +655,7 @@
 
 ---
 
-### Phase 19: Google認証UXの改善（約2日） 🔨 実装済み（確認中）
+### Phase 19: Google認証UXの改善（約2日） ✅ 完了（2026-06-18）
 
 **目標**: 認証切れ・エラー時にユーザーが迷わず復帰でき、接続状態が常に明確である
 
@@ -669,35 +669,35 @@
 #### タスク
 
 **A. トーストのアクションボタン対応（共通基盤・B と Phase 20 以降で使用）**
-- [x] `src/stores/uiStore.ts`: `Toast` インターフェースに `action?: { label: string; onClick: () => void }` を追加。`addToast` のシグネチャを `addToast(message, type, action?)` に拡張（action 付きトーストは自動消滅を 4秒→8秒 に延長）
-- [x] `src/components/common/Toast.tsx`: `toast.action` があればメッセージの下に小さなボタン（primary色・下線スタイル）を表示。クリックで `action.onClick()` を実行してから `removeToast(id)`
+- [x]✅ `src/stores/uiStore.ts`: `Toast` インターフェースに `action?: { label: string; onClick: () => void }` を追加。`addToast` のシグネチャを `addToast(message, type, action?)` に拡張（action 付きトーストは自動消滅を 4秒→8秒 に延長）
+- [x]✅ `src/components/common/Toast.tsx`: `toast.action` があればメッセージの下に小さなボタン（primary色・下線スタイル）を表示。クリックで `action.onClick()` を実行してから `removeToast(id)`
 
 **B. 401時のサイレント再認証＋保存の自動リトライ**
-- [x] `src/hooks/useGoogleAuth.ts`: `silentReauth(): void` を追加して return オブジェクトに含める。実装: `localStorage.getItem(AUTO_AUTH_FLAG) === 'true'` かつ `tokenClientRef.current` が存在する場合のみ、`isAutoAuthRef.current = true` をセットして `requestAccessToken({ prompt: '' })` を呼ぶ。条件を満たさない場合は何もしない
-- [x] `src/hooks/useAutoSave.ts`: シグネチャを `useAutoSave(accessToken: string | null, auth: { silentReauth: () => void; signIn: () => void })` に変更
+- [x]✅ `src/hooks/useGoogleAuth.ts`: `silentReauth(): void` を追加して return オブジェクトに含める。実装: `localStorage.getItem(AUTO_AUTH_FLAG) === 'true'` かつ `tokenClientRef.current` が存在する場合のみ、`isAutoAuthRef.current = true` をセットして `requestAccessToken({ prompt: '' })` を呼ぶ。条件を満たさない場合は何もしない
+- [x]✅ `src/hooks/useAutoSave.ts`: シグネチャを `useAutoSave(accessToken: string | null, auth: { silentReauth: () => void; signIn: () => void })` に変更
   - `reauthAttemptedRef = useRef(false)` を追加
   - `performSave` の 401 エラー時: `reauthAttemptedRef.current === false` なら ① `reauthAttemptedRef.current = true` ② `pendingRetryRef.current = true` ③ `auth.silentReauth()` を呼び、**トーストは出さない**（saveStatus は `'error'` のままにする）
   - 既に `reauthAttemptedRef.current === true` の場合（サイレント再認証後も401）: 「Googleドライブの認証が切れました」トーストを **「再接続」アクション付き**（`action.onClick = auth.signIn`）で表示
   - `useEffect(() => { ... }, [accessToken])` を追加: accessToken が non-null に変化したとき `reauthAttemptedRef.current = false` にリセットし、`pendingRetryRef.current === true` なら `pendingRetryRef.current = false` にして `scheduleSave()` で保存をリトライ
-- [x] `src/App.tsx`: `useAutoSave(googleAuth.accessToken, { silentReauth: googleAuth.silentReauth, signIn: googleAuth.signIn })` に呼び出しを変更
+- [x]✅ `src/App.tsx`: `useAutoSave(googleAuth.accessToken, { silentReauth: googleAuth.silentReauth, signIn: googleAuth.signIn })` に呼び出しを変更
 
 **C. バックグラウンド復帰時のトークン失効チェック**
-- [x] `src/hooks/useGoogleAuth.ts`: `isGisReady` 後の `useEffect` 内で `visibilitychange` リスナーを追加。`document.hidden === false` になったとき sessionStorage の `TOKEN_EXPIRY_KEY` を読み、**失効済みまたは残り5分未満** かつ `AUTO_AUTH_FLAG === 'true'` なら `requestAccessToken({ prompt: '' })`（`isAutoAuthRef.current = true` を立てる）。十分残っていれば何もしない。クリーンアップでリスナー解除
+- [x]✅ `src/hooks/useGoogleAuth.ts`: `isGisReady` 後の `useEffect` 内で `visibilitychange` リスナーを追加。`document.hidden === false` になったとき sessionStorage の `TOKEN_EXPIRY_KEY` を読み、**失効済みまたは残り5分未満** かつ `AUTO_AUTH_FLAG === 'true'` なら `requestAccessToken({ prompt: '' })`（`isAutoAuthRef.current = true` を立てる）。十分残っていれば何もしない。クリーンアップでリスナー解除
 
 **D. 接続アカウント（メールアドレス）の表示**
-- [x] `src/hooks/useGoogleAuth.ts`: `SCOPES` を `'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email'` に変更。トークン取得成功時（callback内）にメールアドレスを取得し、state に `userEmail: string | null` を追加して保存。取得失敗は無視（email 表示なしで継続）。`localStorage.setItem('googleUserEmail', email)` にも保存し、`signOut` で削除。`GoogleAuthState` 型と return に `userEmail` を追加
-- [x] `src/components/common/Header.tsx`: 「接続済み」ボタンをクリックでドロップダウンメニュー表示に変更（Toolbar の整列メニューと同じ「外クリックで閉じる」パターン）。メニュー内容: ①メールアドレス（クリック不可・truncate・text-xs gray） ②区切り線 ③「マップ一覧」（`setMapListOpen(true)`） ④「サインアウト」（下記F の確認ダイアログ）。既存の独立「マップ一覧」ボタンはこのドロップダウンに統合して削除（モバイル用アイコンボタンは残す）
-- [x] `src/components/screens/FileOpenDashboard.tsx`: 未サインイン時、`localStorage.getItem('googleUserEmail')` があればサインインボタンの下に「前回: xxx@gmail.com」を text-xs gray で表示
+- [x]✅ `src/hooks/useGoogleAuth.ts`: `SCOPES` を `'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email'` に変更。トークン取得成功時（callback内）にメールアドレスを取得し、state に `userEmail: string | null` を追加して保存。取得失敗は無視（email 表示なしで継続）。`localStorage.setItem('googleUserEmail', email)` にも保存し、`signOut` で削除。`GoogleAuthState` 型と return に `userEmail` を追加
+- [x]✅ `src/components/common/Header.tsx`: 「接続済み」ボタンをクリックでドロップダウンメニュー表示に変更（Toolbar の整列メニューと同じ「外クリックで閉じる」パターン）。メニュー内容: ①メールアドレス（クリック不可・truncate・text-xs gray） ②区切り線 ③「マップ一覧」（`setMapListOpen(true)`） ④「サインアウト」（下記F の確認ダイアログ）。既存の独立「マップ一覧」ボタンはこのドロップダウンに統合して削除（モバイル用アイコンボタンは残す）
+- [x]✅ `src/components/screens/FileOpenDashboard.tsx`: 未サインイン時、`localStorage.getItem('googleUserEmail')` があればサインインボタンの下に「前回: xxx@gmail.com」を text-xs gray で表示
 
 **E. 認証エラーメッセージの日本語化**
-- [x] `src/hooks/useGoogleAuth.ts`: `function friendlyAuthError(type: string): string | null` を追加し `error_callback` で使用。マッピング: `popup_closed` → `null`（表示しない・現状維持） / `popup_failed_to_open` → 「ポップアップがブロックされました。ブラウザのポップアップ設定を確認してください」 / `access_denied` → 「Googleへのアクセスが許可されませんでした」 / その他 → 「Google認証でエラーが発生しました（{type}）」
+- [x]✅ `src/hooks/useGoogleAuth.ts`: `function friendlyAuthError(type: string): string | null` を追加し `error_callback` で使用。マッピング: `popup_closed` → `null`（表示しない・現状維持） / `popup_failed_to_open` → 「ポップアップがブロックされました。ブラウザのポップアップ設定を確認してください」 / `access_denied` → 「Googleへのアクセスが許可されませんでした」 / その他 → 「Google認証でエラーが発生しました（{type}）」
 
 **F. サインアウト確認ダイアログ**
-- [x] `src/components/common/Header.tsx`: サインアウト押下時に直接 `onGoogleSignOut()` せず `openConfirmDialog({ title: 'サインアウト', message: 'Googleドライブへの自動保存が停止します。編集内容はこの端末のローカルには保存され続けます。', confirmLabel: 'サインアウト', danger: true, onConfirm: onGoogleSignOut })` を呼ぶ
+- [x]✅ `src/components/common/Header.tsx`: サインアウト押下時に直接 `onGoogleSignOut()` せず `openConfirmDialog({ title: 'サインアウト', message: 'Googleドライブへの自動保存が停止します。編集内容はこの端末のローカルには保存され続けます。', confirmLabel: 'サインアウト', danger: true, onConfirm: onGoogleSignOut })` を呼ぶ
 
 **ドキュメント更新**
-- [x] `docs/design.md` の認証まわりの設計（silentReauth・userEmail・visibilitychange チェック）を更新
-- [x] `docs/requirements.md` に「認証切れ時の自動復帰」「接続アカウント表示」要件を追記
+- [x]✅ `docs/design.md` の認証まわりの設計（silentReauth・userEmail・visibilitychange チェック）を更新
+- [x]✅ `docs/requirements.md` に「認証切れ時の自動復帰」「接続アカウント表示」要件を追記
 
 **完了条件**: トークン失効後の保存がユーザー操作なしで再開される。サイレント再認証も失敗した場合はトーストの「再接続」1クリックで復帰できる。接続中のGoogleアカウントが確認できる
 
