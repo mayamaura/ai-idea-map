@@ -14,10 +14,19 @@ const SHORTCUTS: { section: string; rows: ShortcutRow[] }[] = [
       { keys: ['Ctrl', 'S'], description: '今すぐ保存' },
       { keys: ['Ctrl', 'Z'], description: '元に戻す（Undo）' },
       { keys: ['Ctrl', 'Y'], description: 'やり直し（Redo）' },
-      { keys: ['Ctrl', 'C'], description: '選択ノードをコピー' },
+      { keys: ['Ctrl', 'C'], description: '選択ノードをコピー（エッジも含む）' },
       { keys: ['Ctrl', 'V'], description: 'ペースト（マウス位置）' },
       { keys: ['Delete', '/','Backspace'], description: '選択ノード・エッジを削除' },
-      { keys: ['Tab'], description: '選択ノードに子ノードを作成' },
+    ],
+  },
+  {
+    section: 'ノード編集',
+    rows: [
+      { keys: ['ダブルクリック'], description: 'ノードのタイトルをその場で編集' },
+      { keys: ['F2'], description: '選択ノードのタイトルを編集' },
+      { keys: ['Tab'], description: '選択ノードに子ノードを作成して編集' },
+      { keys: ['Enter'], description: '選択ノードの兄弟ノードを作成して編集' },
+      { keys: ['↑', '↓', '←', '→'], description: '方向キーでノード選択を移動' },
     ],
   },
   {

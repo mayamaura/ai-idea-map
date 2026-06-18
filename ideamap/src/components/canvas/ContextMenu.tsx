@@ -47,6 +47,7 @@ export function ContextMenu() {
     contextMenu,
     closeContextMenu,
     setSelectedNodeId,
+    setEditingNodeId,
     setAIPanelOpen,
     openNodeDetail,
     openConfirmDialog,
@@ -109,7 +110,10 @@ export function ContextMenu() {
   const handleCreateConnected = () => {
     if (!targetId) return
     const newId = addConnectedNode(targetId)
-    if (newId) setSelectedNodeId(newId)
+    if (newId) {
+      setSelectedNodeId(newId)
+      setEditingNodeId(newId)
+    }
     closeContextMenu()
   }
 
@@ -182,6 +186,15 @@ export function ContextMenu() {
       >
         {type === 'node' && (
           <>
+            <MenuItem
+              icon="✏️"
+              label="名前を変更"
+              shortcut="F2"
+              onClick={() => {
+                if (targetId) setEditingNodeId(targetId)
+                closeContextMenu()
+              }}
+            />
             <MenuItem icon="📝" label="詳細を開く" onClick={run(() => targetId && openNodeDetail(targetId))} />
             <MenuItem icon="➕" label="アイデアを作成（接続）" shortcut="Tab" onClick={handleCreateConnected} />
             <MenuItem
@@ -275,12 +288,14 @@ export function ContextMenu() {
             <MenuItem
               icon="➕"
               label="アイデアを作成"
-              onClick={run(() => {
+              onClick={() => {
                 if (flowPosition) {
                   const id = addNode('新しいアイデア', flowPosition.x - 60, flowPosition.y - 20)
                   setSelectedNodeId(id)
+                  setEditingNodeId(id)
                 }
-              })}
+                closeContextMenu()
+              }}
             />
             <MenuItem
               icon="📦"
@@ -293,7 +308,7 @@ export function ContextMenu() {
               icon="📥"
               label="ここに貼り付け"
               shortcut="Ctrl+V"
-              disabled={clipboard.length === 0}
+              disabled={clipboard.nodes.length === 0}
               onClick={run(() => paste(flowPosition))}
             />
           </>

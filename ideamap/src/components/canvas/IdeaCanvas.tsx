@@ -99,6 +99,7 @@ export function IdeaCanvas() {
   const {
     selectedNodeId,
     setSelectedNodeId,
+    setEditingNodeId,
     openContextMenu,
     closeContextMenu,
     setDragOverGroupId,
@@ -135,10 +136,12 @@ export function IdeaCanvas() {
       const target = e.target as HTMLElement
       if (!target.closest('.react-flow__node')) {
         const { x, y } = screenToFlowPosition({ x: e.clientX, y: e.clientY })
-        addNode('新しいアイデア', x - 60, y - 20)
+        const newId = addNode('新しいアイデア', x - 60, y - 20)
+        setSelectedNodeId(newId)
+        setEditingNodeId(newId)
       }
     },
-    [addNode, screenToFlowPosition]
+    [addNode, screenToFlowPosition, setSelectedNodeId, setEditingNodeId]
   )
 
   const handleNodeContextMenu = useCallback(

@@ -10,7 +10,7 @@ import type { Node } from '@xyflow/react'
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
   const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen, startPresentation } = useUIStore()
+  const { selectedNodeId, setSelectedNodeId, setEditingNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen, startPresentation } = useUIStore()
   const { categories } = useSettingsStore()
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
@@ -55,7 +55,9 @@ export function Toolbar() {
 
   const handleAddNode = () => {
     const { x, y, zoom } = getViewport()
-    addNode('新しいアイデア', (-x + 200) / zoom, (-y + 200) / zoom)
+    const newId = addNode('新しいアイデア', (-x + 200) / zoom, (-y + 200) / zoom)
+    setSelectedNodeId(newId)
+    setEditingNodeId(newId)
   }
 
   const handleDelete = () => {

@@ -121,17 +121,24 @@ interface Snapshot {
   edges: Edge[]
 }
 
+interface Clipboard {
+  nodes: IdeaNode[]
+  edges: Edge[]
+}
+
 interface MapState {
   nodes: IdeaNode[]
   edges: Edge[]
   past: Snapshot[]
   future: Snapshot[]
-  clipboard: IdeaNode[]
+  clipboard: Clipboard
   onNodesChange: (changes: NodeChange<IdeaNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
   addNode: (title: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string, categoryId?: string, body?: string) => string
   addConnectedNode: (parentId: string, title?: string) => string | null
+  /** 指定ノードの兄弟ノード（同じ親を持つ）を作成して新ノードのIDを返す。親がなければ独立ノードを作成 */
+  addSiblingNode: (nodeId: string) => string | null
   addGroupNode: (label: string, x: number, y: number, width?: number, height?: number) => string
   groupSelectedNodes: () => void
   ungroupNodes: (groupId: string) => void
@@ -164,6 +171,8 @@ interface MapState {
   undo: () => void
   redo: () => void
   reset: () => void
+  /** ノード選択を指定IDのみにする（履歴に積まない）。矢印キー移動などで使用 */
+  selectOnlyNode: (id: string) => void
   pendingFitView: boolean
   clearPendingFitView: () => void
 }
@@ -190,7 +199,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   edges: [],
   past: [],
   future: [],
-  clipboard: [],
+  clipboard: { nodes: [], edges: [] },
   pendingFitView: false,
 
   onNodesChange: (changes) => {
@@ -326,6 +335,38 @@ export const useMapStore = create<MapState>((set, get) => ({
     set((state) => ({
       nodes: [...state.nodes, newNode],
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    }))
+    return id
+  },
+
+  addSiblingNode: (nodeId) => {
+    const state = get()
+    const node = state.nodes.find((n) => n.id === nodeId)
+    if (!node) return null
+
+    // 親エッジを探す（このノードが target になっているエッジ）
+    const parentEdge = state.edges.find((e) => e.target === nodeId)
+    if (parentEdge) {
+      // 親があれば親に接続した子ノードとして作成
+      return get().addConnectedNode(parentEdge.source)
+    }
+
+    // 親がない独立ノード: 選択ノードの下に配置
+    const nodeH = node.measured?.height ?? 60
+    const id = uuidv4()
+    const pos = { x: node.position.x, y: node.position.y + nodeH + 30 }
+    const groupNodes = state.nodes.filter((n) => n.type === 'groupNode')
+    const finalPos = computePushOut(pos, node.measured, groupNodes)
+    const newNode: IdeaNode = {
+      id,
+      type: 'ideaNode',
+      position: finalPos,
+      data: { title: '新しいアイデア', color: DEFAULT_NODE_COLOR, createdBy: 'user' },
+    }
+    set((s) => ({
+      nodes: [...s.nodes, newNode],
+      past: pushPast(s.past, snapshot(s.nodes, s.edges)),
       future: [],
     }))
     return id
@@ -765,27 +806,63 @@ export const useMapStore = create<MapState>((set, get) => ({
 
   copyNodes: (ids) => {
     const idSet = new Set(ids)
-    const copied = get().nodes.filter((n) => idSet.has(n.id))
-    set({ clipboard: copied.map((n) => ({ ...n, data: { ...n.data } })) })
+    const state = get()
+    const copiedNodes = state.nodes.filter((n) => idSet.has(n.id))
+    // 選択ノード集合の両端を含むエッジのみコピー
+    const copiedEdges = state.edges.filter(
+      (e) => idSet.has(e.source) && idSet.has(e.target)
+    )
+    set({
+      clipboard: {
+        nodes: copiedNodes.map((n) => ({ ...n, data: { ...n.data } })),
+        edges: copiedEdges.map((e) => ({ ...e })),
+      },
+    })
   },
 
   paste: (position) => {
     const clip = get().clipboard
-    if (clip.length === 0) return
-    const dx = position ? position.x - clip[0].position.x : 36
-    const dy = position ? position.y - clip[0].position.y : 36
-    const pasted: IdeaNode[] = clip.map((n) => ({
-      ...n,
-      id: uuidv4(),
-      position: { x: n.position.x + dx, y: n.position.y + dy },
-      selected: true,
-      data: { ...n.data },
-    }))
+    if (clip.nodes.length === 0) return
+    const firstNode = clip.nodes[0]
+    const dx = position ? position.x - firstNode.position.x : 36
+    const dy = position ? position.y - firstNode.position.y : 36
+
+    // 旧ID→新IDのマップを構築
+    const idMap = new Map<string, string>()
+    const pastedNodes: IdeaNode[] = clip.nodes.map((n) => {
+      const newId = uuidv4()
+      idMap.set(n.id, newId)
+      return {
+        ...n,
+        id: newId,
+        position: { x: n.position.x + dx, y: n.position.y + dy },
+        selected: true,
+        data: { ...n.data },
+      }
+    })
+
+    // エッジを新IDで再生成
+    const pastedEdges: Edge[] = clip.edges.reduce<Edge[]>((acc, e) => {
+      const newSource = idMap.get(e.source)
+      const newTarget = idMap.get(e.target)
+      if (!newSource || !newTarget) return acc
+      const newEdge: Edge = {
+        ...makeEdge(
+          { source: newSource, target: newTarget, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle },
+          Boolean(e.markerStart)
+        ),
+        label: e.label,
+      }
+      acc.push(newEdge)
+      return acc
+    }, [])
+
     set((state) => ({
       nodes: [
         ...state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
-        ...pasted,
+        ...pastedNodes,
       ],
+      edges: [...state.edges, ...pastedEdges],
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
     }))
@@ -919,7 +996,12 @@ export const useMapStore = create<MapState>((set, get) => ({
       }
     }),
 
-  reset: () => set({ nodes: initialNodes, edges: [], past: [], future: [], clipboard: [] }),
+  reset: () => set({ nodes: initialNodes, edges: [], past: [], future: [], clipboard: { nodes: [], edges: [] } }),
+
+  selectOnlyNode: (id) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: n.id === id })),
+    })),
 
   clearPendingFitView: () => set({ pendingFitView: false }),
 }))

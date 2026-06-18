@@ -38,6 +38,8 @@ export interface ConfirmDialogState {
 
 interface UIState {
   selectedNodeId: string | null
+  /** インライン編集中のノードID（null = 編集なし） */
+  editingNodeId: string | null
   isSettingsOpen: boolean
   isAIPanelOpen: boolean
   isMapListOpen: boolean
@@ -89,6 +91,7 @@ interface UIState {
   isFileDashboardOpen: boolean
   isShortcutsModalOpen: boolean
   setSelectedNodeId: (id: string | null) => void
+  setEditingNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setAIPanelOpen: (open: boolean) => void
   setMapListOpen: (open: boolean) => void
@@ -145,6 +148,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   selectedNodeId: null,
+  editingNodeId: null,
   isSettingsOpen: false,
   isAIPanelOpen: false,
   isMapListOpen: false,
@@ -191,6 +195,7 @@ export const useUIStore = create<UIState>((set) => ({
         ? [id, ...state.recentNodeIds.filter((r) => r !== id)].slice(0, 10)
         : state.recentNodeIds,
     })),
+  setEditingNodeId: (id) => set({ editingNodeId: id }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setAIPanelOpen: (open) => set({ isAIPanelOpen: open }),
   setMapListOpen: (open) => set({ isMapListOpen: open }),
@@ -254,6 +259,7 @@ export const useUIStore = create<UIState>((set) => ({
       isNodeDetailOpen: false,
       isSearchOpen: false,
       contextMenu: null,
+      editingNodeId: null,
     }),
   exitPresentation: () => set({ isPresentationMode: false, presentationCurrentIndex: 0 }),
   goToNextPresentation: () =>

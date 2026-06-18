@@ -33,6 +33,28 @@ export function NodeDetailPanel() {
     }
   }, [isNodeDetailOpen])
 
+  // blur が走らない閉じ方（背景クリック・Esc・Ctrl+Enter）に対応するため閉じ処理を集約
+  const commitAndClose = useCallback(() => {
+    if (nodeDetailId) {
+      if (titleInput.trim()) updateNodeTitle(nodeDetailId, titleInput.trim())
+      updateNodeBody(nodeDetailId, bodyInput)
+    }
+    closeNodeDetail()
+  }, [nodeDetailId, titleInput, bodyInput, updateNodeTitle, updateNodeBody, closeNodeDetail])
+
+  // Esc と本文 Ctrl+Enter のキー処理
+  useEffect(() => {
+    if (!isNodeDetailOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        commitAndClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isNodeDetailOpen, commitAndClose])
+
   const handleTitleBlur = useCallback(() => {
     if (nodeDetailId && titleInput.trim()) {
       updateNodeTitle(nodeDetailId, titleInput.trim())
@@ -44,6 +66,17 @@ export function NodeDetailPanel() {
       updateNodeBody(nodeDetailId, bodyInput)
     }
   }, [nodeDetailId, bodyInput, updateNodeBody])
+
+  const handleBodyKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Ctrl+Enter で本文を保存して閉じる
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        commitAndClose()
+      }
+    },
+    [commitAndClose]
+  )
 
   const handleCategorySelect = useCallback(
     (categoryId: string) => {
@@ -75,7 +108,10 @@ export function NodeDetailPanel() {
   const currentCategory = nodeData.categoryId ? getCategoryById(nodeData.categoryId) : undefined
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4"
+      onClick={commitAndClose}
+    >
       <div
         className="bg-white dark:bg-gray-800 w-full sm:max-w-lg max-h-[90vh] h-full sm:h-auto sm:rounded-2xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -97,7 +133,7 @@ export function NodeDetailPanel() {
               <span>AI拡張</span>
             </button>
             <button
-              onClick={closeNodeDetail}
+              onClick={commitAndClose}
               className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -185,6 +221,7 @@ export function NodeDetailPanel() {
                 value={bodyInput}
                 onChange={(e) => setBodyInput(e.target.value)}
                 onBlur={handleBodyBlur}
+                onKeyDown={handleBodyKeyDown}
                 placeholder="Markdown形式で記述できます（# 見出し、**太字**、- リストなど）"
                 rows={8}
                 className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 resize-none dark:bg-gray-700 dark:text-gray-100 placeholder-gray-400"

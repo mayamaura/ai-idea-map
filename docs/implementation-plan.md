@@ -835,7 +835,7 @@
 
 ---
 
-### Phase 22: アイデア編集UXの改善（約3日）
+### Phase 22: アイデア編集UXの改善（約3日）🔨 実装済み（確認中）
 
 **目標**: キーボードとダブルクリックだけでテンポよくマップを広げられる
 
@@ -850,45 +850,45 @@
 #### タスク
 
 **A. インライン編集の復活（ダブルクリック＝タイトル編集）**
-- [ ] `src/stores/uiStore.ts`: `editingNodeId: string | null` + `setEditingNodeId(id: string | null)` を追加
-- [ ] `src/components/canvas/IdeaNode.tsx`: ローカル `isEditing` state を廃止し `useUIStore` の `editingNodeId === id` で編集状態を判定。`handleDoubleClick` を `openNodeDetail(id)` から `setEditingNodeId(id)` に変更。blur / Enter（Shiftなし）/ Escape で `setEditingNodeId(null)`（既存のコミット・復元ロジックは維持）
-- [ ] 詳細モーダルへの導線を維持・補強: NodeActionBar「詳細」・右クリック「詳細を開く」は既存のまま。`IdeaNode` の📝本文バッジに `onClick={(e) => { e.stopPropagation(); openNodeDetail(id) }}` を追加し `cursor-pointer` に
-- [ ] `src/hooks/useKeyboardShortcuts.ts`: `F2` で `ui.selectedNodeId` があれば `ui.setEditingNodeId(ui.selectedNodeId)`
-- [ ] `src/components/canvas/ContextMenu.tsx`: ノードメニューの先頭付近に「✏️ 名前を変更」（shortcut表示 `F2`）を追加 → `setEditingNodeId(targetId)` + `closeContextMenu()`
-- [ ] 確認: 編集中（textarea フォーカス中）は既存の `isEditing` ガードによりショートカットが発火しないこと
+- [x] `src/stores/uiStore.ts`: `editingNodeId: string | null` + `setEditingNodeId(id: string | null)` を追加
+- [x] `src/components/canvas/IdeaNode.tsx`: ローカル `isEditing` state を廃止し `useUIStore` の `editingNodeId === id` で編集状態を判定。`handleDoubleClick` を `openNodeDetail(id)` から `setEditingNodeId(id)` に変更。blur / Enter（Shiftなし）/ Escape で `setEditingNodeId(null)`（既存のコミット・復元ロジックは維持）
+- [x] 詳細モーダルへの導線を維持・補強: NodeActionBar「詳細」・右クリック「詳細を開く」は既存のまま。`IdeaNode` の📝本文バッジに `onClick={(e) => { e.stopPropagation(); openNodeDetail(id) }}` を追加し `cursor-pointer` に
+- [x] `src/hooks/useKeyboardShortcuts.ts`: `F2` で `ui.selectedNodeId` があれば `ui.setEditingNodeId(ui.selectedNodeId)`
+- [x] `src/components/canvas/ContextMenu.tsx`: ノードメニューの先頭付近に「✏️ 名前を変更」（shortcut表示 `F2`）を追加 → `setEditingNodeId(targetId)` + `closeContextMenu()`
+- [x] 確認: 編集中（textarea フォーカス中）は既存の `isEditing` ガードによりショートカットが発火しないこと
 
 **B. 作成直後に編集モード開始**
 - 対象経路: ①キャンバスダブルクリック（`IdeaCanvas.handleDoubleClickOnPane`）②ツールバー「ノード追加」③Tab（子追加）④右クリック「アイデアを作成」「アイデアを作成（接続）」⑤Enter（兄弟追加・下記C）
-- [ ] 各経路で `addNode` / `addConnectedNode` の返り値 id を受けて `setSelectedNodeId(id)` + `setEditingNodeId(id)` を呼ぶ
-- [ ] `IdeaNode` の textarea は表示時に `select()` されるため、そのままタイプすれば「新しいアイデア」が上書きされる（既存挙動を確認）
+- [x] 各経路で `addNode` / `addConnectedNode` の返り値 id を受けて `setSelectedNodeId(id)` + `setEditingNodeId(id)` を呼ぶ
+- [x] `IdeaNode` の textarea は表示時に `select()` されるため、そのままタイプすれば「新しいアイデア」が上書きされる（既存挙動を確認）
 
 **C. Enter で兄弟ノード追加**
-- [ ] `src/stores/mapStore.ts`: `addSiblingNode(nodeId: string): string | null` を追加 — `edges.find((e) => e.target === nodeId)` で最初の親エッジを探す。親があれば `addConnectedNode(親id)` を呼んで返す。親がなければ選択ノードの直下（`x` 同じ、`y + (measured?.height ?? 60) + 30`、`findFreePosition` 適用）に独立ノードを作成して id を返す
-- [ ] `src/hooks/useKeyboardShortcuts.ts`: 修飾キーなし `Enter`（`ui.selectedNodeId` あり・編集中でない・モーダル抑制チェック通過後）→ `addSiblingNode` → 返り値 id を選択＋編集開始
-- [ ] `src/components/common/KeyboardShortcutsModal.tsx`: Enter / F2 / 矢印キーの行を追加
+- [x] `src/stores/mapStore.ts`: `addSiblingNode(nodeId: string): string | null` を追加 — `edges.find((e) => e.target === nodeId)` で最初の親エッジを探す。親があれば `addConnectedNode(親id)` を呼んで返す。親がなければ選択ノードの直下（`x` 同じ、`y + (measured?.height ?? 60) + 30`、`findFreePosition` 適用）に独立ノードを作成して id を返す
+- [x] `src/hooks/useKeyboardShortcuts.ts`: 修飾キーなし `Enter`（`ui.selectedNodeId` あり・編集中でない・モーダル抑制チェック通過後）→ `addSiblingNode` → 返り値 id を選択＋編集開始
+- [x] `src/components/common/KeyboardShortcutsModal.tsx`: Enter / F2 / 矢印キーの行を追加
 
 **D. 矢印キーによるノード選択移動**
-- [ ] `src/stores/mapStore.ts`: `selectOnlyNode(id: string): void` を追加（全ノードの `selected` フラグを `n.id === id` に設定する単純 `set`。履歴に積まない）
-- [ ] `src/hooks/useKeyboardShortcuts.ts`: 矢印キー（`ui.selectedNodeId` あり・修飾なし）で方向別の最近傍ノードへ選択を移動:
+- [x] `src/stores/mapStore.ts`: `selectOnlyNode(id: string): void` を追加（全ノードの `selected` フラグを `n.id === id` に設定する単純 `set`。履歴に積まない）
+- [x] `src/hooks/useKeyboardShortcuts.ts`: 矢印キー（`ui.selectedNodeId` あり・修飾なし）で方向別の最近傍ノードへ選択を移動:
   - 現在ノードの絶対中心 `(cx, cy)`（`parentId` があれば親グループ position を加算）から各候補ノード中心へのベクトル `(dx, dy)` を計算
   - ArrowRight: `dx > 0` かつ `|dy| <= |dx| * 1.2` を満たす候補のうちユークリッド距離最小のノード。他の方向も同様（軸を入れ替え）
   - 候補は `type !== 'groupNode'` のノードのみ。該当なしなら何もしない（`preventDefault` もしない）
   - 移動先確定時: `e.preventDefault()` → `map.selectOnlyNode(id)` + `ui.setSelectedNodeId(id)`
 
 **E. 詳細モーダル（NodeDetailPanel）の操作性**
-- [ ] `src/components/panels/NodeDetailPanel.tsx`: close 処理を `commitAndClose()` に集約（`titleInput`/`bodyInput` の未コミット値を `updateNodeTitle`/`updateNodeBody` で保存してから `closeNodeDetail()`。blur が走らない閉じ方への対策）
-- [ ] 背景（最外 div）クリックで `commitAndClose()`（内側カードは既存の `stopPropagation` あり）
-- [ ] `useEffect` の keydown で Escape → `commitAndClose()`。本文 textarea 内 `Ctrl+Enter` → `commitAndClose()`
+- [x] `src/components/panels/NodeDetailPanel.tsx`: close 処理を `commitAndClose()` に集約（`titleInput`/`bodyInput` の未コミット値を `updateNodeTitle`/`updateNodeBody` で保存してから `closeNodeDetail()`。blur が走らない閉じ方への対策）
+- [x] 背景（最外 div）クリックで `commitAndClose()`（内側カードは既存の `stopPropagation` あり）
+- [x] `useEffect` の keydown で Escape → `commitAndClose()`。本文 textarea 内 `Ctrl+Enter` → `commitAndClose()`
 
 **F. コピー&ペーストでエッジも複製**
-- [ ] `src/stores/mapStore.ts`: `clipboard` を `{ nodes: IdeaNode[]; edges: Edge[] }` に変更（初期値 `{ nodes: [], edges: [] }`・`reset` も更新）
+- [x] `src/stores/mapStore.ts`: `clipboard` を `{ nodes: IdeaNode[]; edges: Edge[] }` に変更（初期値 `{ nodes: [], edges: [] }`・`reset` も更新）
   - `copyNodes`: 選択ノードに加えて、`source`・`target` の両方が選択集合に含まれるエッジも保存
   - `paste`: `Map<oldId, newId>` を作ってノードを複製した後、保存エッジを `makeEdge({ source: map.get(e.source)!, target: map.get(e.target)!, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }, Boolean(e.markerStart))` で再生成し `label` も引き継ぐ
-- [ ] `src/hooks/useKeyboardShortcuts.ts` と `src/components/canvas/ContextMenu.tsx` の `clipboard.length` 参照を `clipboard.nodes.length` に修正（参照箇所を grep して全て直す）
+- [x] `src/hooks/useKeyboardShortcuts.ts` と `src/components/canvas/ContextMenu.tsx` の `clipboard.length` 参照を `clipboard.nodes.length` に修正（参照箇所を grep して全て直す）
 
 **ドキュメント更新**
-- [ ] `docs/design.md` の「状態管理設計」（editingNodeId・clipboard 構造変更・新アクション）と「コンテキストメニュー設計」（名前を変更）を更新
-- [ ] `docs/requirements.md` のノード編集要件（ダブルクリック挙動の変更・キーボード操作）を修正・追記
+- [x] `docs/design.md` の「状態管理設計」（editingNodeId・clipboard 構造変更・新アクション）と「コンテキストメニュー設計」（名前を変更）を更新
+- [x] `docs/requirements.md` のノード編集要件（ダブルクリック挙動の変更・キーボード操作）を修正・追記
 
 **完了条件**: ダブルクリックでその場でタイトル編集でき、Enter / Tab / F2 / 矢印キーだけで連続的にマップを広げられる。コピペで接続ごと複製される
 

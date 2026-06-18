@@ -121,14 +121,16 @@ ideamap/
 | `edges` | `Edge[]` | React Flow エッジ配列 |
 | `past` | `Snapshot[]` | Undo用スナップショット履歴（最大50件） |
 | `future` | `Snapshot[]` | Redo用スナップショット履歴（最大50件） |
-| `clipboard` | `IdeaNode[]` | コピー用クリップボード |
+| `clipboard` | `{ nodes: IdeaNode[]; edges: Edge[] }` | コピー用クリップボード（Phase 22: エッジも含む構造に変更） |
 
 主要アクション:
 - `addNode`, `addConnectedNode` — ノード追加（`addNode(title, x, y, createdBy?, color?, categoryId?, body?)` — Phase 18で `body` 追加）
+- `addSiblingNode(nodeId)` — 兄弟ノードを作成してIDを返す（Phase 22）。親エッジがあれば同じ親の子として追加、なければ下方に独立ノード作成
+- `selectOnlyNode(id)` — 指定ノードのみ選択状態にする（履歴に積まない、矢印キー移動用）（Phase 22）
 - `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory` — ノード更新
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
-- `copyNodes`, `paste` — コピー・ペースト
+- `copyNodes`, `paste` — コピー・ペースト（Phase 22: `copyNodes` は選択ノード間のエッジも保存、`paste` は `Map<oldId,newId>` でエッジを再生成）
 - `undo`, `redo` — 履歴操作
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
 
@@ -139,6 +141,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | 状態 | 型 | 説明 |
 |------|-----|------|
 | `selectedNodeId` | `string \| null` | 現在選択中のノードID |
+| `editingNodeId` | `string \| null` | インライン編集中のノードID（null=編集なし）（Phase 22） |
 | `isSettingsOpen` | `boolean` | 設定パネルの開閉 |
 | `isAIPanelOpen` | `boolean` | AI提案パネルの開閉 |
 | `isMapListOpen` | `boolean` | マップ一覧パネルの開閉 |
@@ -249,11 +252,12 @@ React Flow の主要設定:
 - 選択中: ボーダー `border-primary-500`、アクションバーを下部に表示
 - AIノード (`createdBy === 'ai'`): `node-ai-generated` クラス（`✦` バッジ + pulse アニメーション）
 
-**インライン編集（タイトルのみ）:**
-- ダブルクリックで NodeDetailPanel（詳細パネル）を開く
-- 詳細パネルでタイトル・本文・カテゴリを編集
-- 本文があるノードは左上に 📝 バッジを表示
+**インライン編集（タイトルのみ）（Phase 22）:**
+- ダブルクリック / F2 / 右クリック「名前を変更」で `uiStore.editingNodeId` を設定 → textarea 表示
+- Enter (Shift なし) または blur でコミット、Escape で変更破棄
+- 本文があるノードは左上に 📝 バッジを表示。バッジクリック → `openNodeDetail(id)`（詳細モーダルへの導線を維持）
 - 本文の冒頭をノードカード内にプレビュー表示（2行）
+- ノード作成直後（キャンバスダブルクリック・ツールバー追加・Tab・Enter・右クリック作成）は自動で編集モード開始
 
 **モバイル対応:**
 - ロングプレス 500ms → 選択 + AI提案パネルを開く
@@ -271,9 +275,9 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 | メニュー種別 | 表示項目 |
 |---|---|
-| node | 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / 接続線のみ削除 / ノードを削除 |
+| node | **名前を変更（F2）**（Phase 22）/ 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / 接続線のみ削除 / ノードを削除 |
 | edge | 向きを反転 / 双方向切替 / ラベルを編集 / 線を削除 |
-| pane | アイデアを作成 / ここに貼り付け |
+| pane | アイデアを作成（作成後インライン編集開始・Phase 22）/ グループを作成 / ここに貼り付け |
 
 ### 5.5 WelcomeModal（src/components/common/WelcomeModal.tsx）
 

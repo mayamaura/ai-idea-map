@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useCallback } from 'react'
+import { memo, useRef, useEffect, useCallback } from 'react'
 import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -20,14 +20,24 @@ function widthClass(text: string): string {
 
 function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
   const nodeData = data as IdeaNodeData
-  const [isEditing, setIsEditing] = useState(false)
-  const [editText, setEditText] = useState(nodeData.title)
+  const editText = useRef(nodeData.title)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { updateNodeTitle } = useMapStore()
-  const { setSelectedNodeId, setAIPanelOpen, openNodeDetail, searchQuery, activeCategoryFilters, presentationNodeIds } = useUIStore()
+  const {
+    setSelectedNodeId,
+    setAIPanelOpen,
+    openNodeDetail,
+    searchQuery,
+    activeCategoryFilters,
+    presentationNodeIds,
+    editingNodeId,
+    setEditingNodeId,
+  } = useUIStore()
   const nodeShape = useSettingsStore((s) => s.nodeShape)
   const getCategoryById = useSettingsStore((s) => s.getCategoryById)
+
+  const isEditing = editingNodeId === id
 
   // 検索・フィルター状態に応じた表示制御
   const isSearchActive = searchQuery.trim() !== ''
@@ -41,43 +51,51 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const isDimmed = (isSearchActive && !matchesSearch) || (activeCategoryFilters.length > 0 && !matchesFilter)
   const isHighlighted = isSearchActive && matchesSearch
 
+  // タイトルが外部から変更されたとき（Undo/Redo・AI生成など）はローカル参照を同期する
   useEffect(() => {
-    setEditText(nodeData.title)
-  }, [nodeData.title])
+    if (!isEditing) {
+      editText.current = nodeData.title
+    }
+  }, [nodeData.title, isEditing])
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
+      textareaRef.current.value = nodeData.title
+      editText.current = nodeData.title
       textareaRef.current.focus()
       textareaRef.current.select()
     }
   }, [isEditing])
 
-  const handleDoubleClick = useCallback(() => {
-    openNodeDetail(id)
-  }, [id, openNodeDetail])
-
-  const handleBlur = useCallback(() => {
-    setIsEditing(false)
-    const trimmed = editText.trim()
+  const commitEdit = useCallback(() => {
+    const trimmed = editText.current.trim()
     if (trimmed) {
       updateNodeTitle(id, trimmed)
-    } else {
-      setEditText(nodeData.title)
     }
-  }, [editText, id, nodeData.title, updateNodeTitle])
+    setEditingNodeId(null)
+  }, [id, updateNodeTitle, setEditingNodeId])
+
+  const handleDoubleClick = useCallback(() => {
+    setEditingNodeId(id)
+  }, [id, setEditingNodeId])
+
+  const handleBlur = useCallback(() => {
+    commitEdit()
+  }, [commitEdit])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        handleBlur()
+        commitEdit()
       }
       if (e.key === 'Escape') {
-        setEditText(nodeData.title)
-        setIsEditing(false)
+        // 復元して編集終了
+        editText.current = nodeData.title
+        setEditingNodeId(null)
       }
     },
-    [handleBlur, nodeData.title]
+    [commitEdit, nodeData.title, setEditingNodeId]
   )
 
   const handleTouchStart = useCallback(() => {
@@ -137,9 +155,13 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
         </div>
       )}
 
-      {/* 本文インジケーター */}
+      {/* 本文インジケーター（クリックで詳細モーダルを開く） */}
       {hasBody && (
-        <div className="absolute -top-2 -left-2 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center z-10 shadow-sm text-[10px] leading-none">
+        <div
+          className="absolute -top-2 -left-2 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center z-10 shadow-sm text-[10px] leading-none cursor-pointer"
+          onClick={(e) => { e.stopPropagation(); openNodeDetail(id) }}
+          title="詳細を開く"
+        >
           📝
         </div>
       )}
@@ -174,8 +196,8 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
           {isEditing ? (
             <textarea
               ref={textareaRef}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              defaultValue={nodeData.title}
+              onChange={(e) => { editText.current = e.target.value }}
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               className="w-full text-sm text-gray-800 bg-transparent resize-none outline-none leading-snug"
