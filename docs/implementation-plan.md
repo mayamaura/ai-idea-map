@@ -890,6 +890,13 @@
 - [x]✅ `docs/design.md` の「状態管理設計」（editingNodeId・clipboard 構造変更・新アクション）と「コンテキストメニュー設計」（名前を変更）を更新
 - [x]✅ `docs/requirements.md` のノード編集要件（ダブルクリック挙動の変更・キーボード操作）を修正・追記
 
+#### G. ヘルプ導線（追加 2026-06-18）
+
+- [x] `src/components/toolbar/Toolbar.tsx`: 全体表示ボタンの右端に ❓ help-circle アイコンボタンを追加。`onClick={() => setShortcutsModalOpen(true)}`、`title="操作ガイド・ショートカット (Ctrl+/)"`
+- [x] `src/components/toolbar/BottomNav.tsx`: 「設定」ボタンの右に「ヘルプ」ボタンを追加。help-circle アイコン＋「ヘルプ」ラベル。`onClick={() => setShortcutsModalOpen(true)}`
+- [x] `src/components/common/KeyboardShortcutsModal.tsx`: モーダル見出しを「操作ガイド」に変更。「マウス・タッチ操作」セクションを追加（ダブルクリック・右クリック・ドラッグ・Shift+クリック・ロングプレス）
+- [x] `src/components/common/WelcomeModal.tsx`: 最終ステップに操作ガイドへの誘導文を追加
+
 **完了条件**: ダブルクリックでその場でタイトル編集でき、Enter / Tab / F2 / 矢印キーだけで連続的にマップを広げられる。コピペで接続ごと複製される
 
 ---

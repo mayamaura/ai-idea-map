@@ -33,7 +33,7 @@ const SHORTCUTS: { section: string; rows: ShortcutRow[] }[] = [
     section: '表示・検索',
     rows: [
       { keys: ['Ctrl', 'F'], description: '検索バーをトグル' },
-      { keys: ['Ctrl', '/'], description: 'ショートカット一覧を表示' },
+      { keys: ['Ctrl', '/'], description: 'この操作ガイドを表示' },
     ],
   },
   {
@@ -48,6 +48,16 @@ const SHORTCUTS: { section: string; rows: ShortcutRow[] }[] = [
     rows: [
       { keys: ['Enter'], description: '確認ダイアログを承認' },
       { keys: ['Esc'], description: '確認ダイアログをキャンセル / メニューを閉じる' },
+    ],
+  },
+  {
+    section: 'マウス・タッチ操作',
+    rows: [
+      { keys: ['ダブルクリック'], description: '空白部分でノードを作成 / ノード上でタイトル編集' },
+      { keys: ['右クリック'], description: 'コンテキストメニューを表示' },
+      { keys: ['ドラッグ'], description: 'ノードを移動 / 空白部分で範囲選択' },
+      { keys: ['Shift', 'クリック'], description: '複数ノードを選択' },
+      { keys: ['ロングプレス'], description: '（モバイル）AI拡張パネルを表示' },
     ],
   },
 ]
@@ -78,7 +88,7 @@ export function KeyboardShortcutsModal() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">キーボードショートカット</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">操作ガイド</h2>
           <button
             onClick={() => setShortcutsModalOpen(false)}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"

@@ -72,8 +72,8 @@ ideamap/
 │   │   │   ├── AIChatPanel.tsx      # AIチャットパネル（継続会話・@参照・アクションボタン）（Phase 14）
 │   │   │   └── PresentationOrderPanel.tsx # 発表順序編集モーダル（↑↓ボタン・削除・発表開始）（Phase 18）
 │   │   ├── toolbar/
-│   │   │   ├── Toolbar.tsx         # ツールバー（PC用）
-│   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）
+│   │   │   ├── Toolbar.tsx         # ツールバー（PC用）。右端に ❓ ヘルプボタン（Phase 22 G）
+│   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）。「ヘルプ」ボタン追加（Phase 22 G）
 │   │   └── common/
 │   │       ├── Header.tsx
 │   │       ├── Modal.tsx
@@ -282,7 +282,15 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 ### 5.5 WelcomeModal（src/components/common/WelcomeModal.tsx）
 
 初回起動時のみ表示。`localStorage.getItem('ideamap-welcomed')` がなければ表示し、閉じ時にセット。  
-3ステップ（アイデア追加 / 接続 / AI拡張）のスライドモーダル。`createPortal` で `<body>` に描画。
+3ステップ（アイデア追加 / 接続 / AI拡張）のスライドモーダル。`createPortal` で `<body>` に描画。  
+最終ステップ（3ステップ目）に「❓ ボタンまたは Ctrl+/ で操作ガイドを確認できます」のヒントを表示（Phase 22 G）。
+
+### 5.5.1 KeyboardShortcutsModal（src/components/common/KeyboardShortcutsModal.tsx）
+
+`uiStore.isShortcutsModalOpen` で制御。`createPortal` で `<body>` に描画。  
+`Ctrl+/` ショートカットのほか、Toolbar の ❓ ボタン（デスクトップ）・BottomNav の「ヘルプ」ボタン（モバイル）から開ける（Phase 22 G）。  
+**見出し**: 「操作ガイド」（Phase 22 G で「キーボードショートカット」から変更）。  
+**内容**: キーボードショートカット（基本操作・ノード編集・表示検索・検索バー内・ダイアログ）＋マウス・タッチ操作セクション。
 
 ### 5.6 ConfirmDialog（src/components/common/ConfirmDialog.tsx）
 

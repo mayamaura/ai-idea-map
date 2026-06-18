@@ -10,7 +10,7 @@ import type { Node } from '@xyflow/react'
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
   const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, setEditingNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen, startPresentation } = useUIStore()
+  const { selectedNodeId, setSelectedNodeId, setEditingNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen, startPresentation, setShortcutsModalOpen } = useUIStore()
   const { categories } = useSettingsStore()
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
@@ -369,6 +369,19 @@ export function Toolbar() {
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
+      {/* ヘルプ: Ctrl+/ を知らないユーザーへの常時入口 */}
+      <button
+        onClick={() => setShortcutsModalOpen(true)}
+        className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+        title="操作ガイド・ショートカット (Ctrl+/)"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <circle cx="12" cy="12" r="9" strokeWidth="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+          <circle cx="12" cy="17" r="0.5" fill="currentColor" strokeWidth="0" />
         </svg>
       </button>
     </div>

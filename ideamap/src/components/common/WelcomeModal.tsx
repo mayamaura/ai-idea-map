@@ -47,6 +47,12 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
           <div className="text-5xl mb-4">{STEPS[step].icon}</div>
           <h2 className="text-lg font-bold text-gray-900 mb-2">{STEPS[step].title}</h2>
           <p className="text-sm text-gray-500 leading-relaxed">{STEPS[step].desc}</p>
+          {/* 最終ステップのみヘルプへの誘導を表示 */}
+          {step === STEPS.length - 1 && (
+            <p className="mt-4 text-xs text-gray-400 leading-relaxed">
+              ❓ ボタン（または Ctrl + /）でいつでも操作ガイドを確認できます
+            </p>
+          )}
         </div>
 
         {/* フッター */}

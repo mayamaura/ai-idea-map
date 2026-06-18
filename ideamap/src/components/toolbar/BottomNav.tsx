@@ -6,6 +6,7 @@ export function BottomNav() {
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const addNode = useMapStore((s) => s.addNode)
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen)
+  const setShortcutsModalOpen = useUIStore((s) => s.setShortcutsModalOpen)
 
   const handleAddNode = () => {
     addNode('新しいアイデア', Math.random() * 200, Math.random() * 200)
@@ -67,6 +68,19 @@ export function BottomNav() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         <span className="text-xs">設定</span>
+      </button>
+      {/* ヘルプ: 操作ガイドへの常時入口 */}
+      <button
+        onClick={() => setShortcutsModalOpen(true)}
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <circle cx="12" cy="12" r="9" strokeWidth="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+          <circle cx="12" cy="17" r="0.5" fill="currentColor" strokeWidth="0" />
+        </svg>
+        <span className="text-xs">ヘルプ</span>
       </button>
     </nav>
   )
