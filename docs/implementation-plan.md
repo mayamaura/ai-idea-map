@@ -901,7 +901,7 @@
 
 ---
 
-### Phase 23: AI連携UXの改善（約3日） 🔨 実装済み（確認中）
+### Phase 23: AI連携UXの改善（約3日） ✅ 完了（2026-06-19）
 
 **目標**: AI機能の待ち時間・失敗・結果確認のストレスをなくす
 
@@ -916,18 +916,18 @@
 #### タスク
 
 **A. APIキー未設定時のガイド**
-- [x] `src/components/panels/AISuggestionPanel.tsx` / `AIChatPanel.tsx` / `MapAnalysisPanel.tsx`: `useSettingsStore` の `apiKey` が空文字のとき、パネル本文を空状態UIに差し替える: 🔑アイコン＋「Claude APIキーが必要です」見出し＋「AI機能を使うには Anthropic の APIキーを設定してください」1行＋「設定を開く」ボタン（`setSettingsOpen(true)`）。実行ボタン・入力欄は表示しない
+- [x]✅ `src/components/panels/AISuggestionPanel.tsx` / `AIChatPanel.tsx` / `MapAnalysisPanel.tsx`: `useSettingsStore` の `apiKey` が空文字のとき、パネル本文を空状態UIに差し替える: 🔑アイコン＋「Claude APIキーが必要です」見出し＋「AI機能を使うには Anthropic の APIキーを設定してください」1行＋「設定を開く」ボタン（`setSettingsOpen(true)`）。実行ボタン・入力欄は表示しない
 
 **B. エラーメッセージの共通整形**
-- [x] `src/services/claudeService.ts`: 末尾に追加:
+- [x]✅ `src/services/claudeService.ts`: 末尾に追加:
   ```ts
   export function toFriendlyAIError(e: unknown): string
   ```
   `Anthropic.APIError` を `instanceof` 判定し `status` で分岐: 401 → 「APIキーが無効です。設定画面で確認してください」 / 429 → 「レート制限に達しました。1分ほど待ってから再試行してください」 / 529 → 「Claude APIが混雑しています。しばらく待ってから再試行してください」 / `Anthropic.APIConnectionError` → 「ネットワークエラーです。接続を確認してください」 / それ以外は `e instanceof Error ? e.message : 'エラーが発生しました'`
-- [x] `AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` の catch 節をすべて `toFriendlyAIError(e)` に統一
+- [x]✅ `AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` の catch 節をすべて `toFriendlyAIError(e)` に統一
 
 **C. チャットのストリーミング表示＋停止ボタン＋system化**
-- [x] `src/services/claudeService.ts`: `chatWithMap` のシグネチャを変更:
+- [x]✅ `src/services/claudeService.ts`: `chatWithMap` のシグネチャを変更:
   ```ts
   export async function chatWithMap(
     req: ChatWithMapRequest,
@@ -938,20 +938,20 @@
   - `systemContext` を messages への埋め込みではなく `system` パラメータで渡す（毎回最新のマップが反映され、履歴の改変が不要になる）。`messages` は会話履歴をそのまま渡す
   - `client.messages.stream({ model, max_tokens: 2048, system, messages }, { signal })` を使用。`text` デルタを蓄積し、`onText(累積テキストから /```actions[\s\S]*$/ を除去したもの)` を都度呼ぶ（actions ブロックの途中表示を防ぐ）
   - 完了後は従来どおり actions をパースして返す。Abort 時はそれまでの content（actions は空配列）を返す
-- [x] `src/stores/uiStore.ts`: `updateLastChatMessage(content: string)` を追加（`chatMessages` 末尾が assistant ならその `content` を置換）
-- [x] `src/components/panels/AIChatPanel.tsx`: 送信時に空 content の assistant メッセージを先に `addChatMessage` → `onText` で `updateLastChatMessage`。完了時に actions を最終メッセージに反映。`isChatLoading` 中は送信ボタンを「■ 停止」表示に変え、クリックで `AbortController.abort()`（`useRef<AbortController | null>` で保持）
+- [x]✅ `src/stores/uiStore.ts`: `updateLastChatMessage(content: string)` を追加（`chatMessages` 末尾が assistant ならその `content` を置換）
+- [x]✅ `src/components/panels/AIChatPanel.tsx`: 送信時に空 content の assistant メッセージを先に `addChatMessage` → `onText` で `updateLastChatMessage`。完了時に actions を最終メッセージに反映。`isChatLoading` 中は送信ボタンを「■ 停止」表示に変え、クリックで `AbortController.abort()`（`useRef<AbortController | null>` で保持）
 
 **D. 提案生成の堅牢化とキャンセル**
-- [x] `src/services/claudeService.ts`: `generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` の `max_tokens` を `2048` に引き上げ
-- [x] `generateSuggestions(req, signal?: AbortSignal)` に signal を追加（`client.messages.create({...}, { signal })`）
-- [x] `src/components/panels/AISuggestionPanel.tsx`: 生成中（`isAILoading`）はローディング表示の横に「キャンセル」ボタンを表示。abort 時はローディング解除のみ（エラー表示しない。`e.name === 'AbortError'` または `Anthropic.APIUserAbortError` を判定）
+- [x]✅ `src/services/claudeService.ts`: `generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` の `max_tokens` を `2048` に引き上げ
+- [x]✅ `generateSuggestions(req, signal?: AbortSignal)` に signal を追加（`client.messages.create({...}, { signal })`）
+- [x]✅ `src/components/panels/AISuggestionPanel.tsx`: 生成中（`isAILoading`）はローディング表示の横に「キャンセル」ボタンを表示。abort 時はローディング解除のみ（エラー表示しない。`e.name === 'AbortError'` または `Anthropic.APIUserAbortError` を判定）
 
 **E. 提案追加後のフォーカス移動**
-- [x] `src/components/panels/AISuggestionPanel.tsx`: `useReactFlow()` の `fitView` を使い、`handleAddSelected` 完了後に `fitView({ nodes: [{ id: 選択ノードid }, ...追加ノードidの配列], padding: 0.3, duration: 500 })` を実行（追加先が兄弟モードの場合は親ノード id を含める）
+- [x]✅ `src/components/panels/AISuggestionPanel.tsx`: `useReactFlow()` の `fitView` を使い、`handleAddSelected` 完了後に `fitView({ nodes: [{ id: 選択ノードid }, ...追加ノードidの配列], padding: 0.3, duration: 500 })` を実行（追加先が兄弟モードの場合は親ノード id を含める）
 
 **ドキュメント更新**
-- [x] `docs/design.md` の「AIサービス設計」（chatWithMap の system 化・ストリーミング・toFriendlyAIError）を更新
-- [x] `docs/requirements.md` のAI機能要件（ストリーミング・キャンセル・エラー表示）を追記
+- [x]✅ `docs/design.md` の「AIサービス設計」（chatWithMap の system 化・ストリーミング・toFriendlyAIError）を更新
+- [x]✅ `docs/requirements.md` のAI機能要件（ストリーミング・キャンセル・エラー表示）を追記
 
 **完了条件**: APIキー未設定でも迷わず設定に辿り着ける。チャットが逐次表示され停止できる。提案10件でも解析エラーにならず、追加後に追加先へ視点が移動する
 
