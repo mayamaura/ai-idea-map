@@ -355,6 +355,7 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
     aiModel, setAiModel,
     suggestionCount, setSuggestionCount,
     autoSave, setAutoSave,
+    edgeStyle, setEdgeStyle,
   } = useSettingsStore()
 
   const [keyInput, setKeyInput] = useState(apiKey ? '••••••••••••••••' : '')
@@ -494,6 +495,31 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
               ノードをカテゴリで分類できます。デフォルトカテゴリは削除できません。
             </p>
             <CategoryManager />
+          </section>
+
+          {/* 外観 */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">外観</h3>
+            <label className="block text-xs text-gray-500 mb-1.5">エッジの形状</label>
+            <div className="flex gap-2">
+              {([
+                { value: 'bezier', label: '曲線' },
+                { value: 'smoothstep', label: '折れ線' },
+                { value: 'straight', label: '直線' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setEdgeStyle(opt.value)}
+                  className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
+                    edgeStyle === opt.value
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </section>
 
           {/* 保存設定 */}

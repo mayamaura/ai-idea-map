@@ -824,13 +824,13 @@
 - [x] `src/stores/mapStore.ts` `addConnectedNode`: グループ外分岐の `finalPosition` 決定後に `findFreePosition(finalPosition, state.nodes)` を適用
 
 **F. エッジスタイル設定（任意・低優先）**
-- [ ] `src/stores/settingsStore.ts`: `edgeStyle: 'bezier' | 'smoothstep' | 'straight'`（default `'bezier'`）+ setter + partialize
-- [ ] `src/components/canvas/FloatingEdge.tsx`: `useSettingsStore((s) => s.edgeStyle)` を参照し `getBezierPath` / `getSmoothStepPath` / `getStraightPath` を切り替え（引数 `args` は共通で流用可）
-- [ ] `src/components/panels/SettingsPanel.tsx`: ノード形状設定の隣に3択UIを追加（既存の nodeShape と同じUIパターン）
+- [x] `src/stores/settingsStore.ts`: `edgeStyle: 'bezier' | 'smoothstep' | 'straight'`（default `'bezier'`）+ setter + partialize
+- [x] `src/components/canvas/FloatingEdge.tsx`: `useSettingsStore((s) => s.edgeStyle)` を参照し `getBezierPath` / `getSmoothStepPath` / `getStraightPath` を切り替え（引数 `args` は共通で流用可）
+- [x] `src/components/panels/SettingsPanel.tsx`: ノード形状設定の隣に3択UIを追加（既存の nodeShape と同じUIパターン）
 
 **ドキュメント更新**
-- [ ] `docs/design.md` の「状態管理設計」（mapStore 新アクション）「コンテキストメニュー設計」（整列セクション）を更新
-- [ ] `docs/requirements.md` に整列・スナップ・エッジスタイル要件を追記
+- [x] `docs/design.md` の「状態管理設計」（settingsStore の `edgeStyle` 追加）「FloatingEdge エッジスタイル切替」を更新
+- [x] `docs/requirements.md` にエッジスタイル切替要件を追記
 
 **完了条件**: 複数選択→右クリックで整列・等間隔配置ができ、自動整列がアニメーションし Undo 1回で戻る。エッジラベルと双方向矢印が表示される
 

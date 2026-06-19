@@ -1,4 +1,5 @@
-import { useInternalNode, BaseEdge, EdgeLabelRenderer, getBezierPath, Position, type EdgeProps } from '@xyflow/react'
+import { useInternalNode, BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, getStraightPath, Position, type EdgeProps } from '@xyflow/react'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 type BezierArgs = {
   sourceX: number
@@ -60,6 +61,8 @@ function calcBezierArgs(source: string, target: string, getNode: (id: string) =>
 export function FloatingEdge({ id, source, target, markerEnd, markerStart, style, selected, label }: EdgeProps) {
   const sourceNode = useInternalNode(source)
   const targetNode = useInternalNode(target)
+  // フックは条件分岐より前に呼ぶ必要があるため early return の前に置く
+  const edgeStyle = useSettingsStore((s) => s.edgeStyle)
 
   // useInternalNode の返り値を直接渡せないため、計算をインラインで行う
   if (!sourceNode || !targetNode) return null
@@ -71,7 +74,10 @@ export function FloatingEdge({ id, source, target, markerEnd, markerStart, style
   })
   if (!args) return null
 
-  const [edgePath, labelX, labelY] = getBezierPath(args)
+  const [edgePath, labelX, labelY] =
+    edgeStyle === 'smoothstep' ? getSmoothStepPath(args)
+    : edgeStyle === 'straight' ? getStraightPath(args)
+    : getBezierPath(args)
 
   return (
     <>

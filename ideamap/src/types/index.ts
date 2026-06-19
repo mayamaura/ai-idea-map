@@ -90,6 +90,7 @@ export type Theme = 'light' | 'dark'
 export type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
+export type EdgeStyle = 'bezier' | 'smoothstep' | 'straight'
 
 // Phase 14: AIチャット
 export type ChatActionType = 'addNode' | 'connectNodes' | 'updateNode'

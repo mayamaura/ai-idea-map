@@ -199,6 +199,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `nodeShape` | `NodeShape` | `rounded \| ellipse \| hexagon`（ノード形状） |
 | `categories` | `Category[]` | カテゴリ一覧（デフォルト7件＋ユーザー追加分、localStorage永続化） |
 | `snapToGrid` | `boolean` | グリッドスナップの有効/無効（default: `false`、localStorage永続化）（Phase 21） |
+| `edgeStyle` | `EdgeStyle` | `bezier \| smoothstep \| straight`（エッジ描画パス種別、default: `'bezier'`、localStorage永続化）（Phase 21-F） |
 
 ---
 
@@ -618,6 +619,17 @@ updateLastChatMessage: (content: string) => void
 - `EdgeProps` から `label`・`markerStart` を受け取り、`BaseEdge` に `markerStart={markerStart}` を渡す
 - `label` が truthy のとき `EdgeLabelRenderer` で `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` の位置にラベルを描画（白背景・dark対応・`text-xs px-1.5 py-0.5 rounded border shadow-sm`）
 - `getBezierPath` の返り値を `[edgePath, labelX, labelY]` の3値で受ける
+
+### 11.7 FloatingEdge のエッジスタイル切替（Phase 21-F）
+
+`FloatingEdge.tsx` が `settingsStore.edgeStyle` を参照し、3種類の描画関数を切り替える。
+
+- `useSettingsStore((s) => s.edgeStyle)` でスタイルを購読（フックは early return より前に呼ぶ）
+- `edgeStyle === 'smoothstep'` → `getSmoothStepPath(args)`
+- `edgeStyle === 'straight'` → `getStraightPath(args)`
+- それ以外（`'bezier'` またはデフォルト）→ `getBezierPath(args)`
+- 3関数とも同じ `args` オブジェクトを受け取れるため、引数変換は不要（`straight` は `position` を無視する）
+- 設定UIは `SettingsPanel.tsx` の「外観」セクションに3択ボタンとして追加（曲線 / 折れ線 / 直線）
 
 ---
 

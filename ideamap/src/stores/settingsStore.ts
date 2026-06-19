@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Theme, AIModel, NodeShape, Category } from '../types'
+import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '../types'
 import { getStoredApiKey, setStoredApiKey, encryptWithPassword, decryptWithPassword } from '../utils/encryption'
 import { saveAppSettings, loadAppSettings } from '../services/googleDriveService'
 
@@ -26,6 +26,7 @@ interface SettingsState {
   categories: Category[]
   syncPassword: string
   snapToGrid: boolean
+  edgeStyle: EdgeStyle
   setApiKey: (key: string) => void
   setAiModel: (model: AIModel) => void
   setSuggestionCount: (count: number) => void
@@ -35,6 +36,7 @@ interface SettingsState {
   setNodeShape: (shape: NodeShape) => void
   setSyncPassword: (password: string) => void
   setSnapToGrid: (v: boolean) => void
+  setEdgeStyle: (v: EdgeStyle) => void
   addCategory: (category: Omit<Category, 'id'>) => string
   updateCategory: (id: string, patch: Partial<Omit<Category, 'id'>>) => void
   deleteCategory: (id: string) => void
@@ -57,6 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
       categories: DEFAULT_CATEGORIES,
       syncPassword: '',
       snapToGrid: false,
+      edgeStyle: 'bezier',
 
       setApiKey: (key) => {
         set({ apiKey: key })
@@ -70,6 +73,7 @@ export const useSettingsStore = create<SettingsState>()(
       setNodeShape: (shape) => set({ nodeShape: shape }),
       setSyncPassword: (password) => set({ syncPassword: password }),
       setSnapToGrid: (v) => set({ snapToGrid: v }),
+      setEdgeStyle: (v) => set({ edgeStyle: v }),
 
       addCategory: (category) => {
         const id = uuidv4()
@@ -132,6 +136,7 @@ export const useSettingsStore = create<SettingsState>()(
         nodeShape: state.nodeShape,
         categories: state.categories,
         snapToGrid: state.snapToGrid,
+        edgeStyle: state.edgeStyle,
       }),
     }
   )
