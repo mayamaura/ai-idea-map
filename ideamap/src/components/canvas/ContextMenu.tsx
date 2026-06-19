@@ -75,6 +75,8 @@ export function ContextMenu() {
     toggleEdgeDirection,
     updateEdgeLabel,
     hasConnectedEdges,
+    alignSelectedNodes,
+    distributeSelectedNodes,
     clipboard,
     edges,
     nodes,
@@ -157,6 +159,7 @@ export function ContextMenu() {
 
   const targetNode = type === 'node' && targetId ? nodes.find((n) => n.id === targetId) : undefined
   const selectedIdeaNodeCount = nodes.filter((n) => n.selected && n.type !== 'groupNode').length
+  const alignableCount = nodes.filter((n) => n.selected && !n.parentId && n.type !== 'groupNode').length
 
   const handleDeleteGroupChoice = () => {
     if (!targetId) return
@@ -263,6 +266,21 @@ export function ContextMenu() {
                   )
                 })}
               </div>
+            )}
+            {alignableCount >= 2 && (
+              <>
+                <Divider />
+                <MenuItem icon="⬅" label="左揃え" onClick={run(() => alignSelectedNodes('left'))} />
+                <MenuItem icon="⬆" label="上揃え" onClick={run(() => alignSelectedNodes('top'))} />
+                <MenuItem icon="↔" label="左右中央" onClick={run(() => alignSelectedNodes('center-h'))} />
+                <MenuItem icon="↕" label="上下中央" onClick={run(() => alignSelectedNodes('center-v'))} />
+                {alignableCount >= 3 && (
+                  <>
+                    <MenuItem icon="⇿" label="横に等間隔" onClick={run(() => distributeSelectedNodes('horizontal'))} />
+                    <MenuItem icon="⇳" label="縦に等間隔" onClick={run(() => distributeSelectedNodes('vertical'))} />
+                  </>
+                )}
+              </>
             )}
             <Divider />
             {targetNode?.parentId && (

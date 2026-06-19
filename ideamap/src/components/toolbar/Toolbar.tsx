@@ -3,21 +3,22 @@ import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { applyDagreLayout, applyRadialLayout } from '../../utils/mapLayout'
+import { applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition } from '../../utils/mapLayout'
 import type { IdeaNodeData } from '../../types'
 import type { Node } from '@xyflow/react'
 
 export function Toolbar() {
-  const { fitView, zoomIn, zoomOut, getViewport } = useReactFlow()
-  const { addNode, nodes, edges, setNodes, undo, redo, past, future, deleteSelected } = useMapStore()
+  const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow()
+  const { addNode, nodes, edges, setNodesNoHistory, commitNodesWithHistory, undo, redo, past, future, deleteSelected } = useMapStore()
   const { selectedNodeId, setSelectedNodeId, setEditingNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen, startPresentation, setShortcutsModalOpen } = useUIStore()
-  const { categories } = useSettingsStore()
+  const { categories, snapToGrid, setSnapToGrid } = useSettingsStore()
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [showPresentMenu, setShowPresentMenu] = useState(false)
   const layoutMenuRef = useRef<HTMLDivElement>(null)
   const filterMenuRef = useRef<HTMLDivElement>(null)
   const presentMenuRef = useRef<HTMLDivElement>(null)
+  const animatingRef = useRef(false)
 
   // メニュー外クリックで閉じる
   useEffect(() => {
@@ -54,8 +55,9 @@ export function Toolbar() {
   }, [showPresentMenu])
 
   const handleAddNode = () => {
-    const { x, y, zoom } = getViewport()
-    const newId = addNode('新しいアイデア', (-x + 200) / zoom, (-y + 200) / zoom)
+    const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    const pos = findFreePosition(center, nodes as Node<IdeaNodeData>[])
+    const newId = addNode('新しいアイデア', pos.x, pos.y)
     setSelectedNodeId(newId)
     setEditingNodeId(newId)
   }
@@ -66,16 +68,38 @@ export function Toolbar() {
   }
 
   const handleRadialLayout = () => {
-    const laid = applyRadialLayout(nodes as Node<IdeaNodeData>[], edges)
-    setNodes(laid as Node<IdeaNodeData>[])
-    setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
+    if (animatingRef.current) return
+    const original = nodes as Node<IdeaNodeData>[]
+    const laid = applyRadialLayout(original, edges)
+    animatingRef.current = true
+    animateNodePositions(
+      original,
+      laid,
+      (frame) => setNodesNoHistory(frame as Node<IdeaNodeData>[]),
+      () => {
+        commitNodesWithHistory(original, laid as Node<IdeaNodeData>[])
+        animatingRef.current = false
+        fitView({ padding: 0.15, duration: 400 })
+      }
+    )
     setShowLayoutMenu(false)
   }
 
   const handleDagreLayout = (rankdir: 'LR' | 'TB') => {
-    const laid = applyDagreLayout(nodes as Node<IdeaNodeData>[], edges, rankdir)
-    setNodes(laid as Node<IdeaNodeData>[])
-    setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
+    if (animatingRef.current) return
+    const original = nodes as Node<IdeaNodeData>[]
+    const laid = applyDagreLayout(original, edges, rankdir)
+    animatingRef.current = true
+    animateNodePositions(
+      original,
+      laid,
+      (frame) => setNodesNoHistory(frame as Node<IdeaNodeData>[]),
+      () => {
+        commitNodesWithHistory(original, laid as Node<IdeaNodeData>[])
+        animatingRef.current = false
+        fitView({ padding: 0.15, duration: 400 })
+      }
+    )
     setShowLayoutMenu(false)
   }
 
@@ -163,6 +187,16 @@ export function Toolbar() {
             >
               <span className="text-base leading-none">↓</span>
               <span>上→下 (dagre)</span>
+            </button>
+            <div className="my-1 h-px bg-gray-100" />
+            <button
+              onClick={() => setSnapToGrid(!snapToGrid)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <span className="w-4 text-center text-sm leading-none">
+                {snapToGrid ? '✓' : ''}
+              </span>
+              <span>グリッドにスナップ</span>
             </button>
           </div>
         )}

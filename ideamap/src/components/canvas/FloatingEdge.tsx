@@ -1,4 +1,4 @@
-import { useInternalNode, BaseEdge, getBezierPath, Position, type EdgeProps } from '@xyflow/react'
+import { useInternalNode, BaseEdge, EdgeLabelRenderer, getBezierPath, Position, type EdgeProps } from '@xyflow/react'
 
 type BezierArgs = {
   sourceX: number
@@ -57,7 +57,7 @@ function calcBezierArgs(source: string, target: string, getNode: (id: string) =>
   return { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
 }
 
-export function FloatingEdge({ id, source, target, markerEnd, style, selected }: EdgeProps) {
+export function FloatingEdge({ id, source, target, markerEnd, markerStart, style, selected, label }: EdgeProps) {
   const sourceNode = useInternalNode(source)
   const targetNode = useInternalNode(target)
 
@@ -71,18 +71,35 @@ export function FloatingEdge({ id, source, target, markerEnd, style, selected }:
   })
   if (!args) return null
 
-  const [edgePath] = getBezierPath(args)
+  const [edgePath, labelX, labelY] = getBezierPath(args)
 
   return (
-    <BaseEdge
-      id={id}
-      path={edgePath}
-      markerEnd={markerEnd}
-      style={{
-        strokeWidth: selected ? 2 : 1.5,
-        stroke: selected ? '#6366f1' : '#94a3b8',
-        ...style,
-      }}
-    />
+    <>
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        markerStart={markerStart}
+        style={{
+          strokeWidth: selected ? 2 : 1.5,
+          stroke: selected ? '#6366f1' : '#94a3b8',
+          ...style,
+        }}
+      />
+      {label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: 'all',
+            }}
+            className="bg-white dark:bg-gray-800 text-xs px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 shadow-sm"
+          >
+            {label as string}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
   )
 }

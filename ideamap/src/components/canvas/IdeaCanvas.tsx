@@ -16,6 +16,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { IdeaNode } from './IdeaNode'
 import { GroupNode } from './GroupNode'
 import { FloatingEdge } from './FloatingEdge'
@@ -96,6 +97,7 @@ const edgeTypes: EdgeTypes = {
 
 export function IdeaCanvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, pendingFitView, clearPendingFitView } = useMapStore()
+  const { snapToGrid } = useSettingsStore()
   const {
     selectedNodeId,
     setSelectedNodeId,
@@ -254,6 +256,8 @@ export function IdeaCanvas() {
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
           deleteKeyCode={null}
+          snapToGrid={snapToGrid}
+          snapGrid={[20, 20]}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           panOnScroll

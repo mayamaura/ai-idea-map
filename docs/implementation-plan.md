@@ -757,7 +757,7 @@
 
 ---
 
-### Phase 21: レイアウト・整列機能の強化（約3日）
+### Phase 21: レイアウト・整列機能の強化（約3日） 🔨 実装済み（確認中）
 
 **目標**: 手動配置の微調整が簡単になり、自動整列の挙動が追える
 
@@ -771,11 +771,11 @@
 #### タスク
 
 **A. FloatingEdge の不具合修正（ラベル・双方向矢印）**
-- [ ] `src/components/canvas/FloatingEdge.tsx`: `EdgeProps` から `label` と `markerStart` も受け取り、`markerStart` は `BaseEdge` にそのまま渡す。`getBezierPath(args)` の返り値を `[edgePath, labelX, labelY]` で受け、`label` があれば `@xyflow/react` の `EdgeLabelRenderer` で `transform: translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` の位置に白背景（dark対応）の小ラベル（text-xs・px-1.5・rounded）を描画
+- [x] `src/components/canvas/FloatingEdge.tsx`: `EdgeProps` から `label` と `markerStart` も受け取り、`markerStart` は `BaseEdge` にそのまま渡す。`getBezierPath(args)` の返り値を `[edgePath, labelX, labelY]` で受け、`label` があれば `@xyflow/react` の `EdgeLabelRenderer` で `transform: translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` の位置に白背景（dark対応）の小ラベル（text-xs・px-1.5・rounded）を描画
 - [ ] 動作確認: エッジ右クリック→「ラベルを編集」の文字が線上に表示される。「双方向」で両端に矢印が付く。保存→再読込後も維持される
 
 **B. 複数選択ノードの整列・分布**
-- [ ] `src/stores/mapStore.ts` にアクションを追加:
+- [x] `src/stores/mapStore.ts` にアクションを追加:
   ```ts
   alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
   distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
@@ -785,16 +785,17 @@
   - `left`: 最小 `position.x` に揃える / `right`: 最大 `position.x + width` に右端を揃える / `center-h`: 各ノード中心xの平均値に中心を揃える / `top`・`bottom`・`center-v` は y 軸で同様
   - `distribute`: 対象を中心座標でソートし、両端ノードは固定、中間ノードの**中心**が等間隔になるよう配置
   - 変更前スナップショットを `past` に push（既存アクションと同じパターン）
-- [ ] `src/components/canvas/ContextMenu.tsx`: ノードメニューで `nodes.filter((n) => n.selected && !n.parentId && n.type !== 'groupNode').length >= 2` のとき「整列」セクション（Divider区切り）を追加: 「⬅ 左揃え」「⬆ 上揃え」「↔ 左右中央」「↕ 上下中央」、3個以上なら「⇿ 横に等間隔」「⇳ 縦に等間隔」も表示。各項目はアクション実行後 `closeContextMenu()`
+- [x] `src/components/canvas/ContextMenu.tsx`: ノードメニューで `nodes.filter((n) => n.selected && !n.parentId && n.type !== 'groupNode').length >= 2` のとき「整列」セクション（Divider区切り）を追加: 「⬅ 左揃え」「⬆ 上揃え」「↔ 左右中央」「↕ 上下中央」、3個以上なら「⇿ 横に等間隔」「⇳ 縦に等間隔」も表示。各項目はアクション実行後 `closeContextMenu()`
 
 **C. 整列アニメーション**
-- [ ] `src/stores/mapStore.ts` に追加:
+- [x] `src/stores/mapStore.ts` に追加:
   ```ts
   setNodesNoHistory: (nodes: IdeaNode[]) => void  // set({ nodes }) のみ。履歴に積まない
   commitNodesWithHistory: (originalNodes: IdeaNode[], finalNodes: IdeaNode[]) => void
-  // → set((state) => ({ nodes: finalNodes, past: pushPast(state.past, { nodes: [...originalNodes], edges: [...state.edges] }), future: [] }))
+  // → set((state) => ({ nodes: finalNodes, past: pushPast(state.past, snapshot(originalNodes, state.edges)), future: [] }))
   ```
-- [ ] `src/utils/mapLayout.ts` に追加:
+  - `syncGroupMeasured` ヘルパーを抽出し、`setNodes` / `setNodesNoHistory` / `commitNodesWithHistory` で共通使用
+- [x] `src/utils/mapLayout.ts` に追加:
   ```ts
   export function animateNodePositions(
     from: Node<IdeaNodeData>[],
@@ -805,7 +806,7 @@
   ): () => void  // キャンセル関数を返す
   ```
   - `requestAnimationFrame` ループ。`easeInOutCubic(t)` で補間。`to` の各ノードについて `from` に同 id があれば position を補間、なければ `to` の値をそのまま使う。最終フレームで `onDone()`
-- [ ] `src/components/toolbar/Toolbar.tsx`: `handleRadialLayout` / `handleDagreLayout` を変更:
+- [x] `src/components/toolbar/Toolbar.tsx`: `handleRadialLayout` / `handleDagreLayout` を変更:
   1. `const original = nodes`（現在配列を保持）
   2. `const laid = applyXxx(...)`
   3. `animateNodePositions(original, laid, setNodesNoHistory, () => { commitNodesWithHistory(original, laid); fitView({ padding: 0.15, duration: 400 }) })`
@@ -813,14 +814,14 @@
   - **重要**: アニメーション中の各フレームは履歴に積まないこと。整列後に Undo を1回押すと整列前の配置に戻ることを確認する
 
 **D. グリッドスナップ**
-- [ ] `src/stores/settingsStore.ts`: `snapToGrid: boolean`（default `false`）+ `setSnapToGrid` を追加し、`partialize` にも含める
-- [ ] `src/components/canvas/IdeaCanvas.tsx`: `<ReactFlow snapToGrid={snapToGrid} snapGrid={[20, 20]} ...>` を追加
-- [ ] `src/components/toolbar/Toolbar.tsx`: 整列ドロップダウン内の末尾に Divider ＋「グリッドにスナップ」トグル項目（有効時は ✓ を表示。クリックしてもメニューは閉じない）
+- [x] `src/stores/settingsStore.ts`: `snapToGrid: boolean`（default `false`）+ `setSnapToGrid` を追加し、`partialize` にも含める
+- [x] `src/components/canvas/IdeaCanvas.tsx`: `<ReactFlow snapToGrid={snapToGrid} snapGrid={[20, 20]} ...>` を追加
+- [x] `src/components/toolbar/Toolbar.tsx`: 整列ドロップダウン内の末尾に Divider ＋「グリッドにスナップ」トグル項目（有効時は ✓ を表示。クリックしてもメニューは閉じない）
 
 **E. ノード追加位置の改善（重なり回避）**
-- [ ] `src/utils/mapLayout.ts`: `export function findFreePosition(desired: { x: number; y: number }, existingNodes: Node<IdeaNodeData>[]): { x: number; y: number }` を追加 — desired を起点に、既存ノードと `|dx| < 200 && |dy| < 80` で重なる間、y を 90px ずつ下にずらす（最大10回）
-- [ ] `src/components/toolbar/Toolbar.tsx` `handleAddNode`: `getViewport` 計算をやめ、`screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })` で画面中央に変更し、`findFreePosition` を通してから `addNode`
-- [ ] `src/stores/mapStore.ts` `addConnectedNode`: グループ外分岐の `finalPosition` 決定後に `findFreePosition(finalPosition, state.nodes)` を適用
+- [x] `src/utils/mapLayout.ts`: `export function findFreePosition(desired: { x: number; y: number }, existingNodes: Node<IdeaNodeData>[]): { x: number; y: number }` を追加 — desired を起点に、既存ノードと `|dx| < 200 && |dy| < 80` で重なる間、y を 90px ずつ下にずらす（最大10回）
+- [x] `src/components/toolbar/Toolbar.tsx` `handleAddNode`: `getViewport` 計算をやめ、`screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })` で画面中央に変更し、`findFreePosition` を通してから `addNode`
+- [x] `src/stores/mapStore.ts` `addConnectedNode`: グループ外分岐の `finalPosition` 決定後に `findFreePosition(finalPosition, state.nodes)` を適用
 
 **F. エッジスタイル設定（任意・低優先）**
 - [ ] `src/stores/settingsStore.ts`: `edgeStyle: 'bezier' | 'smoothstep' | 'straight'`（default `'bezier'`）+ setter + partialize

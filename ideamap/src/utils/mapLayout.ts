@@ -2,6 +2,84 @@ import type { Node, Edge } from '@xyflow/react'
 import Dagre from '@dagrejs/dagre'
 import type { IdeaNodeData } from '../types'
 
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+/**
+ * from→to の位置変化を requestAnimationFrame でアニメーションする。
+ * 各フレームで onFrame を呼び、完了時に onDone を呼ぶ。
+ * 返すキャンセル関数を呼ぶと途中でアニメーションを停止する。
+ */
+export function animateNodePositions(
+  from: Node<IdeaNodeData>[],
+  to: Node<IdeaNodeData>[],
+  onFrame: (nodes: Node<IdeaNodeData>[]) => void,
+  onDone: () => void,
+  duration = 400
+): () => void {
+  const fromMap = new Map<string, { x: number; y: number }>()
+  from.forEach((n) => fromMap.set(n.id, n.position))
+
+  let rafId: number
+  let startTime: number | null = null
+
+  function tick(now: number) {
+    if (startTime === null) startTime = now
+    const elapsed = now - startTime
+    const t = Math.min(elapsed / duration, 1)
+    const eased = easeInOutCubic(t)
+
+    const interpolated = to.map((n) => {
+      const fromPos = fromMap.get(n.id)
+      if (!fromPos) return n
+      return {
+        ...n,
+        position: {
+          x: fromPos.x + (n.position.x - fromPos.x) * eased,
+          y: fromPos.y + (n.position.y - fromPos.y) * eased,
+        },
+      }
+    })
+
+    onFrame(interpolated)
+
+    if (t < 1) {
+      rafId = requestAnimationFrame(tick)
+    } else {
+      onDone()
+    }
+  }
+
+  rafId = requestAnimationFrame(tick)
+  return () => cancelAnimationFrame(rafId)
+}
+
+/**
+ * desired 位置を起点に、既存ノードと重ならない位置を探す。
+ * フリーノード同士の重なりのみ対象（groupNode・parentId 付きは除外）。
+ * 最大10回試行して候補を返す。
+ */
+export function findFreePosition(
+  desired: { x: number; y: number },
+  existingNodes: Node<IdeaNodeData>[]
+): { x: number; y: number } {
+  const freeNodes = existingNodes.filter((n) => n.type !== 'groupNode' && !n.parentId)
+  let candidate = { ...desired }
+
+  for (let i = 0; i < 10; i++) {
+    const overlaps = freeNodes.some((n) => {
+      const dx = n.position.x - candidate.x
+      const dy = n.position.y - candidate.y
+      return Math.abs(dx) < 200 && Math.abs(dy) < 80
+    })
+    if (!overlaps) break
+    candidate = { x: candidate.x, y: candidate.y + 90 }
+  }
+
+  return candidate
+}
+
 const RADIUS = 220
 const NODE_WIDTH = 192
 const NODE_HEIGHT = 64

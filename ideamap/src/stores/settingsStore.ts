@@ -25,6 +25,7 @@ interface SettingsState {
   nodeShape: NodeShape
   categories: Category[]
   syncPassword: string
+  snapToGrid: boolean
   setApiKey: (key: string) => void
   setAiModel: (model: AIModel) => void
   setSuggestionCount: (count: number) => void
@@ -33,6 +34,7 @@ interface SettingsState {
   setLanguage: (lang: 'ja' | 'en') => void
   setNodeShape: (shape: NodeShape) => void
   setSyncPassword: (password: string) => void
+  setSnapToGrid: (v: boolean) => void
   addCategory: (category: Omit<Category, 'id'>) => string
   updateCategory: (id: string, patch: Partial<Omit<Category, 'id'>>) => void
   deleteCategory: (id: string) => void
@@ -54,6 +56,7 @@ export const useSettingsStore = create<SettingsState>()(
       nodeShape: 'rounded',
       categories: DEFAULT_CATEGORIES,
       syncPassword: '',
+      snapToGrid: false,
 
       setApiKey: (key) => {
         set({ apiKey: key })
@@ -66,6 +69,7 @@ export const useSettingsStore = create<SettingsState>()(
       setLanguage: (lang) => set({ language: lang }),
       setNodeShape: (shape) => set({ nodeShape: shape }),
       setSyncPassword: (password) => set({ syncPassword: password }),
+      setSnapToGrid: (v) => set({ snapToGrid: v }),
 
       addCategory: (category) => {
         const id = uuidv4()
@@ -127,6 +131,7 @@ export const useSettingsStore = create<SettingsState>()(
         language: state.language,
         nodeShape: state.nodeShape,
         categories: state.categories,
+        snapToGrid: state.snapToGrid,
       }),
     }
   )

@@ -14,6 +14,7 @@ import {
 import { v4 as uuidv4 } from 'uuid'
 import type { IdeaNodeData, SerializedNode, SerializedEdge } from '../types'
 import { useUIStore } from './uiStore'
+import { findFreePosition } from '../utils/mapLayout'
 
 type IdeaNode = Node<IdeaNodeData>
 
@@ -87,6 +88,22 @@ function isOutsideParent(
   const gW = typeof parentGroup.style?.width === 'number' ? parentGroup.style.width : 400
   const gH = typeof parentGroup.style?.height === 'number' ? parentGroup.style.height : 300
   return centerX < 0 || centerY < 0 || centerX > gW || centerY > gH
+}
+
+/** グループノードは style.width/height を measured にも反映させておく。
+ * レイアウト後に React Flow の ResizeObserver が古い measured と比較して
+ * 誤った dimensions change を発火するのを防ぐため。 */
+function syncGroupMeasured(nodes: IdeaNode[]): IdeaNode[] {
+  return nodes.map((n) => {
+    if (
+      n.type === 'groupNode' &&
+      typeof n.style?.width === 'number' &&
+      typeof n.style?.height === 'number'
+    ) {
+      return { ...n, measured: { width: n.style.width, height: n.style.height } }
+    }
+    return n
+  })
 }
 
 const MAX_HISTORY = 50
@@ -164,7 +181,13 @@ interface MapState {
   copyNodes: (ids: string[]) => void
   paste: (position?: { x: number; y: number }) => void
   hasConnectedEdges: (nodeId: string) => boolean
+  alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
+  distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
   setNodes: (nodes: IdeaNode[]) => void
+  /** ノード配列をストアに反映するが、履歴には積まない（アニメーション途中フレーム用） */
+  setNodesNoHistory: (nodes: IdeaNode[]) => void
+  /** 最終フレームを確定し、整列前スナップショットを past に1回だけ積む */
+  commitNodesWithHistory: (originalNodes: IdeaNode[], finalNodes: IdeaNode[]) => void
   loadFromSerialized: (nodes: SerializedNode[], edges: SerializedEdge[]) => void
   getSerializedNodes: () => SerializedNode[]
   getSerializedEdges: () => SerializedEdge[]
@@ -598,10 +621,13 @@ export const useMapStore = create<MapState>((set, get) => ({
         finalPosition = clamp(best)
       }
     } else {
-      finalPosition = {
-        x: parent.position.x + 280,
-        y: parent.position.y + childCount * 90,
-      }
+      finalPosition = findFreePosition(
+        {
+          x: parent.position.x + 280,
+          y: parent.position.y + childCount * 90,
+        },
+        state.nodes
+      )
     }
 
     const newNode: IdeaNode = {
@@ -871,22 +897,116 @@ export const useMapStore = create<MapState>((set, get) => ({
   hasConnectedEdges: (nodeId) =>
     get().edges.some((e) => e.source === nodeId || e.target === nodeId),
 
+  alignSelectedNodes: (alignType) => {
+    const state = get()
+    const targets = state.nodes.filter(
+      (n) => n.selected && n.type !== 'groupNode' && !n.parentId
+    )
+    if (targets.length < 2) return
+
+    const getSize = (n: IdeaNode): { width: number; height: number } => ({
+      width: n.measured?.width ?? 160,
+      height: n.measured?.height ?? 60,
+    })
+
+    let updatedPositions: Map<string, { x: number; y: number }>
+
+    if (alignType === 'left') {
+      const minX = Math.min(...targets.map((n) => n.position.x))
+      updatedPositions = new Map(targets.map((n) => [n.id, { x: minX, y: n.position.y }]))
+    } else if (alignType === 'right') {
+      const maxRight = Math.max(...targets.map((n) => n.position.x + getSize(n).width))
+      updatedPositions = new Map(targets.map((n) => [n.id, { x: maxRight - getSize(n).width, y: n.position.y }]))
+    } else if (alignType === 'center-h') {
+      const avgCenterX = targets.reduce((sum, n) => sum + n.position.x + getSize(n).width / 2, 0) / targets.length
+      updatedPositions = new Map(targets.map((n) => [n.id, { x: avgCenterX - getSize(n).width / 2, y: n.position.y }]))
+    } else if (alignType === 'top') {
+      const minY = Math.min(...targets.map((n) => n.position.y))
+      updatedPositions = new Map(targets.map((n) => [n.id, { x: n.position.x, y: minY }]))
+    } else if (alignType === 'bottom') {
+      const maxBottom = Math.max(...targets.map((n) => n.position.y + getSize(n).height))
+      updatedPositions = new Map(targets.map((n) => [n.id, { x: n.position.x, y: maxBottom - getSize(n).height }]))
+    } else {
+      // center-v
+      const avgCenterY = targets.reduce((sum, n) => sum + n.position.y + getSize(n).height / 2, 0) / targets.length
+      updatedPositions = new Map(targets.map((n) => [n.id, { x: n.position.x, y: avgCenterY - getSize(n).height / 2 }]))
+    }
+
+    set((s) => ({
+      nodes: s.nodes.map((n) => {
+        const pos = updatedPositions.get(n.id)
+        return pos ? { ...n, position: pos } : n
+      }),
+      past: pushPast(s.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    }))
+  },
+
+  distributeSelectedNodes: (direction) => {
+    const state = get()
+    const targets = state.nodes.filter(
+      (n) => n.selected && n.type !== 'groupNode' && !n.parentId
+    )
+    if (targets.length < 3) return
+
+    const getSize = (n: IdeaNode): { width: number; height: number } => ({
+      width: n.measured?.width ?? 160,
+      height: n.measured?.height ?? 60,
+    })
+
+    // 中心座標でソート
+    const sorted = [...targets].sort((a, b) => {
+      if (direction === 'horizontal') {
+        return (a.position.x + getSize(a).width / 2) - (b.position.x + getSize(b).width / 2)
+      }
+      return (a.position.y + getSize(a).height / 2) - (b.position.y + getSize(b).height / 2)
+    })
+
+    // sorted.length >= 3 は上のガードで保証済み
+    const first = sorted[0]!
+    const last = sorted[sorted.length - 1]!
+    const firstCenter = direction === 'horizontal'
+      ? first.position.x + getSize(first).width / 2
+      : first.position.y + getSize(first).height / 2
+    const lastCenter = direction === 'horizontal'
+      ? last.position.x + getSize(last).width / 2
+      : last.position.y + getSize(last).height / 2
+    const n = sorted.length
+
+    const updatedPositions = new Map<string, { x: number; y: number }>()
+    sorted.forEach((node, i) => {
+      const center = firstCenter + (lastCenter - firstCenter) * i / (n - 1)
+      if (direction === 'horizontal') {
+        updatedPositions.set(node.id, { x: center - getSize(node).width / 2, y: node.position.y })
+      } else {
+        updatedPositions.set(node.id, { x: node.position.x, y: center - getSize(node).height / 2 })
+      }
+    })
+
+    set((s) => ({
+      nodes: s.nodes.map((node) => {
+        const pos = updatedPositions.get(node.id)
+        return pos ? { ...node, position: pos } : node
+      }),
+      past: pushPast(s.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    }))
+  },
+
   setNodes: (nodes) =>
     set((state) => ({
-      // グループノードは style.width/height を measured にも反映させておく
-      // レイアウト後に React Flow の ResizeObserver が古い measured と比較して
-      // 誤った dimensions change を発火するのを防ぐため
-      nodes: nodes.map((n) => {
-        if (
-          n.type === 'groupNode' &&
-          typeof n.style?.width === 'number' &&
-          typeof n.style?.height === 'number'
-        ) {
-          return { ...n, measured: { width: n.style.width, height: n.style.height } }
-        }
-        return n
-      }),
+      nodes: syncGroupMeasured(nodes),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  setNodesNoHistory: (nodes) =>
+    set({ nodes: syncGroupMeasured(nodes) }),
+
+  commitNodesWithHistory: (originalNodes, finalNodes) =>
+    set((state) => ({
+      nodes: syncGroupMeasured(finalNodes),
+      past: pushPast(state.past, snapshot(originalNodes, state.edges)),
       future: [],
     })),
 

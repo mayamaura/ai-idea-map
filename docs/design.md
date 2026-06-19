@@ -125,14 +125,23 @@ ideamap/
 
 主要アクション:
 - `addNode`, `addConnectedNode` — ノード追加（`addNode(title, x, y, createdBy?, color?, categoryId?, body?)` — Phase 18で `body` 追加）
+  - `addConnectedNode`: グループ外分岐では `findFreePosition` を適用して重なり回避（Phase 21）
 - `addSiblingNode(nodeId)` — 兄弟ノードを作成してIDを返す（Phase 22）。親エッジがあれば同じ親の子として追加、なければ下方に独立ノード作成
 - `selectOnlyNode(id)` — 指定ノードのみ選択状態にする（履歴に積まない、矢印キー移動用）（Phase 22）
 - `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory` — ノード更新
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
 - `copyNodes`, `paste` — コピー・ペースト（Phase 22: `copyNodes` は選択ノード間のエッジも保存、`paste` は `Map<oldId,newId>` でエッジを再生成）
+- `alignSelectedNodes(type)` — 複数選択ノードを整列（Phase 21）。`'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom'`。`selected && !parentId && type !== 'groupNode'` のノードが対象（2件未満は何もしない）。変更前スナップショットを `past` に push
+- `distributeSelectedNodes(direction)` — 複数選択ノードを等間隔配置（Phase 21）。`'horizontal' | 'vertical'`。対象3件未満は何もしない。中心座標でソートし、両端固定で中間を等間隔補間
+- `setNodes(nodes)` — ノード配列を更新し履歴に積む。内部で `syncGroupMeasured` を通してグループノードの `measured` を同期
+- `setNodesNoHistory(nodes)` — ノード配列を更新するが履歴に積まない（アニメーション途中フレーム用）（Phase 21）
+- `commitNodesWithHistory(originalNodes, finalNodes)` — 最終フレームを確定し、整列前スナップショットを `past` に1回積む（Phase 21）
 - `undo`, `redo` — 履歴操作
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
+
+内部ヘルパー（store外関数）:
+- `syncGroupMeasured(nodes)` — グループノードの `style.width/height` を `measured` に同期。`setNodes` / `setNodesNoHistory` / `commitNodesWithHistory` で共通使用（Phase 21: `setNodes` から抽出）
 
 ### 4.2 uiStore（src/stores/uiStore.ts）
 
@@ -189,6 +198,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `theme` | `Theme` | `light \| dark` |
 | `nodeShape` | `NodeShape` | `rounded \| ellipse \| hexagon`（ノード形状） |
 | `categories` | `Category[]` | カテゴリ一覧（デフォルト7件＋ユーザー追加分、localStorage永続化） |
+| `snapToGrid` | `boolean` | グリッドスナップの有効/無効（default: `false`、localStorage永続化）（Phase 21） |
 
 ---
 
@@ -275,9 +285,11 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 | メニュー種別 | 表示項目 |
 |---|---|
-| node | **名前を変更（F2）**（Phase 22）/ 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / 接続線のみ削除 / ノードを削除 |
+| node | **名前を変更（F2）**（Phase 22）/ 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / **整列セクション**（Phase 21・選択2件以上で表示）/ 接続線のみ削除 / ノードを削除 |
 | edge | 向きを反転 / 双方向切替 / ラベルを編集 / 線を削除 |
 | pane | アイデアを作成（作成後インライン編集開始・Phase 22）/ グループを作成 / ここに貼り付け |
+
+**整列セクション（Phase 21）**: ノードメニューで `alignableCount >= 2`（`selected && !parentId && type !== 'groupNode'` の件数）のとき Divider 付きで追加。⬅ 左揃え / ⬆ 上揃え / ↔ 左右中央 / ↕ 上下中央。`alignableCount >= 3` のとき追加で ⇿ 横に等間隔 / ⇳ 縦に等間隔。各項目は `run()` ヘルパー経由でアクション実行後 `closeContextMenu()`。
 
 ### 5.5 WelcomeModal（src/components/common/WelcomeModal.tsx）
 
@@ -575,6 +587,7 @@ updateLastChatMessage: (content: string) => void
 
 - 親ノードから右 **280px**
 - 既存の子ノード数 × **90px** だけ縦にオフセット（重なり回避）
+- グループ外分岐では `findFreePosition` を通して既存ノードとの重なりを追加回避（Phase 21）
 - エッジ: `source: parentId / sourceHandle: 'right'`、`target: newId / targetHandle: 'left'`
 
 ### 11.3 dagre自動整列（`applyDagreLayout`）
@@ -582,7 +595,29 @@ updateLastChatMessage: (content: string) => void
 - `@dagrejs/dagre` を使用
 - `rankdir: 'LR'`（左→右）、`ranksep: 100`、`nodesep: 60`
 - ノードサイズ: 192 × 64px
-- Toolbar の「整列」ボタン実行後に `fitView({ padding: 0.15, duration: 400 })` でフィット
+- Toolbar の「整列」ボタン実行後にアニメーション完了コールバックで `fitView({ padding: 0.15, duration: 400 })` でフィット（Phase 21: 瞬間移動→アニメーション付きに変更）
+
+### 11.4 整列アニメーション（`animateNodePositions`）（Phase 21）
+
+`requestAnimationFrame` ループで `from` → `to` の位置を補間。イージング関数 `easeInOutCubic` を使用。完了時に `onDone()` コールバックを呼ぶ。キャンセル関数を返す。
+
+- `Toolbar.tsx` 側: アニメーション途中フレームは `setNodesNoHistory`（履歴なし）で描画し、完了時に `commitNodesWithHistory(original, laid)` で1回だけ履歴に積む
+- 多重実行ガード: `animatingRef.current` で実行中フラグを管理
+
+### 11.5 ノード追加位置の重なり回避（`findFreePosition`）（Phase 21）
+
+- `desired` 位置を起点に、フリーノード（`!parentId && type !== 'groupNode'`）との重なり（`|dx| < 200 && |dy| < 80`）を検出
+- 重なる間 y を **90px** ずつ下にずらす（最大10回）
+- `Toolbar.handleAddNode`: `screenToFlowPosition` で画面中央をフロー座標に変換し、`findFreePosition` を通してから `addNode`
+- `mapStore.addConnectedNode`: グループ外分岐の `finalPosition` 決定後に `findFreePosition` を適用
+
+### 11.6 FloatingEdge のラベル・双方向矢印（Phase 21 不具合修正）
+
+`FloatingEdge.tsx` が `label` と `markerStart` を受け取れていなかった不具合を修正。
+
+- `EdgeProps` から `label`・`markerStart` を受け取り、`BaseEdge` に `markerStart={markerStart}` を渡す
+- `label` が truthy のとき `EdgeLabelRenderer` で `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` の位置にラベルを描画（白背景・dark対応・`text-xs px-1.5 py-0.5 rounded border shadow-sm`）
+- `getBezierPath` の返り値を `[edgePath, labelX, labelY]` の3値で受ける
 
 ---
 
