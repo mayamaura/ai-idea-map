@@ -334,6 +334,16 @@
 - ノード数100個以下でスムーズな操作（60fps）
 - 初回ロード3秒以内
 - AI応答は最大30秒のタイムアウト表示
+- 大規模マップ（100ノード超）では `onlyRenderVisibleElements` により画面外ノードの DOM 描画をスキップしてパン・ズームを軽量化する（Phase 24）
+
+### 3.2.1 ダークモード（Phase 24）
+
+ダークモードは全 UI コンポーネントで一貫して機能すること。具体的には以下のすべてが対応する:
+- ツールバー（Toolbar）・ボトムナビ（BottomNav）
+- キャンバス背景（Background）・コントロール（Controls）・ミニマップ（MiniMap）
+- ノードアクションバー（NodeActionBar）
+- ウェルカムモーダル（WelcomeModal）
+- ヘッダー・各種パネル（既対応）・ContextMenu・ConfirmDialog・Toast・SearchBar（既対応）
 
 ### 3.3 セキュリティ
 - Claude APIキーはlocalStorageに保存（サーバーに送信しない）

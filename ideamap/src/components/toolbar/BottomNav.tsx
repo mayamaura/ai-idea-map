@@ -13,7 +13,7 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="sm:hidden flex items-center justify-around px-4 py-2 bg-white border-t border-gray-200 z-10 flex-shrink-0">
+    <nav className="sm:hidden flex items-center justify-around px-4 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-10 flex-shrink-0">
       <button
         onClick={handleAddNode}
         className="flex flex-col items-center gap-0.5 p-2 text-primary-600"
@@ -27,7 +27,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => zoomIn()}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="11" cy="11" r="7" strokeWidth="2" />
@@ -39,7 +39,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => fitView({ padding: 0.1, duration: 300 })}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -49,7 +49,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => zoomOut()}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="11" cy="11" r="7" strokeWidth="2" />
@@ -60,7 +60,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => setSettingsOpen(true)}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -72,7 +72,7 @@ export function BottomNav() {
       {/* ヘルプ: 操作ガイドへの常時入口 */}
       <button
         onClick={() => setShortcutsModalOpen(true)}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="12" cy="12" r="9" strokeWidth="2" />

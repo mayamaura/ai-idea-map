@@ -958,37 +958,41 @@
 
 ---
 
-### Phase 24: 全般UX・品質改善（約2日）
+### Phase 24: 全般UX・品質改善（約2日）🔨 実装済み（確認中）
 
 **目標**: 個別機能に属さない横断的な体験品質を引き上げる（追加提案分）
 
 **背景（現状の課題）**:
 - ダークモード対応が Header・一部パネルのみで、Toolbar / NodeActionBar / キャンバス背景・MiniMap / 整列ドロップダウン等がライト配色固定（ダークテーマにすると混在して見える）
 - ノード数が増えると画面外ノードも全て DOM 描画される
-- ウェルカドモーダルにキーボード操作の案内がない
+- ウェルカムモーダルにキーボード操作の案内がない（既に Phase 22 G で対応済みと確認）
 
 #### タスク
 
 **A. ダークモードの網羅**
-- [ ] `src/components/toolbar/Toolbar.tsx`: コンテナ（`bg-white border-gray-200`）とすべてのボタン・ドロップダウンに `dark:` クラスを追加（`dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700` 等。Header・既存パネルの配色に合わせる）
-- [ ] `src/components/canvas/IdeaCanvas.tsx`:
-  - `NodeActionBar` のコンテナ・ボタンに dark クラス追加
-  - `useSettingsStore((s) => s.theme)` を参照し、`<Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} ...>` に変更
-  - `MiniMap` / `Controls` に theme 条件で `!bg-gray-800` 系クラスを付与（className を三項演算子で切替）
-  - エンプティ状態のテキストに `dark:text-gray-500` 等を追加
-- [ ] `src/components/common/SearchBar.tsx` / `ConfirmDialog.tsx` / `Toast.tsx` / `ContextMenu.tsx` の dark 対応漏れを確認して補完（ContextMenu は MenuItem に dark クラスあり・コンテナ側を確認）
-- [ ] 確認方法: テーマを切り替えて全UI（ツールバー・メニュー・モーダル・トースト・キャンバス）を目視確認
+- [x] `src/components/toolbar/Toolbar.tsx`: コンテナ（`bg-white border-gray-200`）とすべてのボタン・ドロップダウンに `dark:` クラスを追加。BottomNav も同様に対応（`dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400` 等、Header・既存パネルの配色基準に統一）
+- [x] `src/components/toolbar/BottomNav.tsx`: `<nav>` に `dark:bg-gray-800 dark:border-gray-700` を追加。各ボタンに `dark:text-gray-400` を追加（追加ボタンの `text-primary-600` はそのまま維持）
+- [x] `src/components/canvas/IdeaCanvas.tsx`:
+  - `useSettingsStore((s) => s.theme)` を参照し、`<Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} ...>` に変更（既存 `snapToGrid` と同じ store から取得）
+  - `<ReactFlow colorMode={theme}>` を追加。Controls / MiniMap / 組み込みUIをダーク化
+  - `Controls` / `MiniMap` の `className` を三項演算子で切り替え（`!border-gray-700 !bg-gray-800` vs `!border-gray-200`）
+  - `NodeActionBar` のコンテナ・ボタンに dark クラス追加（`dark:bg-gray-800 dark:border-gray-700` 等）
+  - エンプティ状態のテキストに `dark:text-gray-500` / `dark:text-gray-600` を追加
+- [x] `src/components/common/WelcomeModal.tsx`: モーダルカード `dark:bg-gray-800`、非アクティブインジケーター `dark:bg-gray-700`、タイトル `dark:text-gray-100`、説明 `dark:text-gray-400`、スキップボタン `dark:text-gray-500 dark:hover:text-gray-300` を追加
+- [x] ContextMenu.tsx / ConfirmDialog.tsx / SearchBar.tsx / Toast.tsx / Header.tsx は既にダーク対応済みのため変更なし
 
-**B. 大規模マップのパフォーマンス**
-- [ ] `src/components/canvas/IdeaCanvas.tsx`: `<ReactFlow onlyRenderVisibleElements ...>` を追加（画面外ノードの DOM 描画をスキップ）
-- [ ] 動作確認: 100ノード規模のマップでパン・ズームが滑らかなこと。発表モード・検索ハイライトに副作用がないこと（`onlyRenderVisibleElements` は画面外ノードを非表示にするだけで状態は保持される）
+**B. 大規模マップのパフォーマンス（エクスポート干渉対策付き）**
+- [x] `src/stores/uiStore.ts`: `renderAllNodes: boolean`（初期値 `false`）と `setRenderAllNodes: (v: boolean) => void` を追加（インターフェースと実装の両方）
+- [x] `src/components/canvas/IdeaCanvas.tsx`: `uiStore` から `renderAllNodes` を購読し、`<ReactFlow onlyRenderVisibleElements={!renderAllNodes}>` を追加（通常は全要素を可視判定でスキップ＝最適化ON）
+- [x] `src/components/panels/ExportImportPanel.tsx`: `handleImageExport` を変更。撮影前に `setRenderAllNodes(true)` + 2フレーム分の `requestAnimationFrame` 待機 → `exportMapAsImage` 実行 → `finally` で `setRenderAllNodes(false)`。画面外ノードの欠落を防ぐ旨のコメントあり
 
-**C. ウェルカム・ヘルプ導線**
-- [ ] `src/components/common/WelcomeModal.tsx`: 3ステップの末尾に「`Ctrl+/` でいつでもショートカット一覧を表示できます」の1行を追加
-- [ ] `src/components/common/KeyboardShortcutsModal.tsx`: Phase 19〜23 で追加したショートカット（Ctrl+S / Enter / F2 / 矢印キー）が漏れなく載っていることを確認
+**C. ウェルカム・ヘルプ導線（コード確認のみ・変更なし）**
+- [x] 実コード確認の結果、`WelcomeModal.tsx` のヘルプ誘導文（「❓ ボタン（または Ctrl + /）でいつでも操作ガイドを確認できます」）は Phase 22 G で対応済み。`KeyboardShortcutsModal.tsx` の Ctrl+S / Enter / F2 / 矢印キーも Phase 22 で対応済みのため、新規変更なし
 
 **ドキュメント更新**
-- [ ] `docs/design.md`（テーマ設計・パフォーマンス方針）、`docs/requirements.md`（非機能要件: ダークモード網羅・大規模マップ）を更新
+- [x] `docs/design.md`（「14. テーマ設計」に Phase 24 対応内容追記、「4.2 uiStore」に `renderAllNodes` 追加、「16. 大規模マップのパフォーマンス」セクション新設）
+- [x] `docs/requirements.md`（「3.2 パフォーマンス」に大規模マップ対応追記、「3.2.1 ダークモード」セクション新設）
+- [x] `docs/implementation-plan.md`（Phase 24 を 🔨 実装済み（確認中）に更新）
 
 **完了条件**: ダークテーマで配色の混在がなくなる。100ノード規模でも操作が滑らか
 

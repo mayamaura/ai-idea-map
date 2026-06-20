@@ -16,7 +16,7 @@ import {
 type Tab = 'export' | 'import' | 'share'
 
 export function ExportImportPanel() {
-  const { isExportPanelOpen, setExportPanelOpen, addToast, mapTitle, setMapTitle, currentMapId, openConfirmDialog } =
+  const { isExportPanelOpen, setExportPanelOpen, addToast, mapTitle, setMapTitle, currentMapId, openConfirmDialog, setRenderAllNodes } =
     useUIStore()
   const { nodes, edges, getSerializedNodes, getSerializedEdges, loadFromSerialized } = useMapStore()
   const { getViewport } = useReactFlow()
@@ -47,7 +47,13 @@ export function ExportImportPanel() {
 
   const handleImageExport = async (format: 'png' | 'svg') => {
     setIsExporting(true)
+    // onlyRenderVisibleElements で画面外ノードがDOMから外れるとマップ全体エクスポートが欠けるため、
+    // 撮影前に全描画モードに切り替えてReact Flowがすべてのノードを描画するのを待つ
+    setRenderAllNodes(true)
     try {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
       await exportMapAsImage(format, imageMode, {
         transparent,
         highDpi,
@@ -59,6 +65,7 @@ export function ExportImportPanel() {
     } catch {
       addToast('エクスポートに失敗しました', 'error')
     } finally {
+      setRenderAllNodes(false)
       setIsExporting(false)
     }
   }

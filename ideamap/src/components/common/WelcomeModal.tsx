@@ -29,14 +29,14 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden animate-dialog">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden animate-dialog">
         {/* ステップインジケーター */}
         <div className="flex gap-1.5 px-6 pt-5">
           {STEPS.map((_, i) => (
             <div
               key={i}
               className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-                i <= step ? 'bg-primary-500' : 'bg-gray-200'
+                i <= step ? 'bg-primary-500' : 'bg-gray-200 dark:bg-gray-700'
               }`}
             />
           ))}
@@ -45,11 +45,11 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
         {/* コンテンツ */}
         <div className="px-6 py-6 text-center">
           <div className="text-5xl mb-4">{STEPS[step].icon}</div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">{STEPS[step].title}</h2>
-          <p className="text-sm text-gray-500 leading-relaxed">{STEPS[step].desc}</p>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">{STEPS[step].title}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{STEPS[step].desc}</p>
           {/* 最終ステップのみヘルプへの誘導を表示 */}
           {step === STEPS.length - 1 && (
-            <p className="mt-4 text-xs text-gray-400 leading-relaxed">
+            <p className="mt-4 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
               ❓ ボタン（または Ctrl + /）でいつでも操作ガイドを確認できます
             </p>
           )}
@@ -59,7 +59,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
         <div className="flex items-center justify-between px-6 pb-5 gap-3">
           <button
             onClick={onClose}
-            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             スキップ
           </button>

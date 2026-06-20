@@ -50,30 +50,30 @@ function NodeActionBar() {
 
   return createPortal(
     <div
-      className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg shadow-lg px-1 py-1 whitespace-nowrap"
+      className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-1 py-1 whitespace-nowrap"
       style={{ position: 'fixed', left: screenX, top: screenY + 8, transform: 'translateX(-50%)', zIndex: 40 }}
     >
       <button
         onClick={() => { setSelectedNodeId(selectedNodeId); setAIPanelOpen(true) }}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm text-primary-600 font-medium hover:bg-primary-50 rounded-md transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 font-medium hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-md transition-colors"
         title="AIに拡張を依頼"
       >
         <span>✦</span>
         <span>AI拡張</span>
       </button>
-      <div className="w-px h-4 bg-gray-200" />
+      <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
       <button
         onClick={() => openNodeDetail(selectedNodeId)}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-md transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
         title="詳細を開く"
       >
         <span>📝</span>
         <span>詳細</span>
       </button>
-      <div className="w-px h-4 bg-gray-200" />
+      <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
       <button
         onClick={() => { deleteNode(selectedNodeId); setSelectedNodeId(null) }}
-        className="px-3 py-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+        className="px-3 py-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
         title="削除"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -97,7 +97,7 @@ const edgeTypes: EdgeTypes = {
 
 export function IdeaCanvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, pendingFitView, clearPendingFitView } = useMapStore()
-  const { snapToGrid } = useSettingsStore()
+  const { snapToGrid, theme } = useSettingsStore()
   const {
     selectedNodeId,
     setSelectedNodeId,
@@ -108,6 +108,7 @@ export function IdeaCanvas() {
     isPresentationMode,
     presentationNodeIds,
     presentationCurrentIndex,
+    renderAllNodes,
   } = useUIStore()
   const { screenToFlowPosition, fitView } = useReactFlow()
 
@@ -236,6 +237,14 @@ export function IdeaCanvas() {
 
   const isEmpty = nodes.length === 0
 
+  // Controls / MiniMap のボーダー色はダークで浮きが出るため theme で最小限の上書きをする
+  const controlsClass = theme === 'dark'
+    ? '!shadow-md !rounded-xl !border !border-gray-700 !bg-gray-800'
+    : '!shadow-md !rounded-xl !border !border-gray-200'
+  const minimapClass = theme === 'dark'
+    ? '!border !border-gray-700 !rounded-xl !shadow-md !bg-gray-800'
+    : '!border !border-gray-200 !rounded-xl !shadow-md'
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 relative" onDoubleClick={handleDoubleClickOnPane}>
@@ -267,12 +276,18 @@ export function IdeaCanvas() {
           nodesConnectable={!isPresentationMode}
           elementsSelectable={!isPresentationMode}
           panOnDrag={!isPresentationMode}
+          // colorMode で Controls / MiniMap / 組み込みUIをテーマに合わせる
+          colorMode={theme}
+          // 画面外ノードの DOM 描画をスキップして大規模マップのパフォーマンスを改善する。
+          // エクスポート時のみ renderAllNodes フラグで一時的に全描画に切り替える
+          onlyRenderVisibleElements={!renderAllNodes}
         >
-          <Background color="#e5e7eb" gap={20} size={1} />
-          <Controls showInteractive={false} className="!shadow-md !rounded-xl !border !border-gray-200" />
+          {/* ダークではドット色を暗い配色に変える（背景色は index.css の .dark .react-flow__background で対応） */}
+          <Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} gap={20} size={1} />
+          <Controls showInteractive={false} className={controlsClass} />
           <MiniMap
             nodeColor={(node) => (node.data as IdeaNodeData).color ?? '#e5e7eb'}
-            className="!border !border-gray-200 !rounded-xl !shadow-md"
+            className={minimapClass}
             zoomable
             pannable
           />
@@ -283,8 +298,8 @@ export function IdeaCanvas() {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="text-center select-none">
               <div className="text-6xl mb-4 opacity-30">💡</div>
-              <p className="text-gray-400 text-base font-medium mb-1">マップが空です</p>
-              <p className="text-gray-300 text-sm">ダブルクリックしてアイデアを追加</p>
+              <p className="text-gray-400 dark:text-gray-500 text-base font-medium mb-1">マップが空です</p>
+              <p className="text-gray-300 dark:text-gray-600 text-sm">ダブルクリックしてアイデアを追加</p>
             </div>
           </div>
         )}

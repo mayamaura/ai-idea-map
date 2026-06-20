@@ -91,6 +91,8 @@ interface UIState {
   // Phase 11: デバイス間連携
   isFileDashboardOpen: boolean
   isShortcutsModalOpen: boolean
+  // Phase 24: 画像エクスポート時のみ true にして onlyRenderVisibleElements を一時無効化し、画面外ノードをDOMに描画させる
+  renderAllNodes: boolean
   setSelectedNodeId: (id: string | null) => void
   setEditingNodeId: (id: string | null) => void
   setSettingsOpen: (open: boolean) => void
@@ -143,6 +145,7 @@ interface UIState {
   // Phase 11: デバイス間連携
   setFileDashboardOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
+  setRenderAllNodes: (v: boolean) => void
   setAnalysisLoading: (loading: boolean) => void
   setMapAnalysis: (analysis: MapAnalysis | null) => void
   setConnectionSuggestions: (suggestions: ConnectionSuggestion[]) => void
@@ -191,6 +194,7 @@ export const useUIStore = create<UIState>((set) => ({
   setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
   isFileDashboardOpen: true,
   isShortcutsModalOpen: false,
+  renderAllNodes: false,
   setSelectedNodeId: (id) =>
     set((state) => ({
       selectedNodeId: id,
@@ -322,4 +326,5 @@ export const useUIStore = create<UIState>((set) => ({
       hasActiveMap: open ? state.hasActiveMap : true,
     })),
   setShortcutsModalOpen: (open) => set({ isShortcutsModalOpen: open }),
+  setRenderAllNodes: (v) => set({ renderAllNodes: v }),
 }))

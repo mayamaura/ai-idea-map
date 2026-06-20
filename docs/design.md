@@ -184,6 +184,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `isPresentationOrderOpen` | `boolean` | 発表順序編集モーダルの開閉（Phase 18） |
 | `presentationNodeIds` | `string[]` | 発表順序を保持したノードIDリスト（Phase 15） |
 | `presentationCurrentIndex` | `number` | 現在表示中のインデックス（0-based）（Phase 15） |
+| `renderAllNodes` | `boolean` | 画像エクスポート時のみ true。`onlyRenderVisibleElements` を一時無効化して全ノードをDOM描画させ、マップ全体エクスポートの欠落を防ぐ（Phase 24） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 
@@ -767,6 +768,32 @@ remote.mapId ≠ currentMapId → 衝突検出
 - `App.tsx` の `useEffect` で `document.documentElement.classList` に `dark` を付け外し
 - Tailwind CSS の `dark:` バリアントで全コンポーネントのダーク対応
 - 初期値・永続化: `settingsStore` が localStorage から復元
+
+### Phase 24 によるダーク対応の全面化
+
+Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Background）/ WelcomeModal にダーク対応を追加し、全 UI で配色が統一された。
+
+- **React Flow 組み込みUI**: `<ReactFlow colorMode={theme}>` を追加。Controls / MiniMap / その他の組み込みUIが自動的にダーク化される。border/bg が浮く箇所は `className` の三項演算子で最小限上書き（`!border-gray-700 !bg-gray-800` 等）。
+- **Background ドット色**: `<Background color={theme === 'dark' ? '#374151' : '#e5e7eb'}>` でテーマに合わせてドット色を出し分ける。背景そのものは `index.css` の `.dark .react-flow__background` が担当。
+- **配色基準**: Header.tsx / ContextMenu.tsx の既存パターン（`bg-white dark:bg-gray-800`、ボタン `text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700` 等）に全コンポーネントを統一。
+
+---
+
+## 16. 大規模マップのパフォーマンス（Phase 24）
+
+### 16.1 onlyRenderVisibleElements
+
+`<ReactFlow onlyRenderVisibleElements={!renderAllNodes}>` を有効化し、ビューポート外のノードの DOM 描画をスキップする。ノード数が多いマップでのパン・ズームの描画負荷を軽減する。
+
+### 16.2 エクスポート干渉対策（renderAllNodes フラグ）
+
+`exportService` の画像エクスポートは `.react-flow__viewport` の DOM を直接 html-to-image で撮影する。`onlyRenderVisibleElements` が有効な状態では画面外ノードが DOM から除外されるため、「マップ全体」モードでエクスポートすると画面外ノードが欠落する。
+
+**対策**: `uiStore.renderAllNodes` フラグを用意し、`ExportImportPanel.handleImageExport` が以下の手順で切り替える。
+1. 撮影前に `setRenderAllNodes(true)` を呼ぶ
+2. React Flow が全ノードを DOM に描画するのを待つ（2フレーム分の `requestAnimationFrame` を await）
+3. `exportMapAsImage(...)` を実行
+4. `finally` ブロックで `setRenderAllNodes(false)` に戻す（成功・失敗どちらでも戻す）
 
 ---
 
