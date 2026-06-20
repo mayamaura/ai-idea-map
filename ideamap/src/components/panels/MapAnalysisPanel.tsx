@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError } from '../../services/claudeService'
+import { analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError } from '../../services/claudeService'
 import type { ConnectionSuggestion, ClusterSuggestion } from '../../types'
 
 type TabKey = 'analysis' | 'connections' | 'clusters'
@@ -29,6 +29,7 @@ export function MapAnalysisPanel() {
   const [activeTab, setActiveTab] = useState<TabKey>('analysis')
   const [dismissedConnections, setDismissedConnections] = useState<Set<string>>(new Set())
   const [appliedClusters, setAppliedClusters] = useState<Set<number>>(new Set())
+  const [rawErrorResponse, setRawErrorResponse] = useState<string | null>(null)
 
   const handleAnalyze = useCallback(async () => {
     if (!apiKey) {
@@ -37,6 +38,7 @@ export function MapAnalysisPanel() {
     }
     setAnalysisLoading(true)
     setMapAnalysis(null)
+    setRawErrorResponse(null)
     try {
       const result = await analyzeMap({
         apiKey,
@@ -48,6 +50,7 @@ export function MapAnalysisPanel() {
       setMapAnalysis(result)
     } catch (e) {
       addToast(toFriendlyAIError(e), 'error')
+      if (e instanceof AIParseError) setRawErrorResponse(e.rawResponse)
     } finally {
       setAnalysisLoading(false)
     }
@@ -61,6 +64,7 @@ export function MapAnalysisPanel() {
     setAnalysisLoading(true)
     setConnectionSuggestions([])
     setDismissedConnections(new Set())
+    setRawErrorResponse(null)
     try {
       const result = await suggestConnections({
         apiKey,
@@ -72,6 +76,7 @@ export function MapAnalysisPanel() {
       if (result.length === 0) addToast('新しい接続候補は見つかりませんでした', 'info')
     } catch (e) {
       addToast(toFriendlyAIError(e), 'error')
+      if (e instanceof AIParseError) setRawErrorResponse(e.rawResponse)
     } finally {
       setAnalysisLoading(false)
     }
@@ -85,6 +90,7 @@ export function MapAnalysisPanel() {
     setAnalysisLoading(true)
     setClusterSuggestions([])
     setAppliedClusters(new Set())
+    setRawErrorResponse(null)
     try {
       const result = await suggestClusters({
         apiKey,
@@ -96,6 +102,7 @@ export function MapAnalysisPanel() {
       if (result.length === 0) addToast('グループ化の提案がありませんでした', 'info')
     } catch (e) {
       addToast(toFriendlyAIError(e), 'error')
+      if (e instanceof AIParseError) setRawErrorResponse(e.rawResponse)
     } finally {
       setAnalysisLoading(false)
     }
@@ -211,6 +218,23 @@ export function MapAnalysisPanel() {
                 )
               })}
             </div>
+
+            {rawErrorResponse !== null && (
+              <div className="mx-5 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-2 flex-shrink-0">
+                <svg className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-red-700 dark:text-red-300 font-medium mb-1">AIの応答をJSONとして解析できませんでした</p>
+                  <button
+                    onClick={() => void copyToClipboard(rawErrorResponse)}
+                    className="text-xs text-red-600 dark:text-red-400 underline hover:no-underline"
+                  >
+                    AIの生レスポンスをコピー
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto">
               {/* 全体分析タブ */}

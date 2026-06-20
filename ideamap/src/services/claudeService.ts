@@ -41,11 +41,28 @@ function sanitizeJsonString(raw: string): string {
   return result
 }
 
+export class AIParseError extends Error {
+  readonly rawResponse: string
+  constructor(message: string, rawResponse: string, cause?: unknown) {
+    super(message, { cause })
+    this.name = 'AIParseError'
+    this.rawResponse = rawResponse
+  }
+}
+
 function safeParseJson<T>(raw: string): T {
   try {
     return JSON.parse(raw) as T
   } catch {
-    return JSON.parse(sanitizeJsonString(raw)) as T
+    try {
+      return JSON.parse(sanitizeJsonString(raw)) as T
+    } catch (e) {
+      throw new AIParseError(
+        `JSONの解析に失敗しました: ${e instanceof Error ? e.message : String(e)}`,
+        raw,
+        e,
+      )
+    }
   }
 }
 
