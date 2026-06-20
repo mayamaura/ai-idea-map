@@ -19,6 +19,10 @@ export function useAutoSave(
   const { autoSave } = useSettingsStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMountedRef = useRef(true)
+  // auth は呼び出し元で毎レンダリング新しいオブジェクトが作られるため ref で追跡し、
+  // performSave の useCallback 依存配列に含めずにデバウンスタイマーが壊れないようにする
+  const authRef = useRef(auth)
+  authRef.current = auth
   /** 自動保存を一時停止中（衝突ダイアログ表示中）フラグ */
   const isSuspendedRef = useRef(false)
   /** 今セッションで最初の PATCH 前チェックを済ませたか */
@@ -156,7 +160,7 @@ export function useAutoSave(
               // 初回401: サイレント再認証を試みる。トーストは表示しない
               reauthAttemptedRef.current = true
               pendingRetryRef.current = true
-              auth.silentReauth()
+              authRef.current.silentReauth()
               setSaveStatus('error')
             } else {
               // 再認証後も401: ユーザーに手動再接続を促すトーストを表示
@@ -164,7 +168,7 @@ export function useAutoSave(
               useUIStore.getState().addToast(
                 'Googleドライブの認証が切れました',
                 'error',
-                { label: '再接続', onClick: auth.signIn }
+                { label: '再接続', onClick: authRef.current.signIn }
               )
             }
           } else {
@@ -179,7 +183,7 @@ export function useAutoSave(
         useUIStore.getState().setLastSavedAt(new Date().toISOString())
       }
     }
-  }, [accessToken, setSaveStatus, auth])
+  }, [accessToken, setSaveStatus])
 
   // データ変更・タイトル変更どちらでも同じデバウンスタイマーを共有する
   const scheduleSave = useCallback(() => {
