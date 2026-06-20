@@ -27,7 +27,7 @@ export function MapAnalysisPanel() {
   const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore()
 
   const [activeTab, setActiveTab] = useState<TabKey>('analysis')
-  const [rejectedConnections, setRejectedConnections] = useState<Set<string>>(new Set())
+  const [dismissedConnections, setDismissedConnections] = useState<Set<string>>(new Set())
   const [appliedClusters, setAppliedClusters] = useState<Set<number>>(new Set())
 
   const handleAnalyze = useCallback(async () => {
@@ -60,7 +60,7 @@ export function MapAnalysisPanel() {
     }
     setAnalysisLoading(true)
     setConnectionSuggestions([])
-    setRejectedConnections(new Set())
+    setDismissedConnections(new Set())
     try {
       const result = await suggestConnections({
         apiKey,
@@ -105,12 +105,13 @@ export function MapAnalysisPanel() {
     (suggestion: ConnectionSuggestion) => {
       addSuggestedEdge(suggestion.sourceId, suggestion.targetId)
       addToast(`「${suggestion.sourceTitle}」→「${suggestion.targetTitle}」を接続しました`, 'success')
+      setDismissedConnections((prev) => new Set([...prev, `${suggestion.sourceId}:${suggestion.targetId}`]))
     },
     [addSuggestedEdge, addToast]
   )
 
   const handleRejectConnection = useCallback((key: string) => {
-    setRejectedConnections((prev) => new Set([...prev, key]))
+    setDismissedConnections((prev) => new Set([...prev, key]))
   }, [])
 
   const handleApplyCluster = useCallback(
@@ -146,7 +147,7 @@ export function MapAnalysisPanel() {
     : ''
 
   const visibleConnections = connectionSuggestions.filter(
-    (s) => !rejectedConnections.has(`${s.sourceId}:${s.targetId}`)
+    (s) => !dismissedConnections.has(`${s.sourceId}:${s.targetId}`)
   )
 
   return (
