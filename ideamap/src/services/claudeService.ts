@@ -322,6 +322,8 @@ export async function suggestClusters(req: SuggestClustersRequest): Promise<Clus
     .map((c) => `  "${c.id}": ${c.name}`)
     .join('\n')
 
+  const nodeMap = new Map(req.nodes.map((n) => [n.id, n.title]))
+
   const prompt = `あなたはアイデアを整理するコンサルタントです。以下のノード一覧をテーマ別にグループ分けしてください。
 
 【ノード一覧】
@@ -337,15 +339,14 @@ JSON形式のみで回答してください（説明文不要）:
     {
       "groupName": "グループ名",
       "categoryId": "cat-main",
-      "nodeIds": ["id1", "id2"],
-      "nodeTitles": ["タイトル1", "タイトル2"]
+      "nodeIds": ["id1", "id2"]
     }
   ]
 }`
 
   const message = await client.messages.create({
     model: req.model,
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -355,10 +356,13 @@ JSON形式のみで回答してください（説明文不要）:
   const jsonMatch = content.text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした')
 
-  const parsed = safeParseJson<{ clusters: ClusterSuggestion[] }>(jsonMatch[0])
+  const parsed = safeParseJson<{ clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }>(jsonMatch[0])
   if (!Array.isArray(parsed.clusters)) return []
 
-  return parsed.clusters
+  return parsed.clusters.map((c) => ({
+    ...c,
+    nodeTitles: c.nodeIds.map((id) => nodeMap.get(id) ?? id),
+  }))
 }
 
 export async function chatWithMap(
