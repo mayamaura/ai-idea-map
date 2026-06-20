@@ -958,7 +958,7 @@
 
 ---
 
-### Phase 24: 全般UX・品質改善（約2日）🔨 実装済み（確認中）
+### Phase 24: 全般UX・品質改善（約2日）✅ 完了（2026-06-20）
 
 **目標**: 個別機能に属さない横断的な体験品質を引き上げる（追加提案分）
 
@@ -970,29 +970,29 @@
 #### タスク
 
 **A. ダークモードの網羅**
-- [x] `src/components/toolbar/Toolbar.tsx`: コンテナ（`bg-white border-gray-200`）とすべてのボタン・ドロップダウンに `dark:` クラスを追加。BottomNav も同様に対応（`dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400` 等、Header・既存パネルの配色基準に統一）
-- [x] `src/components/toolbar/BottomNav.tsx`: `<nav>` に `dark:bg-gray-800 dark:border-gray-700` を追加。各ボタンに `dark:text-gray-400` を追加（追加ボタンの `text-primary-600` はそのまま維持）
-- [x] `src/components/canvas/IdeaCanvas.tsx`:
+- [x]✅ `src/components/toolbar/Toolbar.tsx`: コンテナ（`bg-white border-gray-200`）とすべてのボタン・ドロップダウンに `dark:` クラスを追加。BottomNav も同様に対応（`dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400` 等、Header・既存パネルの配色基準に統一）
+- [x]✅ `src/components/toolbar/BottomNav.tsx`: `<nav>` に `dark:bg-gray-800 dark:border-gray-700` を追加。各ボタンに `dark:text-gray-400` を追加（追加ボタンの `text-primary-600` はそのまま維持）
+- [x]✅ `src/components/canvas/IdeaCanvas.tsx`:
   - `useSettingsStore((s) => s.theme)` を参照し、`<Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} ...>` に変更（既存 `snapToGrid` と同じ store から取得）
   - `<ReactFlow colorMode={theme}>` を追加。Controls / MiniMap / 組み込みUIをダーク化
   - `Controls` / `MiniMap` の `className` を三項演算子で切り替え（`!border-gray-700 !bg-gray-800` vs `!border-gray-200`）
   - `NodeActionBar` のコンテナ・ボタンに dark クラス追加（`dark:bg-gray-800 dark:border-gray-700` 等）
   - エンプティ状態のテキストに `dark:text-gray-500` / `dark:text-gray-600` を追加
-- [x] `src/components/common/WelcomeModal.tsx`: モーダルカード `dark:bg-gray-800`、非アクティブインジケーター `dark:bg-gray-700`、タイトル `dark:text-gray-100`、説明 `dark:text-gray-400`、スキップボタン `dark:text-gray-500 dark:hover:text-gray-300` を追加
-- [x] ContextMenu.tsx / ConfirmDialog.tsx / SearchBar.tsx / Toast.tsx / Header.tsx は既にダーク対応済みのため変更なし
+- [x]✅ `src/components/common/WelcomeModal.tsx`: モーダルカード `dark:bg-gray-800`、非アクティブインジケーター `dark:bg-gray-700`、タイトル `dark:text-gray-100`、説明 `dark:text-gray-400`、スキップボタン `dark:text-gray-500 dark:hover:text-gray-300` を追加
+- [x]✅ ContextMenu.tsx / ConfirmDialog.tsx / SearchBar.tsx / Toast.tsx / Header.tsx は既にダーク対応済みのため変更なし
 
 **B. 大規模マップのパフォーマンス（エクスポート干渉対策付き）**
-- [x] `src/stores/uiStore.ts`: `renderAllNodes: boolean`（初期値 `false`）と `setRenderAllNodes: (v: boolean) => void` を追加（インターフェースと実装の両方）
-- [x] `src/components/canvas/IdeaCanvas.tsx`: `uiStore` から `renderAllNodes` を購読し、`<ReactFlow onlyRenderVisibleElements={!renderAllNodes}>` を追加（通常は全要素を可視判定でスキップ＝最適化ON）
-- [x] `src/components/panels/ExportImportPanel.tsx`: `handleImageExport` を変更。撮影前に `setRenderAllNodes(true)` + 2フレーム分の `requestAnimationFrame` 待機 → `exportMapAsImage` 実行 → `finally` で `setRenderAllNodes(false)`。画面外ノードの欠落を防ぐ旨のコメントあり
+- [x]✅ `src/stores/uiStore.ts`: `renderAllNodes: boolean`（初期値 `false`）と `setRenderAllNodes: (v: boolean) => void` を追加（インターフェースと実装の両方）
+- [x]✅ `src/components/canvas/IdeaCanvas.tsx`: `uiStore` から `renderAllNodes` を購読し、`<ReactFlow onlyRenderVisibleElements={!renderAllNodes}>` を追加（通常は全要素を可視判定でスキップ＝最適化ON）
+- [x]✅ `src/components/panels/ExportImportPanel.tsx`: `handleImageExport` を変更。撮影前に `setRenderAllNodes(true)` + 2フレーム分の `requestAnimationFrame` 待機 → `exportMapAsImage` 実行 → `finally` で `setRenderAllNodes(false)`。画面外ノードの欠落を防ぐ旨のコメントあり
 
 **C. ウェルカム・ヘルプ導線（コード確認のみ・変更なし）**
-- [x] 実コード確認の結果、`WelcomeModal.tsx` のヘルプ誘導文（「❓ ボタン（または Ctrl + /）でいつでも操作ガイドを確認できます」）は Phase 22 G で対応済み。`KeyboardShortcutsModal.tsx` の Ctrl+S / Enter / F2 / 矢印キーも Phase 22 で対応済みのため、新規変更なし
+- [x]✅ 実コード確認の結果、`WelcomeModal.tsx` のヘルプ誘導文（「❓ ボタン（または Ctrl + /）でいつでも操作ガイドを確認できます」）は Phase 22 G で対応済み。`KeyboardShortcutsModal.tsx` の Ctrl+S / Enter / F2 / 矢印キーも Phase 22 で対応済みのため、新規変更なし
 
 **ドキュメント更新**
-- [x] `docs/design.md`（「14. テーマ設計」に Phase 24 対応内容追記、「4.2 uiStore」に `renderAllNodes` 追加、「16. 大規模マップのパフォーマンス」セクション新設）
-- [x] `docs/requirements.md`（「3.2 パフォーマンス」に大規模マップ対応追記、「3.2.1 ダークモード」セクション新設）
-- [x] `docs/implementation-plan.md`（Phase 24 を 🔨 実装済み（確認中）に更新）
+- [x]✅ `docs/design.md`（「14. テーマ設計」に Phase 24 対応内容追記、「4.2 uiStore」に `renderAllNodes` 追加、「16. 大規模マップのパフォーマンス」セクション新設）
+- [x]✅ `docs/requirements.md`（「3.2 パフォーマンス」に大規模マップ対応追記、「3.2.1 ダークモード」セクション新設）
+- [x]✅ `docs/implementation-plan.md`（Phase 24 を ✅ 完了（2026-06-20）に更新）
 
 **完了条件**: ダークテーマで配色の混在がなくなる。100ノード規模でも操作が滑らか
 
@@ -1064,7 +1064,7 @@ npm run dev
 | Phase 21 | レイアウト・整列機能の強化 | 3日 ✅ |
 | Phase 22 | アイデア編集UXの改善 | 3日 |
 | Phase 23 | AI連携UXの改善 | 3日 |
-| Phase 24 | 全般UX・品質改善 | 2日 |
+| Phase 24 | 全般UX・品質改善 | 2日 ✅ |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |
 | **Phase 12-15 合計** | | **約11日** |
