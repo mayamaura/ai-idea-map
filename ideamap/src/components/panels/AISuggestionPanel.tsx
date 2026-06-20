@@ -122,6 +122,7 @@ export function AISuggestionPanel() {
       )
       setAISuggestions(newSuggestions)
       setSelected(new Set(newSuggestions.map((_, i) => i)))
+      setUserInstruction('')
     } catch (e) {
       // キャンセル時はエラー表示しない
       if (
