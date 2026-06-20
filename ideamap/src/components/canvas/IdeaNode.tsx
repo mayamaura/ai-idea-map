@@ -37,6 +37,13 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const nodeShape = useSettingsStore((s) => s.nodeShape)
   const getCategoryById = useSettingsStore((s) => s.getCategoryById)
 
+  // React Flow の data prop は外部ストア更新に追従しないことがあるため、
+  // color と categoryId はストアから直接読む（applyClusterCategory 等の即時反映のため）
+  const storeColor = useMapStore((s) => s.nodes.find((n) => n.id === id)?.data.color)
+  const storeCategoryId = useMapStore((s) => s.nodes.find((n) => n.id === id)?.data.categoryId)
+  const nodeColor = storeColor ?? nodeData.color
+  const nodeCategoryId = storeCategoryId !== undefined ? storeCategoryId : nodeData.categoryId
+
   const isEditing = editingNodeId === id
 
   // 検索・フィルター状態に応じた表示制御
@@ -47,7 +54,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
     : true
   const matchesFilter =
     activeCategoryFilters.length === 0 ||
-    activeCategoryFilters.includes(nodeData.categoryId ?? 'cat-none')
+    activeCategoryFilters.includes(nodeCategoryId ?? 'cat-none')
   const isDimmed = (isSearchActive && !matchesSearch) || (activeCategoryFilters.length > 0 && !matchesFilter)
   const isHighlighted = isSearchActive && matchesSearch
 
@@ -116,7 +123,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const hasBody = Boolean(nodeData.body)
   const shape = shapeClass(nodeShape)
   const width = widthClass(nodeData.title)
-  const category = nodeData.categoryId ? getCategoryById(nodeData.categoryId) : undefined
+  const category = nodeCategoryId ? getCategoryById(nodeCategoryId) : undefined
   const showCategoryLabel = selected && category && category.id !== 'cat-none'
   const presentationIndex = presentationNodeIds.indexOf(id)
   const isInPresentation = presentationIndex !== -1
@@ -190,7 +197,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
             : 'border-gray-200 hover:border-gray-300'
           }
         `}
-        style={{ backgroundColor: nodeData.color }}
+        style={{ backgroundColor: nodeColor }}
       >
         <div className="px-3 py-2">
           {isEditing ? (
