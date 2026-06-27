@@ -1004,6 +1004,94 @@
 
 ---
 
+### Phase 25: スマホ表示・レイアウトの最適化（約2日）
+
+**目標**: スマホでどのパネル・メニューも画面内に収まり、はみ出し・見切れ・横スクロールが起きない。
+
+**背景（現状の課題）**:
+- 右サイドパネルが固定幅でキャンバスを圧迫してはみ出す: `AIChatPanel` = `w-96`(384px)、`PresentationMode` = `w-[480px]`、`MapAnalysisPanel` = `max-w-md` 右固定
+- `ContextMenu` の縦位置が `window.innerHeight - 360` の固定計算で小型端末で見切れる
+- `Header` のボタンが横一列に詰まる／マップタイトル入力が `max-w-48` で狭い
+- iOS のノッチ・ホームインジケーター（セーフエリア）未対応
+- `BottomNav` の「追加」が `Math.random()*200` でランダム配置され重なりやすい
+
+> **方針**: PC の挙動（右クリック・ハンドルドラッグ・ショートカット）を一切壊さず、スマホ用の経路を**追加**する。判定は Tailwind `sm:`(640px) ブレークポイントを基本とし、JS 判定が要る箇所のみ `window.innerWidth < 640` を使う。既存で下部シート化済みの `NodeDetailPanel` / `AISuggestionPanel`（`items-end sm:items-center`）をレスポンシブのパターン基準とする。
+
+#### A. 右サイドパネル／オーバーレイのレスポンシブ化
+- [ ] `src/components/panels/AIChatPanel.tsx`: ルートを `w-96` → `w-full sm:w-96`（モバイル全幅、PC 384px）。背景に半透明オーバーレイ（`inset-0 bg-black/30`）を敷き、パネル外タップで閉じられるようにする
+- [ ] `src/components/panels/MapAnalysisPanel.tsx`: パネル本体 `max-w-md` → `w-full sm:max-w-md`（既に `inset-0` マスクあり。モバイル全幅化のみ）
+- [ ] `src/components/screens/PresentationMode.tsx`: スライドパネル `w-[480px]` → モバイルは下部シート（`w-full` を画面下）／`sm:` で従来の右 480px。下部ナビバー（前へ/次へ/終了）は流用
+- [ ] `src/components/panels/NodePanel.tsx`: 現状 `hidden sm:flex w-60`。モバイルは `NodeActionBar`（Phase 26 で拡張）が代替するため非表示のままで可（確認のみ）
+
+#### B. ヘッダー・ボトムナビの最適化
+- [ ] `src/components/common/Header.tsx`: 右側ボタン群が 640px 未満で詰まらないよう間隔・アイコンサイズを調整。マップタイトル入力を `max-w-32 sm:max-w-48` 等で画面幅に追従させる
+- [ ] `src/components/toolbar/BottomNav.tsx`: `handleAddNode` のランダム配置を撤廃し、`screenToFlowPosition` で画面中央 → `findFreePosition`（`src/utils/mapLayout.ts`・Phase 21 で追加済み）を通して追加。追加後は `setSelectedNodeId` + `setEditingNodeId` で即編集開始（Toolbar.handleAddNode と同じパターン）
+- [ ] `BottomNav` に **Undo / Redo / 検索** ボタンを追加（キーボードなしで主要操作に到達）。ボタン増加に対応してナビを横スクロール可（`overflow-x-auto`）にするか2段目方式に再構成。Undo/Redo は `mapStore.undo/redo`、検索は既存 SearchBar の開閉フラグを呼ぶ
+- [ ] `src/components/toolbar/Toolbar.tsx`: 狭幅でドロップダウン（整列・フィルター・プレゼン）が画面外に出ないよう開き方向（`bottom-full` 固定）を確認・微調整
+
+#### C. コンテキストメニュー／ポップアップの位置補正
+- [ ] `src/components/canvas/ContextMenu.tsx`: 縦位置 `window.innerHeight - 360` の固定値を撤廃し、`useRef` でメニュー実寸を測って画面内にクランプする
+- [ ] モバイル（`< 640px`）では中央でなく**画面下部のシート**として表示する分岐を追加（横幅 100%・タップ領域 `py-3`）。Phase 26-B のロングプレス起動と組み合わせる
+- [ ] `NodeActionBar`（`IdeaCanvas.tsx` 内）がズーム/パン追従で画面外に出る場合のクランプを確認
+
+#### D. セーフエリア・ビューポート対応
+- [ ] `index.html`: viewport meta に `viewport-fit=cover` を追加
+- [ ] `src/index.css`: `BottomNav` と `Toast` の下端に `padding-bottom: env(safe-area-inset-bottom)` を適用（iOS ホームインジケーターとの被り回避）。`Header` 上端のノッチ対応も検討
+- [ ] モバイルブラウザのアドレスバー伸縮による 100vh ズレを確認し、必要なら `100dvh` を採用（現状 `height:100%` のため影響は限定的・実機確認で判断）
+
+#### ドキュメント更新（必須）
+- [ ] `docs/design.md`: 「レスポンシブ／モバイル設計」節を新設（`sm:` 基準・下部シートパターン・セーフエリア規約・パネル幅方針）
+- [ ] `docs/requirements.md`: スマホ表示要件（パネルが収まる・はみ出さない・セーフエリア）を追記
+
+**完了条件**: iPhone SE 幅（375px）で全パネル・メニューが画面内に収まり、横スクロール・見切れが発生しない。BottomNav から追加（中央・非重複）・Undo/Redo・検索ができる。
+
+---
+
+### Phase 26: スマホ タッチ操作の充実（約3日）
+
+**目標**: 指だけでノードの作成・接続・編集・整理・AI 拡張がすべて完結する。
+
+**背景（現状の課題）**:
+- **エッジが引けない**: 接続ハンドルは 11px・`opacity:0` でホバー時のみ表示（`index.css`）。タッチにはホバーがなく事実上接続不能
+- **右クリックメニューがタッチで開けない**: 削除・コピー・カテゴリ変更・整列・グループ化など主要操作が `ContextMenu.tsx` に集約されているが、起動は `onContextMenu`（右クリック）のみ
+- **キーボード依存**: Undo/Redo・検索・Tab/Enter/矢印・削除などにスマホ向けの代替 UI がない
+
+> **採用方針（2026-06-27 ユーザー合意）**: エッジ作成は**接続モード方式**（ノード選択→「接続」ボタン→相手ノードをタップ）、メニューは**ロングプレスでコンテキストメニュー**を開く（AI 拡張は選択時の `NodeActionBar` に残す）。いずれも PC の既存経路（ハンドルドラッグ・右クリック）に対する**追加**であり、PC 挙動は変更しない。
+
+#### A. 接続モード方式のエッジ作成（最優先）
+- [ ] `src/stores/uiStore.ts`: `connectingFromNodeId: string | null` と `setConnectingFromNodeId(id)` を追加（`isPresentationMode` 等と同じ追加パターン）
+- [ ] `src/stores/mapStore.ts`: 既存 `onConnect` / `makeEdge` を流用する `connectNodes(source, target)` アクションを追加（ハンドルは `ConnectionMode.Loose` のため未指定で可。`past` への push を忘れない）
+- [ ] `IdeaCanvas.tsx` の `NodeActionBar`: 「🔗 接続」ボタンを追加。タップで `setConnectingFromNodeId(selectedNodeId)`
+- [ ] 接続モード中の UI:
+  - 画面上部に固定バナー「接続先のノードをタップ」＋「キャンセル」を表示（`createPortal`）
+  - `handleNodeClick` を拡張: `connectingFromNodeId` があり別ノードをタップしたら `connectNodes` で確定し null に。同ノード／空白タップでキャンセル
+  - 接続中は対象候補ノードをハイライトする視覚フィードバック
+- [ ] PC のハンドルドラッグ接続は現状維持
+
+#### B. ロングプレスでコンテキストメニュー
+- [ ] `src/components/canvas/IdeaNode.tsx`: `handleTouchStart` のロングプレス（500ms）動作を「AI パネルを開く」から「コンテキストメニューを開く」に変更。`touch.clientX/clientY` を取得して `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ（AI 拡張は `NodeActionBar` に残るため失われない）
+- [ ] `src/components/canvas/IdeaCanvas.tsx`: キャンバス（pane）にもロングプレス用 `onTouchStart/End/Move` を追加し、空白長押しで `type: 'pane'` メニュー（アイデアを作成・貼り付け）を開く
+- [ ] ロングプレス発火時に `navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ・任意）
+- [ ] スクロール／ドラッグ開始でタイマーをキャンセル（既存 `onTouchMove={handleTouchEnd}` を踏襲）
+- [ ] メニュー本体は Phase 25-C の下部シート表示と連携
+
+#### C. キーボード依存操作のタッチ代替（仕上げ）
+- [ ] コンテキストメニュー経由で到達できる操作（削除・コピー・貼り付け・名前変更・接続作成・整列・グループ化）を棚卸しし、ロングプレスメニューから**すべて**到達できることを確認（不足は `ContextMenu.tsx` に追加）
+- [ ] 発表モード（`PresentationMode.tsx`）の前へ/次へ/終了がタッチで操作できることを確認（Phase 15 実装済みの下部ナビバー）。スワイプ送りは任意
+- [ ] `src/components/common/KeyboardShortcutsModal.tsx` の操作ガイドに「スマホでの代替操作」を追記
+
+#### D. ノードドラッグ／パン競合の調整
+- [ ] スマホ実機・エミュレータで「ノード移動」「キャンバスパン」「範囲選択」の競合を検証
+- [ ] 必要に応じて `IdeaCanvas.tsx` の `panOnDrag` / `selectionOnDrag` をモバイルで調整（例: モバイルは範囲選択を無効化しパン優先、ピンチズーム `zoomOnPinch` は維持）
+
+#### ドキュメント更新（必須）
+- [ ] `docs/design.md`: 「状態管理設計」に `uiStore.connectingFromNodeId`・`mapStore.connectNodes` を追記。「コンテキストメニュー設計」にロングプレス起動を追記
+- [ ] `docs/requirements.md`: スマホ操作要件（接続モード・ロングプレスメニュー・タッチ代替）を追記
+
+**完了条件**: スマホで ①ノードを選んで「接続」→相手タップでエッジが引ける ②ロングプレスで全操作メニューが開く ③Undo/Redo・検索・追加・編集・AI 拡張が指だけで完結する。PC の右クリック・ハンドルドラッグ・ショートカットは従来どおり動作する。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
@@ -1065,12 +1153,15 @@ npm run dev
 | Phase 22 | アイデア編集UXの改善 | 3日 |
 | Phase 23 | AI連携UXの改善 | 3日 |
 | Phase 24 | 全般UX・品質改善 | 2日 ✅ |
+| Phase 25 | スマホ表示・レイアウト最適化 | 2日 |
+| Phase 26 | スマホ タッチ操作の充実 | 3日 |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |
 | **Phase 12-15 合計** | | **約11日** |
 | **Phase 16-18 合計** | | **約3日** |
 | **Phase 19-24 合計（UX改善）** | | **約15日** |
-| **全体合計** | | **約57日** |
+| **Phase 25-26 合計（スマホ対応）** | | **約5日** |
+| **全体合計** | | **約62日** |
 
 ---
 
@@ -1094,3 +1185,6 @@ npm run dev
 | Phase 22: Enter 兄弟追加と既存操作の競合 | input/textarea フォーカス中は既存の isEditing ガードで除外。ConfirmDialog の Enter 確認とはモーダル抑制チェックの順序で共存させる |
 | Phase 23: ストリーミング中の actions ブロック露出 | 表示用テキストから ```actions 以降を正規表現で除去してから onText に渡し、パースは完了後にのみ実行する |
 | Phase 23: chatWithMap の system 化による挙動変化 | 旧履歴（コンテキスト埋め込み済み第1メッセージ）はセッション内のみ保持のため移行処理は不要。チャット履歴クリアで初期化できる |
+| Phase 25: 下部シートとデスクトップ中央表示の分岐 | `window.innerWidth < 640` で分岐し、画面回転・リサイズ時はメニューを開き直して再評価する（開いたまま追従はしない） |
+| Phase 26: 接続モードとノードタップ選択の競合 | 接続モード中は `handleNodeClick` で接続確定を最優先に分岐し通常の選択処理をスキップ。上部バナーで状態を常時明示し、空白タップ・キャンセルで必ず解除できるようにする |
+| Phase 26: ロングプレスとドラッグ・スクロールの競合 | `onTouchMove` でタイマーをクリアする既存パターンを踏襲し、移動を伴うジェスチャではメニューを発火させない。500ms 閾値で短タップとも区別する |
