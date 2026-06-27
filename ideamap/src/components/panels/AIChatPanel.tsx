@@ -236,7 +236,10 @@ export function AIChatPanel() {
   if (!isChatPanelOpen) return null
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-xl z-40 flex flex-col">
+    <>
+      {/* モバイル限定の背景マスク。PC ではキャンバス操作を妨げないよう非表示にする */}
+      <div className="sm:hidden fixed inset-0 bg-black/30 z-30" onClick={() => setChatPanelOpen(false)} />
+      <div className="fixed right-0 top-0 h-full w-full sm:w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-xl z-40 flex flex-col">
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
@@ -482,5 +485,6 @@ export function AIChatPanel() {
         </>
       )}
     </div>
+    </>
   )
 }

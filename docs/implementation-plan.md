@@ -1004,7 +1004,7 @@
 
 ---
 
-### Phase 25: スマホ表示・レイアウトの最適化（約2日）
+### Phase 25: スマホ表示・レイアウトの最適化（約2日）🔨 実装済み（確認中）
 
 **目標**: スマホでどのパネル・メニューも画面内に収まり、はみ出し・見切れ・横スクロールが起きない。
 
@@ -1018,30 +1018,30 @@
 > **方針**: PC の挙動（右クリック・ハンドルドラッグ・ショートカット）を一切壊さず、スマホ用の経路を**追加**する。判定は Tailwind `sm:`(640px) ブレークポイントを基本とし、JS 判定が要る箇所のみ `window.innerWidth < 640` を使う。既存で下部シート化済みの `NodeDetailPanel` / `AISuggestionPanel`（`items-end sm:items-center`）をレスポンシブのパターン基準とする。
 
 #### A. 右サイドパネル／オーバーレイのレスポンシブ化
-- [ ] `src/components/panels/AIChatPanel.tsx`: ルートを `w-96` → `w-full sm:w-96`（モバイル全幅、PC 384px）。背景に半透明オーバーレイ（`inset-0 bg-black/30`）を敷き、パネル外タップで閉じられるようにする
-- [ ] `src/components/panels/MapAnalysisPanel.tsx`: パネル本体 `max-w-md` → `w-full sm:max-w-md`（既に `inset-0` マスクあり。モバイル全幅化のみ）
-- [ ] `src/components/screens/PresentationMode.tsx`: スライドパネル `w-[480px]` → モバイルは下部シート（`w-full` を画面下）／`sm:` で従来の右 480px。下部ナビバー（前へ/次へ/終了）は流用
-- [ ] `src/components/panels/NodePanel.tsx`: 現状 `hidden sm:flex w-60`。モバイルは `NodeActionBar`（Phase 26 で拡張）が代替するため非表示のままで可（確認のみ）
+- [x] `src/components/panels/AIChatPanel.tsx`: ルートを `w-96` → `w-full sm:w-96`（モバイル全幅、PC 384px）。背景マスク（`inset-0 bg-black/30`）は **`sm:hidden`（モバイル限定）** で敷き、パネル外タップで閉じる。PC はマスクなしでキャンバスと共存（設計判断）
+- [x] `src/components/panels/MapAnalysisPanel.tsx`: パネル本体 `max-w-md` → `w-full sm:max-w-md`（既に `inset-0` マスクあり。モバイル全幅化のみ）
+- [x] `src/components/screens/PresentationMode.tsx`: スライドパネル `w-[480px]` → モバイルは下部シート（`w-full max-h-[55vh]`・`justify-end` で下端固定・`mb-14` でナビバー回避）／`sm:` で従来の右 480px。下部ナビバー（前へ/次へ/終了）は流用
+- [x] `src/components/panels/NodePanel.tsx`: 現状 `hidden sm:flex w-60`。モバイルは `NodeActionBar`（Phase 26 で拡張）が代替するため非表示のまま（変更なし・確認済み）
 
 #### B. ヘッダー・ボトムナビの最適化
-- [ ] `src/components/common/Header.tsx`: 右側ボタン群が 640px 未満で詰まらないよう間隔・アイコンサイズを調整。マップタイトル入力を `max-w-32 sm:max-w-48` 等で画面幅に追従させる
-- [ ] `src/components/toolbar/BottomNav.tsx`: `handleAddNode` のランダム配置を撤廃し、`screenToFlowPosition` で画面中央 → `findFreePosition`（`src/utils/mapLayout.ts`・Phase 21 で追加済み）を通して追加。追加後は `setSelectedNodeId` + `setEditingNodeId` で即編集開始（Toolbar.handleAddNode と同じパターン）
-- [ ] `BottomNav` に **Undo / Redo / 検索** ボタンを追加（キーボードなしで主要操作に到達）。ボタン増加に対応してナビを横スクロール可（`overflow-x-auto`）にするか2段目方式に再構成。Undo/Redo は `mapStore.undo/redo`、検索は既存 SearchBar の開閉フラグを呼ぶ
-- [ ] `src/components/toolbar/Toolbar.tsx`: 狭幅でドロップダウン（整列・フィルター・プレゼン）が画面外に出ないよう開き方向（`bottom-full` 固定）を確認・微調整
+- [x] `src/components/common/Header.tsx`: マップタイトル入力を `max-w-32 sm:max-w-48` に。右側ボタン群は既存の `sm:` 出し分けで詰まらないことを確認
+- [x] `src/components/toolbar/BottomNav.tsx`: `handleAddNode` のランダム配置を撤廃し、`screenToFlowPosition` で画面中央 → `findFreePosition` を通して追加。追加後は `setSelectedNodeId` + `setEditingNodeId` で即編集開始（Toolbar.handleAddNode と同じパターン）
+- [x] `BottomNav` に **Undo / Redo / 検索** ボタンを追加（計9ボタン）。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロール対応。Undo/Redo は `mapStore.undo/redo`（`past`/`future` 長で `disabled`）、検索は `uiStore.setSearchOpen(true)`
+- [x] `src/components/toolbar/Toolbar.tsx`: ドロップダウンは `bottom-full` 上方向開きで画面外に出ないことを確認（変更なし）
 
 #### C. コンテキストメニュー／ポップアップの位置補正
-- [ ] `src/components/canvas/ContextMenu.tsx`: 縦位置 `window.innerHeight - 360` の固定値を撤廃し、`useRef` でメニュー実寸を測って画面内にクランプする
-- [ ] モバイル（`< 640px`）では中央でなく**画面下部のシート**として表示する分岐を追加（横幅 100%・タップ領域 `py-3`）。Phase 26-B のロングプレス起動と組み合わせる
-- [ ] `NodeActionBar`（`IdeaCanvas.tsx` 内）がズーム/パン追従で画面外に出る場合のクランプを確認
+- [x] `src/components/canvas/ContextMenu.tsx`: 縦位置 `window.innerHeight - 360` の固定値を撤廃し、`useRef` + `useLayoutEffect` でメニュー実寸を測って画面内にクランプする
+- [x] モバイル（`< 640px`）では中央でなく**画面下部のシート**として表示する分岐を追加（横幅 100%・タップ領域 `py-3`）。Phase 26-B のロングプレス起動と組み合わせる
+- [x] `NodeActionBar`（`IdeaCanvas.tsx` 内）の `left` を推定半幅でクランプし画面端で見切れないようにした
 
 #### D. セーフエリア・ビューポート対応
-- [ ] `index.html`: viewport meta に `viewport-fit=cover` を追加
-- [ ] `src/index.css`: `BottomNav` と `Toast` の下端に `padding-bottom: env(safe-area-inset-bottom)` を適用（iOS ホームインジケーターとの被り回避）。`Header` 上端のノッチ対応も検討
-- [ ] モバイルブラウザのアドレスバー伸縮による 100vh ズレを確認し、必要なら `100dvh` を採用（現状 `height:100%` のため影響は限定的・実機確認で判断）
+- [x] `index.html`: viewport meta に `viewport-fit=cover` を追加
+- [x] `BottomNav` と `Toast` の下端に `pb-[env(safe-area-inset-bottom)]` を適用（iOS ホームインジケーターとの被り回避）。`Header` 上端のノッチ対応・`100dvh` は現状維持で実機判断とする
+- [x] アドレスバー伸縮の 100vh ズレは現状 `height:100%` のため影響限定的と判断し現状維持（実機確認で再判断）
 
 #### ドキュメント更新（必須）
-- [ ] `docs/design.md`: 「レスポンシブ／モバイル設計」節を新設（`sm:` 基準・下部シートパターン・セーフエリア規約・パネル幅方針）
-- [ ] `docs/requirements.md`: スマホ表示要件（パネルが収まる・はみ出さない・セーフエリア）を追記
+- [x] `docs/design.md`: 「17. レスポンシブ／モバイル設計（Phase 25）」節を新設（`sm:` 基準・下部シートパターン・セーフエリア規約・パネル幅方針）
+- [x] `docs/requirements.md`: 「4.4.1 スマホ表示・レイアウト要件（Phase 25）」を追記
 
 **完了条件**: iPhone SE 幅（375px）で全パネル・メニューが画面内に収まり、横スクロール・見切れが発生しない。BottomNav から追加（中央・非重複）・Undo/Redo・検索ができる。
 

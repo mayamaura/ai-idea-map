@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
@@ -25,7 +25,7 @@ function MenuItem({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      className={`w-full flex items-center gap-2.5 px-3 py-3 sm:py-1.5 text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         danger
           ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
           : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -84,9 +84,15 @@ export function ContextMenu() {
   const { categories } = useSettingsStore()
 
   const [showCategories, setShowCategories] = useState(false)
+  // メニュー DOM の実寸を測って画面内にクランプするための ref / state
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [clampedPos, setClampedPos] = useState<{ left: number; top: number } | null>(null)
+  // マウント時に1度だけ評価するモバイル判定（メニューは一時的なためリサイズ追従は不要）
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
 
   useEffect(() => {
     setShowCategories(false)
+    setClampedPos(null)
   }, [contextMenu])
 
   useEffect(() => {
@@ -98,11 +104,24 @@ export function ContextMenu() {
     return () => window.removeEventListener('keydown', onKey)
   }, [contextMenu, closeContextMenu])
 
+  // メニューがDOMに現れたら実寸を測って画面内クランプ位置を確定する
+  useLayoutEffect(() => {
+    if (!contextMenu || isMobile || !menuRef.current) return
+    const { x, y } = contextMenu
+    const w = menuRef.current.offsetWidth || MENU_WIDTH
+    const h = menuRef.current.offsetHeight || 200
+    setClampedPos({
+      left: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - h - 8)),
+    })
+  }, [contextMenu, isMobile])
+
   if (!contextMenu) return null
 
   const { type, x, y, targetId, flowPosition } = contextMenu
-  const left = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 8))
-  const top = Math.max(8, Math.min(y, window.innerHeight - 360))
+  // 実寸クランプが確定するまでは初期推定値で描画（ちらつきを最小限に抑える）
+  const left = clampedPos?.left ?? Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 8))
+  const top = clampedPos?.top ?? Math.max(8, Math.min(y, window.innerHeight - 200 - 8))
 
   const run = (fn: () => void) => () => {
     fn()
@@ -182,9 +201,15 @@ export function ContextMenu() {
         closeContextMenu()
       }}
     >
+      {/* モバイル: 下部シート / PC: 絶対配置（実寸クランプ済み） */}
       <div
-        className="absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1.5 animate-context-menu"
-        style={{ left, top, minWidth: MENU_WIDTH }}
+        ref={menuRef}
+        className={
+          isMobile
+            ? 'fixed bottom-0 left-0 right-0 w-full rounded-t-2xl bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg py-2 animate-context-menu'
+            : 'absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1.5 animate-context-menu'
+        }
+        style={isMobile ? undefined : { left, top, minWidth: MENU_WIDTH }}
         onClick={(e) => e.stopPropagation()}
       >
         {type === 'node' && (

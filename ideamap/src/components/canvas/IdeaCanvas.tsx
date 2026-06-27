@@ -48,10 +48,14 @@ function NodeActionBar() {
     y: absY + nodeHeight,
   })
 
+  // バーの推定半幅でクランプして画面端でも見切れないようにする
+  const BAR_HALF_WIDTH = 120
+  const clampedLeft = Math.max(BAR_HALF_WIDTH + 8, Math.min(screenX, window.innerWidth - BAR_HALF_WIDTH - 8))
+
   return createPortal(
     <div
       className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-1 py-1 whitespace-nowrap"
-      style={{ position: 'fixed', left: screenX, top: screenY + 8, transform: 'translateX(-50%)', zIndex: 40 }}
+      style={{ position: 'fixed', left: clampedLeft, top: screenY + 8, transform: 'translateX(-50%)', zIndex: 40 }}
     >
       <button
         onClick={() => { setSelectedNodeId(selectedNodeId); setAIPanelOpen(true) }}

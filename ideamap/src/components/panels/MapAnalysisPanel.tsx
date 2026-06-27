@@ -160,7 +160,7 @@ export function MapAnalysisPanel() {
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setAnalysisPanelOpen(false)} />
-      <div className="relative ml-auto w-full max-w-md h-full bg-white dark:bg-gray-800 shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative ml-auto w-full sm:max-w-md h-full bg-white dark:bg-gray-800 shadow-2xl flex flex-col overflow-hidden">
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">

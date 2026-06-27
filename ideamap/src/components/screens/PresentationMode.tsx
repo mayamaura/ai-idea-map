@@ -43,13 +43,13 @@ export function PresentationMode() {
   const isLast = index === total - 1
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex" style={{ pointerEvents: 'none' }}>
-      {/* 左エリア: キャンバスをそのまま見せる（クリックはスルー） */}
-      <div className="flex-1" />
+    <div className="fixed inset-0 z-[100] flex flex-col justify-end sm:flex-row sm:justify-start" style={{ pointerEvents: 'none' }}>
+      {/* 左エリア（PCのみ）: キャンバスをそのまま見せる（クリックはスルー） */}
+      <div className="hidden sm:block flex-1" />
 
-      {/* 右スライドパネル */}
+      {/* スライドパネル: PC は右480px固定・全高、モバイルは下部シート（最大55vh） */}
       <div
-        className="w-[480px] flex flex-col bg-gray-900/95 backdrop-blur-xl border-l border-white/10"
+        className="w-full sm:w-[480px] max-h-[55vh] sm:max-h-none sm:h-full mb-14 sm:mb-0 flex flex-col bg-gray-900/95 backdrop-blur-xl border-t sm:border-t-0 sm:border-l border-white/10 rounded-t-2xl sm:rounded-none"
         style={{ pointerEvents: 'auto' }}
       >
         {/* ヘッダー */}

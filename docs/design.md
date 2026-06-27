@@ -811,3 +811,54 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 | ピンク | `#fce7f3` | 感情・直感 |
 | 赤 | `#ffe4e6` | 懸念・リスク |
 | グレー | `#f3f4f6` | その他 |
+
+---
+
+## 17. レスポンシブ／モバイル設計（Phase 25）
+
+スマホ（特に iPhone SE 幅 375px）で全パネル・メニューが画面内に収まり、はみ出し・見切れ・横スクロールが起きないようにする。**PC の既存挙動（右クリック・ハンドルドラッグ・ショートカット・キャンバスと共存するチャットパネル等）は一切変更せず、スマホ用の経路を「追加」する**方針。
+
+### 17.1 ブレークポイント方針
+
+- 基本は Tailwind の `sm:`（640px）プレフィックスで分岐する。デフォルト（モバイル）クラスを書き、`sm:` 以上で PC 挙動を上書きする。
+- CSS だけで表現できない判定（DOM 実寸での分岐など）に限り JS で `window.innerWidth < 640` を使う。
+- 一時的に表示される UI（コンテキストメニュー等）はマウント時に1度だけモバイル判定すれば足り、リサイズ・回転への追従は不要（開き直しで再評価）。
+
+### 17.2 下部シートパターン（標準）
+
+モバイルでは中央/右固定ダイアログを画面下部のシートとして出す。基準実装は `NodeDetailPanel` / `AISuggestionPanel`：
+
+- オーバーレイ親: `fixed inset-0 flex items-end sm:items-center justify-center`（モバイル下端寄せ → PC 中央）
+- パネル本体: `w-full sm:max-w-*`（モバイル全幅 → PC 最大幅制限）、`rounded-t-2xl sm:rounded-2xl`、`max-h-[85vh]` 等で高さ制限
+
+### 17.3 パネル幅・マスク方針
+
+| コンポーネント | モバイル | PC（`sm:`以上） | マスク |
+|---|---|---|---|
+| `AIChatPanel` | `w-full`（全幅） | `w-96`（右384px） | **モバイル限定**（`sm:hidden` の `bg-black/30` を背面 z-30 に。PC はマスクなしでキャンバス操作と共存） |
+| `MapAnalysisPanel` | `w-full` | `max-w-md`（右448px） | 既存 `inset-0` マスク（共通） |
+| `PresentationMode` | 下部シート（`w-full max-h-[55vh]`、`justify-end` で下端固定、ナビバー回避に `mb-14`） | 右480px・全高（`sm:w-[480px] sm:h-full`） | なし（スペーサは `pointerEvents:none` でキャンバス追従） |
+| `NodePanel` | 非表示（`hidden`、NodeActionBar が代替） | `sm:flex w-60` | — |
+
+**原則**: 背景マスクで PC のキャンバス操作を妨げてはならない。PC で共存させたいパネル（AIChatPanel）のマスクは `sm:hidden` にする。
+
+### 17.4 コンテキストメニューの位置補正（`ContextMenu.tsx`）
+
+- 旧実装の縦位置固定値 `window.innerHeight - 360` を撤廃。`useRef` + `useLayoutEffect` でメニュー DOM の実寸（`offsetWidth/offsetHeight`）を測り、`Math.max(8, Math.min(pos, viewport - size - 8))` で画面内にクランプする。
+- モバイル（`window.innerWidth < 640`）では絶対配置をやめ、`fixed bottom-0 left-0 right-0 w-full rounded-t-2xl` の下部シートとして表示。項目のタップ領域を `py-3 sm:py-1.5` に拡大。背景の `fixed inset-0` はタップで閉じるマスクとして流用。
+- メニュー項目の内容（node/edge/pane/group）は不変。表示器の枠だけをレスポンシブ化する。
+
+### 17.5 NodeActionBar の画面端クランプ（`IdeaCanvas.tsx`）
+
+ズーム/パン追従（`useViewport` + `flowToScreenPosition`）で算出した `left` を、推定半幅でクランプ（`Math.max(BAR_HALF_WIDTH+8, Math.min(screenX, innerWidth - BAR_HALF_WIDTH - 8))`）して画面端でも横方向に見切れないようにする。`translateX(-50%)` 追従は維持。
+
+### 17.6 セーフエリア・ビューポート規約
+
+- `index.html` の viewport meta に `viewport-fit=cover` を付与（ノッチ端末でセーフエリア変数を有効化）。
+- 画面下端に固定する UI には `pb-[env(safe-area-inset-bottom)]` を付与し、iOS ホームインジケーターとの被りを回避（対象: `BottomNav`、`Toast`）。
+- ルートは `height: 100%`（`index.css`）で運用。アドレスバー伸縮の影響は限定的なため `100dvh` は現状未採用（必要時に検討）。
+
+### 17.7 BottomNav（モバイル専用ツールバー）
+
+- `sm:hidden` でモバイルのみ表示。「追加」は `screenToFlowPosition` → `findFreePosition`（[11.5](#115-ノード追加位置の重なり回避findfreeposition-phase-21)）→ `addNode` → `setSelectedNodeId`/`setEditingNodeId` で中央・非重複に追加し即編集（Toolbar と同一パターン。旧 `Math.random()` 配置は撤廃）。
+- 追加・元に戻す・やり直し・検索・拡大・全体・縮小・設定・ヘルプの計9ボタン。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロールにより全ボタンへ到達。Undo/Redo は `mapStore.undo/redo`（`past`/`future` の長さで `disabled`）、検索は `uiStore.setSearchOpen(true)`。

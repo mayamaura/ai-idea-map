@@ -1,22 +1,29 @@
 import { useReactFlow } from '@xyflow/react'
+import type { Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
+import { findFreePosition } from '../../utils/mapLayout'
+import type { IdeaNodeData } from '../../types'
 
 export function BottomNav() {
-  const { fitView, zoomIn, zoomOut } = useReactFlow()
-  const addNode = useMapStore((s) => s.addNode)
-  const setSettingsOpen = useUIStore((s) => s.setSettingsOpen)
-  const setShortcutsModalOpen = useUIStore((s) => s.setShortcutsModalOpen)
+  const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow()
+  const { nodes, addNode, undo, redo, past, future } = useMapStore()
+  const { setSettingsOpen, setShortcutsModalOpen, setSelectedNodeId, setEditingNodeId, setSearchOpen } = useUIStore()
 
+  // Toolbar と同じ実装: 画面中央のフロー座標を起点に空きスペースへ追加
   const handleAddNode = () => {
-    addNode('新しいアイデア', Math.random() * 200, Math.random() * 200)
+    const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    const pos = findFreePosition(center, nodes as Node<IdeaNodeData>[])
+    const newId = addNode('新しいアイデア', pos.x, pos.y)
+    setSelectedNodeId(newId)
+    setEditingNodeId(newId)
   }
 
   return (
-    <nav className="sm:hidden flex items-center justify-around px-4 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-10 flex-shrink-0">
+    <nav className="sm:hidden flex items-center overflow-x-auto justify-start gap-1 px-2 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-10 flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
       <button
         onClick={handleAddNode}
-        className="flex flex-col items-center gap-0.5 p-2 text-primary-600"
+        className="flex flex-col items-center gap-0.5 p-2 text-primary-600 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="12" cy="12" r="9" strokeWidth="2" />
@@ -26,8 +33,38 @@ export function BottomNav() {
         <span className="text-xs">追加</span>
       </button>
       <button
+        onClick={() => undo()}
+        disabled={past.length === 0}
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 disabled:opacity-40 flex-shrink-0"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+        </svg>
+        <span className="text-xs">元に戻す</span>
+      </button>
+      <button
+        onClick={() => redo()}
+        disabled={future.length === 0}
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 disabled:opacity-40 flex-shrink-0"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+        </svg>
+        <span className="text-xs">やり直し</span>
+      </button>
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <circle cx="11" cy="11" r="7" strokeWidth="2" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
+        </svg>
+        <span className="text-xs">検索</span>
+      </button>
+      <button
         onClick={() => zoomIn()}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="11" cy="11" r="7" strokeWidth="2" />
@@ -39,7 +76,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => fitView({ padding: 0.1, duration: 300 })}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -49,7 +86,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => zoomOut()}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="11" cy="11" r="7" strokeWidth="2" />
@@ -60,7 +97,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => setSettingsOpen(true)}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -72,7 +109,7 @@ export function BottomNav() {
       {/* ヘルプ: 操作ガイドへの常時入口 */}
       <button
         onClick={() => setShortcutsModalOpen(true)}
-        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400"
+        className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="12" cy="12" r="9" strokeWidth="2" />

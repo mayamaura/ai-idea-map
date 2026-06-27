@@ -104,7 +104,7 @@ export function Header({
             type="text"
             value={mapTitle}
             onChange={(e) => setMapTitle(e.target.value)}
-            className="text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent border-none outline-none hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700 rounded px-2 py-1 min-w-0 max-w-48 truncate"
+            className="text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent border-none outline-none hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700 rounded px-2 py-1 min-w-0 max-w-32 sm:max-w-48 truncate"
             placeholder="マップタイトル"
           />
           <button
