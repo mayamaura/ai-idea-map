@@ -85,6 +85,8 @@ interface UIState {
   isPresentationOrderOpen: boolean
   presentationNodeIds: string[]
   presentationCurrentIndex: number
+  // Phase 26: スマホ接続モード（ノード選択→「接続」→相手タップでエッジ作成）
+  connectingFromNodeId: string | null
   // Phase 12: グループ操作
   dragOverGroupId: string | null
   setDragOverGroupId: (id: string | null) => void
@@ -146,6 +148,8 @@ interface UIState {
   setFileDashboardOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
   setRenderAllNodes: (v: boolean) => void
+  // Phase 26
+  setConnectingFromNodeId: (id: string | null) => void
   setAnalysisLoading: (loading: boolean) => void
   setMapAnalysis: (analysis: MapAnalysis | null) => void
   setConnectionSuggestions: (suggestions: ConnectionSuggestion[]) => void
@@ -192,6 +196,7 @@ export const useUIStore = create<UIState>((set) => ({
   presentationCurrentIndex: 0,
   dragOverGroupId: null,
   setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
+  connectingFromNodeId: null,
   isFileDashboardOpen: true,
   isShortcutsModalOpen: false,
   renderAllNodes: false,
@@ -327,4 +332,5 @@ export const useUIStore = create<UIState>((set) => ({
     })),
   setShortcutsModalOpen: (open) => set({ isShortcutsModalOpen: open }),
   setRenderAllNodes: (v) => set({ renderAllNodes: v }),
+  setConnectingFromNodeId: (id) => set({ connectingFromNodeId: id }),
 }))

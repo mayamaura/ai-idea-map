@@ -57,7 +57,15 @@ const SHORTCUTS: { section: string; rows: ShortcutRow[] }[] = [
       { keys: ['右クリック'], description: 'コンテキストメニューを表示' },
       { keys: ['ドラッグ'], description: 'ノードを移動 / 空白部分で範囲選択' },
       { keys: ['Shift', 'クリック'], description: '複数ノードを選択' },
-      { keys: ['ロングプレス'], description: '（モバイル）AI拡張パネルを表示' },
+      { keys: ['ロングプレス'], description: '（モバイル）コンテキストメニューを表示' },
+    ],
+  },
+  {
+    section: 'スマホ代替操作',
+    rows: [
+      { keys: ['🔗 接続'], description: 'ノード選択→接続→相手をタップでエッジ作成' },
+      { keys: ['ロングプレス'], description: '空白で作成/貼り付けメニュー' },
+      { keys: ['NodeActionBar'], description: 'AI拡張・詳細・接続・削除（ノード選択時に上部表示）' },
     ],
   },
 ]

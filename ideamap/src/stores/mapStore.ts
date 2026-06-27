@@ -183,6 +183,8 @@ interface MapState {
   hasConnectedEdges: (nodeId: string) => boolean
   alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
   distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
+  /** 接続モード方式のエッジ作成（Phase 26）。onConnect に委譲して履歴・マーカー・重複排除を再利用 */
+  connectNodes: (source: string, target: string) => void
   setNodes: (nodes: IdeaNode[]) => void
   /** ノード配列をストアに反映するが、履歴には積まない（アニメーション途中フレーム用） */
   setNodesNoHistory: (nodes: IdeaNode[]) => void
@@ -346,6 +348,12 @@ export const useMapStore = create<MapState>((set, get) => ({
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
     })),
+
+  // FloatingEdge はハンドルIDを無視してノード中心座標で描画するため null で問題ない
+  connectNodes: (source, target) => {
+    if (source === target) return
+    get().onConnect({ source, target, sourceHandle: null, targetHandle: null })
+  },
 
   addNode: (title, x, y, createdBy = 'user', color = DEFAULT_NODE_COLOR, categoryId, body) => {
     const id = uuidv4()

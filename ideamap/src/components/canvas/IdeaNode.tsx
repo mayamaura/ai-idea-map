@@ -26,7 +26,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const { updateNodeTitle } = useMapStore()
   const {
     setSelectedNodeId,
-    setAIPanelOpen,
+    openContextMenu,
     openNodeDetail,
     searchQuery,
     activeCategoryFilters,
@@ -105,12 +105,19 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
     [commitEdit, nodeData.title, setEditingNodeId]
   )
 
-  const handleTouchStart = useCallback(() => {
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // マルチタッチ（ピンチ等）中は長押し判定しない
+    if (e.touches.length !== 1) return
+    const touch = e.touches[0]
+    // イベントはコールバック終了後に使えないため座標をローカル変数に取り込む
+    const x = touch.clientX
+    const y = touch.clientY
     longPressTimer.current = setTimeout(() => {
       setSelectedNodeId(id)
-      setAIPanelOpen(true)
+      openContextMenu({ type: 'node', x, y, targetId: id })
+      navigator.vibrate?.(10)
     }, 500)
-  }, [id, setSelectedNodeId, setAIPanelOpen])
+  }, [id, setSelectedNodeId, openContextMenu])
 
   const handleTouchEnd = useCallback(() => {
     if (longPressTimer.current) {

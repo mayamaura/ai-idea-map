@@ -122,3 +122,8 @@ body,
 .node-shape-hexagon.border-primary-500 {
   filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6));
 }
+
+/* 接続モード（Phase 26）: 候補ノードにクロスヘアカーソルを表示 */
+.tap-connect .react-flow__node {
+  cursor: crosshair;
+}

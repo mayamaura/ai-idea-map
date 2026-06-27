@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ReactFlow,
@@ -25,12 +25,13 @@ import { BottomNav } from '../toolbar/BottomNav'
 import type { IdeaNodeData } from '../../types'
 
 function NodeActionBar() {
-  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId } = useUIStore()
+  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId, connectingFromNodeId, setConnectingFromNodeId } = useUIStore()
   const { deleteNode, nodes } = useMapStore()
   useViewport() // ズーム・パン変化時に再レンダリングしてバーを再配置
   const { flowToScreenPosition, getNode } = useReactFlow()
 
-  if (!selectedNodeId) return null
+  // 接続モード中はバナーが主役なので非表示
+  if (!selectedNodeId || connectingFromNodeId) return null
 
   // mapStore の nodes を参照することでドラッグ後の位置変化にも追従
   const storeNode = nodes.find((n) => n.id === selectedNodeId)
@@ -67,6 +68,15 @@ function NodeActionBar() {
       </button>
       <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
       <button
+        onClick={() => setConnectingFromNodeId(selectedNodeId)}
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
+        title="接続モード（スマホ用エッジ作成）"
+      >
+        <span>🔗</span>
+        <span>接続</span>
+      </button>
+      <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+      <button
         onClick={() => openNodeDetail(selectedNodeId)}
         className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
         title="詳細を開く"
@@ -100,7 +110,7 @@ const edgeTypes: EdgeTypes = {
 }
 
 export function IdeaCanvas() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, pendingFitView, clearPendingFitView } = useMapStore()
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, connectNodes, pendingFitView, clearPendingFitView } = useMapStore()
   const { snapToGrid, theme } = useSettingsStore()
   const {
     selectedNodeId,
@@ -113,8 +123,13 @@ export function IdeaCanvas() {
     presentationNodeIds,
     presentationCurrentIndex,
     renderAllNodes,
+    connectingFromNodeId,
+    setConnectingFromNodeId,
+    addToast,
   } = useUIStore()
   const { screenToFlowPosition, fitView } = useReactFlow()
+  // pane 長押し用タイマー
+  const paneLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!pendingFitView) return
@@ -128,15 +143,28 @@ export function IdeaCanvas() {
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (connectingFromNodeId) {
+        if (connectingFromNodeId === node.id) {
+          // 同ノードをタップしたら接続モードのみキャンセル
+          setConnectingFromNodeId(null)
+        } else {
+          connectNodes(connectingFromNodeId, node.id)
+          setConnectingFromNodeId(null)
+          addToast('接続しました', 'success')
+        }
+        return
+      }
       setSelectedNodeId(node.id)
     },
-    [setSelectedNodeId]
+    [connectingFromNodeId, connectNodes, setConnectingFromNodeId, addToast, setSelectedNodeId]
   )
 
   const handlePaneClick = useCallback(() => {
     setSelectedNodeId(null)
     closeContextMenu()
-  }, [setSelectedNodeId, closeContextMenu])
+    // 接続モード中に空白タップでキャンセル
+    setConnectingFromNodeId(null)
+  }, [setSelectedNodeId, closeContextMenu, setConnectingFromNodeId])
 
   const handleDoubleClickOnPane = useCallback(
     (e: React.MouseEvent) => {
@@ -205,11 +233,19 @@ export function IdeaCanvas() {
 
   // フォーカスモード: 選択ノードとその直接接続だけを明るく表示
   // 発表モード: カレントノードのみフル表示、他は opacity: 0.1
+  // 接続モード: 接続元ノードに強調リングを付与
   const displayNodes = useMemo(() => {
     if (isPresentationMode && presentationNodeIds.length > 0) {
       const currentNodeId = presentationNodeIds[presentationCurrentIndex]
       return nodes.map((n) =>
         n.id === currentNodeId ? n : { ...n, style: { ...n.style, opacity: 0.1 } }
+      )
+    }
+    if (connectingFromNodeId) {
+      return nodes.map((n) =>
+        n.id === connectingFromNodeId
+          ? { ...n, style: { ...n.style, outline: '2px solid #6366f1', outlineOffset: 2 } }
+          : n
       )
     }
     if (!selectedNodeId) return nodes
@@ -225,7 +261,7 @@ export function IdeaCanvas() {
     return nodes.map((n) =>
       highlightIds.has(n.id) ? n : { ...n, style: { ...n.style, opacity: 0.15 } }
     )
-  }, [nodes, edges, selectedNodeId, isPresentationMode, presentationNodeIds, presentationCurrentIndex])
+  }, [nodes, edges, selectedNodeId, isPresentationMode, presentationNodeIds, presentationCurrentIndex, connectingFromNodeId])
 
   const displayEdges = useMemo(() => {
     if (isPresentationMode) {
@@ -239,6 +275,32 @@ export function IdeaCanvas() {
     )
   }, [edges, selectedNodeId, isPresentationMode])
 
+  // pane 長押し: 空白 500ms で pane 用コンテキストメニューを開く
+  const handlePaneTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (e.touches.length !== 1) return
+      const el = e.target as HTMLElement
+      // ノード上の長押しは IdeaNode 側が処理するのでスキップ（二重発火防止）
+      if (!el.closest('.react-flow__pane') || el.closest('.react-flow__node')) return
+      const touch = e.touches[0]
+      const x = touch.clientX
+      const y = touch.clientY
+      paneLongPressTimer.current = setTimeout(() => {
+        const flowPosition = screenToFlowPosition({ x, y })
+        openContextMenu({ type: 'pane', x, y, flowPosition })
+        navigator.vibrate?.(10)
+      }, 500)
+    },
+    [screenToFlowPosition, openContextMenu]
+  )
+
+  const handlePaneTouchEnd = useCallback(() => {
+    if (paneLongPressTimer.current) {
+      clearTimeout(paneLongPressTimer.current)
+      paneLongPressTimer.current = null
+    }
+  }, [])
+
   const isEmpty = nodes.length === 0
 
   // Controls / MiniMap のボーダー色はダークで浮きが出るため theme で最小限の上書きをする
@@ -251,10 +313,33 @@ export function IdeaCanvas() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 relative" onDoubleClick={handleDoubleClickOnPane}>
+      {/* 接続モードバナー: 接続先のノードをタップするよう促す（スマホ用） */}
+      {connectingFromNodeId && createPortal(
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 45, pointerEvents: 'auto' }}
+          className="flex items-center justify-between px-4 py-3 bg-indigo-600 text-white shadow-lg"
+        >
+          <span className="text-sm font-medium">🔗 接続先のノードをタップ</span>
+          <button
+            onClick={() => setConnectingFromNodeId(null)}
+            className="text-sm font-medium px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+          >
+            キャンセル
+          </button>
+        </div>,
+        document.body
+      )}
+      <div
+        className="flex-1 relative"
+        onDoubleClick={handleDoubleClickOnPane}
+        onTouchStart={handlePaneTouchStart}
+        onTouchEnd={handlePaneTouchEnd}
+        onTouchMove={handlePaneTouchEnd}
+      >
         <ReactFlow
           nodes={displayNodes}
           edges={displayEdges}
+          className={connectingFromNodeId ? 'tap-connect' : undefined}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}

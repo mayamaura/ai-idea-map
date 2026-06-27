@@ -137,6 +137,7 @@ ideamap/
 - `setNodes(nodes)` — ノード配列を更新し履歴に積む。内部で `syncGroupMeasured` を通してグループノードの `measured` を同期
 - `setNodesNoHistory(nodes)` — ノード配列を更新するが履歴に積まない（アニメーション途中フレーム用）（Phase 21）
 - `commitNodesWithHistory(originalNodes, finalNodes)` — 最終フレームを確定し、整列前スナップショットを `past` に1回積む（Phase 21）
+- `connectNodes(source, target)` — 接続モード方式のエッジ作成（Phase 26）。`onConnect` に委譲して履歴push・矢印マーカー付与・`addEdge` 重複排除を再利用。`source === target` のときは何もしない
 - `undo`, `redo` — 履歴操作
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
 
@@ -185,6 +186,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `presentationNodeIds` | `string[]` | 発表順序を保持したノードIDリスト（Phase 15） |
 | `presentationCurrentIndex` | `number` | 現在表示中のインデックス（0-based）（Phase 15） |
 | `renderAllNodes` | `boolean` | 画像エクスポート時のみ true。`onlyRenderVisibleElements` を一時無効化して全ノードをDOM描画させ、マップ全体エクスポートの欠落を防ぐ（Phase 24） |
+| `connectingFromNodeId` | `string \| null` | 接続モード中の接続元ノードID。null=接続モードでない。`setConnectingFromNodeId(id)` で更新（Phase 26） |
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 
@@ -847,6 +849,7 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 - 旧実装の縦位置固定値 `window.innerHeight - 360` を撤廃。`useRef` + `useLayoutEffect` でメニュー DOM の実寸（`offsetWidth/offsetHeight`）を測り、`Math.max(8, Math.min(pos, viewport - size - 8))` で画面内にクランプする。
 - モバイル（`window.innerWidth < 640`）では絶対配置をやめ、`fixed bottom-0 left-0 right-0 w-full rounded-t-2xl` の下部シートとして表示。項目のタップ領域を `py-3 sm:py-1.5` に拡大。背景の `fixed inset-0` はタップで閉じるマスクとして流用。
 - メニュー項目の内容（node/edge/pane/group）は不変。表示器の枠だけをレスポンシブ化する。
+- **Phase 26 追加**: モバイルでは `IdeaNode.tsx` の `onTouchStart` 長押し（500ms）でコンテキストメニューを起動する。`touch.clientX/clientY` を `setTimeout` の外のローカル変数に取り込み `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ。`navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ）。pane（空白）の長押しは `IdeaCanvas.tsx` の `onTouchStart` で同様に処理。
 
 ### 17.5 NodeActionBar の画面端クランプ（`IdeaCanvas.tsx`）
 
@@ -862,3 +865,23 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 
 - `sm:hidden` でモバイルのみ表示。「追加」は `screenToFlowPosition` → `findFreePosition`（[11.5](#115-ノード追加位置の重なり回避findfreeposition-phase-21)）→ `addNode` → `setSelectedNodeId`/`setEditingNodeId` で中央・非重複に追加し即編集（Toolbar と同一パターン。旧 `Math.random()` 配置は撤廃）。
 - 追加・元に戻す・やり直し・検索・拡大・全体・縮小・設定・ヘルプの計9ボタン。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロールにより全ボタンへ到達。Undo/Redo は `mapStore.undo/redo`（`past`/`future` の長さで `disabled`）、検索は `uiStore.setSearchOpen(true)`。
+
+### 17.8 スマホ タッチ操作（Phase 26）
+
+**PC の既存挙動（右クリックメニュー・ハンドルドラッグ接続・キーボードショートカット・キャンバスと共存するパネル）は一切変更しない**方針。スマホ用の経路を「追加」する。
+
+#### 接続モード方式（エッジ作成）
+
+- `uiStore.connectingFromNodeId: string | null` で接続元ノードを管理。
+- ノード選択後、`NodeActionBar` の「🔗 接続」ボタンをタップ → `setConnectingFromNodeId(selectedNodeId)` で接続モードに入る。
+- 接続モード中は画面上部に `createPortal` で固定バナー（「接続先のノードをタップ」＋「キャンセル」ボタン）を表示（z-index: 45）。
+- `handleNodeClick` を拡張: `connectingFromNodeId` が真で別ノードをタップ → `mapStore.connectNodes(connectingFromNodeId, node.id)` → `setConnectingFromNodeId(null)` → トースト「接続しました」。同じノードをタップ → 接続モード解除のみ。
+- `handlePaneClick` で `setConnectingFromNodeId(null)` を呼び、空白タップでもキャンセル。
+- `displayNodes` の `useMemo` に分岐を追加: 接続モード中は接続元ノードに `outline: '2px solid #6366f1'` を付与。
+- 接続中だけ `<ReactFlow>` に `className="tap-connect"` を付与し、`index.css` で `.tap-connect .react-flow__node { cursor: crosshair; }` を適用。
+
+#### ロングプレス起動
+
+- `IdeaNode.tsx`: `handleTouchStart(e: React.TouchEvent)` で `e.touches.length === 1` のみ処理。座標を先にローカル変数に取り込んで 500ms タイマーを張る。発火時に `openContextMenu({ type: 'node', x, y, targetId: id })` → `navigator.vibrate?.(10)`。
+- `IdeaCanvas.tsx`: 外側ラッパ div に `onTouchStart/End/Move` を追加。対象が `.react-flow__pane` 上かつ `.react-flow__node` でない場合のみ 500ms タイマーで `openContextMenu({ type: 'pane', x, y, flowPosition })` → `navigator.vibrate?.(10)`。`touchmove/touchend` でタイマー解除（パン・スクロールと競合させない）。`preventDefault` は呼ばない（React Flow のパン/ピンチを保護）。
+- `ContextMenu.tsx` の node メニューに「🔗 接続を作成」を追加 → `setConnectingFromNodeId(targetId)` で接続モード開始。

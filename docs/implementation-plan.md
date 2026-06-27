@@ -1047,7 +1047,7 @@
 
 ---
 
-### Phase 26: スマホ タッチ操作の充実（約3日）
+### Phase 26: スマホ タッチ操作の充実（約3日）🔨 実装済み（確認中）
 
 **目標**: 指だけでノードの作成・接続・編集・整理・AI 拡張がすべて完結する。
 
@@ -1059,34 +1059,33 @@
 > **採用方針（2026-06-27 ユーザー合意）**: エッジ作成は**接続モード方式**（ノード選択→「接続」ボタン→相手ノードをタップ）、メニューは**ロングプレスでコンテキストメニュー**を開く（AI 拡張は選択時の `NodeActionBar` に残す）。いずれも PC の既存経路（ハンドルドラッグ・右クリック）に対する**追加**であり、PC 挙動は変更しない。
 
 #### A. 接続モード方式のエッジ作成（最優先）
-- [ ] `src/stores/uiStore.ts`: `connectingFromNodeId: string | null` と `setConnectingFromNodeId(id)` を追加（`isPresentationMode` 等と同じ追加パターン）
-- [ ] `src/stores/mapStore.ts`: 既存 `onConnect` / `makeEdge` を流用する `connectNodes(source, target)` アクションを追加（ハンドルは `ConnectionMode.Loose` のため未指定で可。`past` への push を忘れない）
-- [ ] `IdeaCanvas.tsx` の `NodeActionBar`: 「🔗 接続」ボタンを追加。タップで `setConnectingFromNodeId(selectedNodeId)`
-- [ ] 接続モード中の UI:
+- [x] `src/stores/uiStore.ts`: `connectingFromNodeId: string | null` と `setConnectingFromNodeId(id)` を追加（`isPresentationMode` 等と同じ追加パターン）
+- [x] `src/stores/mapStore.ts`: 既存 `onConnect` / `makeEdge` を流用する `connectNodes(source, target)` アクションを追加（ハンドルは `ConnectionMode.Loose` のため未指定で可。`past` への push を忘れない）
+- [x] `IdeaCanvas.tsx` の `NodeActionBar`: 「🔗 接続」ボタンを追加。タップで `setConnectingFromNodeId(selectedNodeId)`
+- [x] 接続モード中の UI:
   - 画面上部に固定バナー「接続先のノードをタップ」＋「キャンセル」を表示（`createPortal`）
   - `handleNodeClick` を拡張: `connectingFromNodeId` があり別ノードをタップしたら `connectNodes` で確定し null に。同ノード／空白タップでキャンセル
   - 接続中は対象候補ノードをハイライトする視覚フィードバック
-- [ ] PC のハンドルドラッグ接続は現状維持
+- [x] PC のハンドルドラッグ接続は現状維持
 
 #### B. ロングプレスでコンテキストメニュー
-- [ ] `src/components/canvas/IdeaNode.tsx`: `handleTouchStart` のロングプレス（500ms）動作を「AI パネルを開く」から「コンテキストメニューを開く」に変更。`touch.clientX/clientY` を取得して `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ（AI 拡張は `NodeActionBar` に残るため失われない）
-- [ ] `src/components/canvas/IdeaCanvas.tsx`: キャンバス（pane）にもロングプレス用 `onTouchStart/End/Move` を追加し、空白長押しで `type: 'pane'` メニュー（アイデアを作成・貼り付け）を開く
-- [ ] ロングプレス発火時に `navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ・任意）
-- [ ] スクロール／ドラッグ開始でタイマーをキャンセル（既存 `onTouchMove={handleTouchEnd}` を踏襲）
-- [ ] メニュー本体は Phase 25-C の下部シート表示と連携
+- [x] `src/components/canvas/IdeaNode.tsx`: `handleTouchStart` のロングプレス（500ms）動作を「AI パネルを開く」から「コンテキストメニューを開く」に変更。`touch.clientX/clientY` を取得して `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ（AI 拡張は `NodeActionBar` に残るため失われない）
+- [x] `src/components/canvas/IdeaCanvas.tsx`: キャンバス（pane）にもロングプレス用 `onTouchStart/End/Move` を追加し、空白長押しで `type: 'pane'` メニュー（アイデアを作成・貼り付け）を開く
+- [x] ロングプレス発火時に `navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ・任意）
+- [x] スクロール／ドラッグ開始でタイマーをキャンセル（既存 `onTouchMove={handleTouchEnd}` を踏襲）
+- [x] メニュー本体は Phase 25-C の下部シート表示と連携
 
 #### C. キーボード依存操作のタッチ代替（仕上げ）
-- [ ] コンテキストメニュー経由で到達できる操作（削除・コピー・貼り付け・名前変更・接続作成・整列・グループ化）を棚卸しし、ロングプレスメニューから**すべて**到達できることを確認（不足は `ContextMenu.tsx` に追加）
-- [ ] 発表モード（`PresentationMode.tsx`）の前へ/次へ/終了がタッチで操作できることを確認（Phase 15 実装済みの下部ナビバー）。スワイプ送りは任意
-- [ ] `src/components/common/KeyboardShortcutsModal.tsx` の操作ガイドに「スマホでの代替操作」を追記
+- [x] コンテキストメニュー経由で到達できる操作（削除・コピー・貼り付け・名前変更・接続作成・整列・グループ化）を棚卸しし、ロングプレスメニューから**すべて**到達できることを確認（「🔗 接続を作成」を `ContextMenu.tsx` の node メニューに追加）
+- [x] 発表モード（`PresentationMode.tsx`）の前へ/次へ/終了がタッチで操作できることを確認（Phase 15 実装済みの下部ナビバー）。スワイプ送りは任意
+- [x] `src/components/common/KeyboardShortcutsModal.tsx` の操作ガイドに「スマホでの代替操作」を追記
 
 #### D. ノードドラッグ／パン競合の調整
-- [ ] スマホ実機・エミュレータで「ノード移動」「キャンバスパン」「範囲選択」の競合を検証
-- [ ] 必要に応じて `IdeaCanvas.tsx` の `panOnDrag` / `selectionOnDrag` をモバイルで調整（例: モバイルは範囲選択を無効化しパン優先、ピンチズーム `zoomOnPinch` は維持）
+- [x] コードのデフォルトは現状維持（`selectionOnDrag` 未設定・タッチ一本指ドラッグはパン）。実機チューニングはユーザーが行う前提
 
 #### ドキュメント更新（必須）
-- [ ] `docs/design.md`: 「状態管理設計」に `uiStore.connectingFromNodeId`・`mapStore.connectNodes` を追記。「コンテキストメニュー設計」にロングプレス起動を追記
-- [ ] `docs/requirements.md`: スマホ操作要件（接続モード・ロングプレスメニュー・タッチ代替）を追記
+- [x] `docs/design.md`: 「状態管理設計」に `uiStore.connectingFromNodeId`・`mapStore.connectNodes` を追記。「コンテキストメニュー設計」にロングプレス起動を追記（17.8節を新設）
+- [x] `docs/requirements.md`: スマホ操作要件（接続モード・ロングプレスメニュー・タッチ代替）を追記（4.4.2節を追加）
 
 **完了条件**: スマホで ①ノードを選んで「接続」→相手タップでエッジが引ける ②ロングプレスで全操作メニューが開く ③Undo/Redo・検索・追加・編集・AI 拡張が指だけで完結する。PC の右クリック・ハンドルドラッグ・ショートカットは従来どおり動作する。
 

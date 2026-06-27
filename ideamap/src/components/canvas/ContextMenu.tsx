@@ -55,6 +55,7 @@ export function ContextMenu() {
     presentationNodeIds,
     addNodeToPresentation,
     removeNodeFromPresentation,
+    setConnectingFromNodeId,
   } = useUIStore()
   const {
     addNode,
@@ -225,6 +226,14 @@ export function ContextMenu() {
             />
             <MenuItem icon="📝" label="詳細を開く" onClick={run(() => targetId && openNodeDetail(targetId))} />
             <MenuItem icon="➕" label="アイデアを作成（接続）" shortcut="Tab" onClick={handleCreateConnected} />
+            <MenuItem
+              icon="🔗"
+              label="接続を作成"
+              onClick={() => {
+                if (targetId) setConnectingFromNodeId(targetId)
+                closeContextMenu()
+              }}
+            />
             <MenuItem
               icon="✦"
               label="AIで拡張"
