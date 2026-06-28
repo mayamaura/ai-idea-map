@@ -1091,6 +1091,106 @@
 
 ---
 
+> **Phase 27〜31 について**: Phase 1〜26 完了時点で実施したコードレビュー（セキュリティ・リファクタリング・パフォーマンス・UX の4観点 + 相互検証 + Web調査）の結果に基づく品質改善フェーズ群。詳細な根拠と検証済みの指摘は [docs/review/](review/) 配下（`findings-summary.md` が統合版）を参照。一次レビューの誤り（行数の過大申告、react-markdown 使用の誤認、IndexedDB 移行案の無効性など）は検証で訂正済み。
+
+### Phase 27: セキュリティ & 確定バグ修正（約2日）
+
+**目標**: レビューで確定したセキュリティ課題と明確なバグを優先的に解消する。
+
+> **設計判断**: 一次レビューの「IndexedDB の `extractable:false` 鍵へ移行」案は、Web検証により無効と判明（XSS が成立すれば鍵素材なしで復号に使われるため localStorage と同等リスク）。代わりに **APIキーをマスターパスワード方式（起動時1回入力・既存の同期パスワードと統合）** に変更する。Claude API のブラウザ直接呼び出し（BYOK）は Anthropic 公式が許容するパターンのため維持し、被害上限の案内で緩和する。
+
+#### A. APIキー保管のマスターパスワード方式（同期パスワードと統合）
+- [ ] `utils/encryption.ts` のハードコードパスフレーズ `'ideamap-v1'`（`deriveKey`）を廃止
+- [ ] APIキーをユーザー設定のマスターパスワードで暗号化して localStorage に保存（既存の `encryptWithPassword` / `decryptWithPassword` を流用）
+- [ ] アプリ起動時、暗号化済みキーがある場合のみマスターパスワード入力プロンプトを表示し、復号して `settingsStore.apiKey`（メモリ）に展開
+- [ ] マスターパスワードと既存の `syncPassword`（Drive同期）を1つのパスワードに統合（ローカル暗号化とDrive同期で共用）
+- [ ] 後方互換: 旧方式（ハードコード鍵）で保存済みのキーは初回起動時に検出し、マスターパスワード設定を促す（再入力でも可）
+- [ ] `docs/design.md` / `docs/requirements.md` のAPIキー暗号化方式の記述を更新
+
+#### B. Markdown 描画のサニタイズ強化
+- [ ] `DOMPurify` を導入し、`utils/markdown.ts` の `renderMarkdownSimple()` 出力をホワイトリスト sanitize（`ALLOWED_TAGS: ['h1','h2','h3','strong','em','code','li','br']`、`ALLOWED_ATTR: ['class']`）
+- [ ] 4箇所（`IdeaNode.tsx` / `PresentationMode.tsx` / `NodeDetailPanel.tsx` / `NodePanel.tsx`）の `dangerouslySetInnerHTML` 経路が sanitize 済み出力を使うことを確認
+- ※ react-markdown への移行は過剰（Tailwind クラス互換問題 + バンドル増）と検証で結論済み。DOMPurify 単体（gzip +約7-10KB）を採用
+
+#### C. 確定バグ・依存更新
+- [ ] `uiStore.ts:243` `setSearchOpen` のバグ修正（`searchQuery: open ? '' : ''` は常に `''`。検索バーを閉じた時のみクリアする正しい挙動に）
+- [ ] `vite` を 8.0.16+ に更新（CVE-2026-53571 / `server.fs.deny` バイパス、CVSS 7.5-8.2）
+- [ ] APIキー入力欄（`SettingsPanel`）に「Anthropic Console で利用上限を設定」「このアプリ専用のキーを推奨」の注意書きを追加
+
+**完了条件**: APIキーがマスターパスワードで実効的に暗号化され、起動時1回の入力で利用できる。Markdown が DOMPurify でサニタイズされる。検索バーのバグと vite 脆弱性が解消される。
+
+---
+
+### Phase 28: パフォーマンス最適化（約2日）
+
+**目標**: 初回ロード時間と、ノード数増加時の再レンダリング負荷を軽減する。
+
+> 根拠: `docs/review/performance.md` / `validation-tech.md`。バンドルは現状 811kB 単一チャンク（gzip 235kB）。
+
+#### タスク
+- [ ] `vite.config.ts` に `build.rollupOptions.output.manualChunks` を追加し、単一チャンクをベンダー分割（react / @xyflow/react / @anthropic-ai/sdk / エクスポート系）
+- [ ] `IdeaNode.tsx` の2つの `nodes.find()` セレクタを1つに統合し `useShallow` を適用。`NodeActionBar` の二重 `find()` も同様に解消
+- [ ] `IdeaCanvas.tsx` の `displayNodes` / `displayEdges` の全ノード・全エッジ `.map()` を見直し、dim/ハイライト状態を各ノードが自己購読する設計に変更
+- [ ] パネル群 / `Toolbar` / `Header` のストア全体購読を、必要プロパティのみのセレクタ（`useShallow`）に変更
+- [ ] `html-to-image` / `@dagrejs/dagre` を動的 import に変更し、エクスポート・整列実行時に遅延ロード
+
+**完了条件**: バンドルが複数チャンクに分割され初回ロードが軽くなる。ドラッグ・ノード選択時の不要な全再描画が減る。
+
+---
+
+### Phase 29: リファクタリング & 技術的負債返済（約2日）
+
+**目標**: 動作を変えずに保守性を上げる。検証で「肥大化」は `mapStore.ts`（1032行）のみと確定したため対象を限定する。
+
+> 根拠: `docs/review/refactoring.md` / `validation-tech.md`。`claudeService.ts`(400行)・`AIChatPanel.tsx`(460行) は通常サイズのため分割対象外。
+
+#### タスク
+- [ ] `claudeService.ts` の `new Anthropic()` 5重複を `createClient(apiKey)` ヘルパーに集約
+- [ ] `mapStore.ts` のグループジオメトリ4関数（`computePushOut` / `findOverlappingGroup` / `isOutsideParent` / `syncGroupMeasured`）を `utils/groupGeometry.ts`（または `mapLayout.ts`）へ抽出し、`applyGroupPushOut` との重複を解消
+- [ ] `mapStore.ts` を軽量スライス分割（履歴 / ノード / エッジ / グループ操作）。全面再構成はせず責務ごとのファイル分割に留める
+- [ ] 小規模DRY: APIキー未設定の空状態を `ApiKeyRequired` コンポーネントに共通化（3パネル）、`expandGroupIds` ヘルパーで重複解消、後方互換処理の集約
+- [ ] `uiStore.ts` のフェーズコメントを意味ベースの記述に整理（CLAUDE.md コメント方針）
+
+**完了条件**: mapStore のジオメトリ計算が分離・テスト可能になり、Anthropic クライアント生成と空状態UIが一元化される。既存の動作は不変。
+
+---
+
+### Phase 30: UX 改善バッチ（約2日）
+
+**目標**: 日常操作の摩擦と一貫性の欠如を解消する。
+
+> 根拠: `docs/review/ux.md` / `validation-ux.md`。UX高-7（selectedNodeId 残存）は検証で誤検知と判明したため除外済み。
+
+#### タスク
+- [ ] `AISuggestionPanel.tsx` にダークモード対応（`dark:` クラス）を追加（他パネルと統一）
+- [ ] `NodeDetailPanel.tsx` の Esc / 背景クリックの挙動を統一（現状「保存して閉じる」→「破棄して閉じる」、または変更がある場合のみ軽量確認）。IdeaNode インライン編集（Esc=破棄）と整合させる
+- [ ] `NodeActionBar` の削除に確認を追加（接続線がある場合のみ。右クリックメニューと同じ `ConfirmDialog` パターン）
+- [ ] AIチャット履歴クリアに確認ダイアログを追加
+- [ ] 接続モード中のロングプレス二重発火を防ぐガードを `IdeaNode.handleTouchStart` に追加（`connectingFromNodeId` があればタイマーを張らない）
+- [ ] エッジ／グループのラベル編集の `window.prompt`（`ContextMenu.tsx` 2箇所）を `InputDialog`（`ConfirmDialog` 同型）に置換
+- [ ] アクセシビリティ: `ConfirmDialog` に `role="dialog"` / `aria-modal`、チャットに `aria-live`、コンテキストメニューに `role="menu"` / `menuitem`、モーダルのフォーカストラップを追加
+- [ ] グループ削除ダイアログの文言バグ修正（`ContextMenu.tsx`）、操作ガイドに `Ctrl+Shift+C` を追記
+
+**完了条件**: ダークモードが全パネルで一貫し、削除・履歴クリアの誤操作が確認で防がれ、Esc の挙動が統一される。
+
+---
+
+### Phase 31: 「実装済み（確認中）」フェーズの動作確認 & 確定（約2日）
+
+**目標**: Phase 14 / 18 / 25 / 26 を動作確認し、ステータスを確定する。
+
+> 根拠: `docs/review/ux.md` の動作確認チェックリスト（Phase14:15項目・Phase18:9項目・Phase25:11項目・Phase26:12項目）。
+
+#### タスク
+- [ ] Phase 25 / 26 のスマホ実機確認（チェックリスト）。**最優先**: 接続モード中ロングプレス二重発火（Phase 30 で対策後に確認）
+- [ ] Phase 14（AIチャット）のアクション実行（addNode / connectNodes / updateNode）・ストリーミング・エラー時挙動を確認
+- [ ] Phase 18（UX小改善）の複製・整列ガイド・テンプレート・絵文字付与を確認
+- [ ] 確認済み項目を `[x]✅` に更新し、Phase 14/18/25/26 の見出しを `✅ 完了（YYYY-MM-DD）` に更新
+
+**完了条件**: Phase 14/18/25/26 が動作確認済みになり、「実装済み（確認中）」状態が解消される。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
@@ -1154,13 +1254,19 @@ npm run dev
 | Phase 24 | 全般UX・品質改善 | 2日 ✅ |
 | Phase 25 | スマホ表示・レイアウト最適化 | 2日 |
 | Phase 26 | スマホ タッチ操作の充実 | 3日 |
+| Phase 27 | セキュリティ & 確定バグ修正 | 2日 |
+| Phase 28 | パフォーマンス最適化 | 2日 |
+| Phase 29 | リファクタリング & 技術的負債返済 | 2日 |
+| Phase 30 | UX 改善バッチ | 2日 |
+| Phase 31 | 「確認中」フェーズの動作確認 & 確定 | 2日 |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |
 | **Phase 12-15 合計** | | **約11日** |
 | **Phase 16-18 合計** | | **約3日** |
 | **Phase 19-24 合計（UX改善）** | | **約15日** |
 | **Phase 25-26 合計（スマホ対応）** | | **約5日** |
-| **全体合計** | | **約62日** |
+| **Phase 27-31 合計（品質改善）** | | **約10日** |
+| **全体合計** | | **約72日** |
 
 ---
 
@@ -1187,3 +1293,5 @@ npm run dev
 | Phase 25: 下部シートとデスクトップ中央表示の分岐 | `window.innerWidth < 640` で分岐し、画面回転・リサイズ時はメニューを開き直して再評価する（開いたまま追従はしない） |
 | Phase 26: 接続モードとノードタップ選択の競合 | 接続モード中は `handleNodeClick` で接続確定を最優先に分岐し通常の選択処理をスキップ。上部バナーで状態を常時明示し、空白タップ・キャンセルで必ず解除できるようにする |
 | Phase 26: ロングプレスとドラッグ・スクロールの競合 | `onTouchMove` でタイマーをクリアする既存パターンを踏襲し、移動を伴うジェスチャではメニューを発火させない。500ms 閾値で短タップとも区別する |
+| Phase 27: マスターパスワード移行 | 旧ハードコード鍵で暗号化済みの localStorage の APIキーは新方式で復号できないため、初回起動時にマスターパスワード設定（または再入力）を促す。未設定時は AI 機能を無効化し案内を表示する |
+| Phase 27: react-markdown 不使用前提の sanitize | 描画は独自 `renderMarkdownSimple` + `dangerouslySetInnerHTML`。ライブラリ移行ではなく DOMPurify で出力をホワイトリスト sanitize し、既存コンポーネントの変更を最小化する |
