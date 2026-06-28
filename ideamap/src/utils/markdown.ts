@@ -1,5 +1,7 @@
+import DOMPurify from 'dompurify'
+
 export function renderMarkdownSimple(text: string): string {
-  return text
+  const html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -12,4 +14,9 @@ export function renderMarkdownSimple(text: string): string {
     .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal">$2</li>')
     .replace(/\n/g, '<br />')
+  // XSS 対策: 許可タグ・属性のみに絞ったサニタイズ
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'code', 'li', 'br'],
+    ALLOWED_ATTR: ['class'],
+  })
 }

@@ -16,6 +16,7 @@ import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
 import { WelcomeModal } from './components/common/WelcomeModal'
+import { MasterPasswordModal } from './components/common/MasterPasswordModal'
 import { SearchBar } from './components/common/SearchBar'
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal'
 import { PresentationOrderPanel } from './components/panels/PresentationOrderPanel'
@@ -33,7 +34,7 @@ function AppInner() {
   useKeyboardShortcuts()
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY))
-  const { loadApiKey, theme } = useSettingsStore()
+  const { initApiKey, theme } = useSettingsStore()
   const { addToast, setMapTitle, setCurrentFileId, openConfirmDialog, isFileDashboardOpen, setFileDashboardOpen, isPresentationMode } = useUIStore()
   const { loadFromSerialized } = useMapStore()
   const googleAuth = useGoogleAuth()
@@ -46,8 +47,8 @@ function AppInner() {
   }, [googleAuth.error, addToast])
 
   useEffect(() => {
-    void loadApiKey()
-  }, [loadApiKey])
+    void initApiKey()
+  }, [initApiKey])
 
   // 共有URL からマップをインポート
   useEffect(() => {
@@ -124,6 +125,7 @@ function AppInner() {
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />
+      <MasterPasswordModal />
       <SearchBar />
       <KeyboardShortcutsModal />
       <PresentationOrderPanel />

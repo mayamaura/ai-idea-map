@@ -1,6 +1,3 @@
-const ENCRYPTED_KEY_STORAGE = 'ideamap-apikey-enc'
-const SALT_STORAGE = 'ideamap-salt'
-
 // ---- デバイス間共有用: パスワードベース暗号化 ----
 
 async function deriveKeyFromPassword(password: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
@@ -54,21 +51,25 @@ export async function decryptWithPassword(
   return new TextDecoder().decode(decrypted)
 }
 
-function getOrCreateSalt(): Uint8Array<ArrayBuffer> {
-  const stored = localStorage.getItem(SALT_STORAGE)
-  if (stored) {
-    const bytes = JSON.parse(stored) as number[]
-    const arr = new Uint8Array(bytes.length)
-    bytes.forEach((b, i) => { arr[i] = b })
-    return arr
-  }
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  localStorage.setItem(SALT_STORAGE, JSON.stringify(Array.from(salt)))
-  return salt
+// ---- 旧形式復号（移行専用・非推奨） ----
+// Phase 27 以前のハードコード鍵 'ideamap-v1' で暗号化されたキーの読み出し用。
+// 新規の暗号化にはこの経路を使わないこと。
+
+const LEGACY_ENCRYPTED_KEY_STORAGE = 'ideamap-apikey-enc'
+const LEGACY_SALT_STORAGE = 'ideamap-salt'
+
+function getLegacySalt(): Uint8Array<ArrayBuffer> | null {
+  const stored = localStorage.getItem(LEGACY_SALT_STORAGE)
+  if (!stored) return null
+  const bytes = JSON.parse(stored) as number[]
+  const arr = new Uint8Array(bytes.length) as Uint8Array<ArrayBuffer>
+  bytes.forEach((b, i) => { arr[i] = b })
+  return arr
 }
 
-async function deriveKey(): Promise<CryptoKey> {
-  const salt = getOrCreateSalt()
+async function decryptLegacyApiKey(ciphertext: string): Promise<string> {
+  const salt = getLegacySalt()
+  if (!salt) throw new Error('旧形式のsaltが見つかりません')
   const rawKey = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode('ideamap-v1'),
@@ -76,28 +77,13 @@ async function deriveKey(): Promise<CryptoKey> {
     false,
     ['deriveKey']
   )
-  return crypto.subtle.deriveKey(
+  const key = await crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' },
     rawKey,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   )
-}
-
-async function encryptText(text: string): Promise<string> {
-  const key = await deriveKey()
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const encoded = new TextEncoder().encode(text)
-  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded)
-  const combined = new Uint8Array(iv.length + encrypted.byteLength)
-  combined.set(iv)
-  combined.set(new Uint8Array(encrypted), iv.length)
-  return btoa(String.fromCharCode(...combined))
-}
-
-async function decryptText(ciphertext: string): Promise<string> {
-  const key = await deriveKey()
   const combined = new Uint8Array(
     atob(ciphertext).split('').map((c) => c.charCodeAt(0))
   )
@@ -107,21 +93,57 @@ async function decryptText(ciphertext: string): Promise<string> {
   return new TextDecoder().decode(decrypted)
 }
 
-export async function getStoredApiKey(): Promise<string> {
-  const stored = localStorage.getItem(ENCRYPTED_KEY_STORAGE)
+// ---- 新形式ストレージ（マスターパスワード方式） ----
+
+const MP_KEY_STORAGE = 'ideamap-apikey-mp'
+
+interface StoredApiKeyV2 {
+  v: 2
+  encrypted: string
+  salt: number[]
+}
+
+export function hasStoredApiKey(): boolean {
+  return localStorage.getItem(MP_KEY_STORAGE) !== null
+}
+
+export function hasLegacyApiKey(): boolean {
+  return localStorage.getItem(LEGACY_ENCRYPTED_KEY_STORAGE) !== null
+}
+
+export async function getLegacyApiKey(): Promise<string> {
+  const stored = localStorage.getItem(LEGACY_ENCRYPTED_KEY_STORAGE)
   if (!stored) return ''
   try {
-    return await decryptText(stored)
+    return await decryptLegacyApiKey(stored)
   } catch {
     return ''
   }
 }
 
-export async function setStoredApiKey(apiKey: string): Promise<void> {
+export function clearLegacyApiKey(): void {
+  localStorage.removeItem(LEGACY_ENCRYPTED_KEY_STORAGE)
+  localStorage.removeItem(LEGACY_SALT_STORAGE)
+}
+
+export async function setStoredApiKeyWithPassword(apiKey: string, password: string): Promise<void> {
   if (!apiKey) {
-    localStorage.removeItem(ENCRYPTED_KEY_STORAGE)
+    localStorage.removeItem(MP_KEY_STORAGE)
     return
   }
-  const encrypted = await encryptText(apiKey)
-  localStorage.setItem(ENCRYPTED_KEY_STORAGE, encrypted)
+  const { encrypted, salt } = await encryptWithPassword(apiKey, password)
+  const record: StoredApiKeyV2 = { v: 2, encrypted, salt }
+  localStorage.setItem(MP_KEY_STORAGE, JSON.stringify(record))
+}
+
+export async function getStoredApiKeyWithPassword(password: string): Promise<string> {
+  const stored = localStorage.getItem(MP_KEY_STORAGE)
+  if (!stored) return ''
+  const record = JSON.parse(stored) as StoredApiKeyV2
+  // パスワード誤りは decryptWithPassword が throw するのでそのまま伝播させる
+  return decryptWithPassword(record.encrypted, password, record.salt)
+}
+
+export function clearStoredApiKey(): void {
+  localStorage.removeItem(MP_KEY_STORAGE)
 }

@@ -190,11 +190,11 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 
 ### 4.3 settingsStore（src/stores/settingsStore.ts）
 
-設定と永続化を担当。APIキーは暗号化して保存。
+設定と永続化を担当。APIキーはマスターパスワード方式で暗号化して保存（Phase 27〜）。
 
 | 状態 | 型 | 説明 |
 |------|-----|------|
-| `apiKey` | `string` | Claude APIキー（メモリ上） |
+| `apiKey` | `string` | Claude APIキー（メモリ上・永続化しない） |
 | `model` | `AIModel` | `claude-sonnet-4-6 \| claude-haiku-4-5-20251001` |
 | `suggestionCount` | `number` | AI提案件数（3〜7） |
 | `autoSave` | `boolean` | 自動保存のオン/オフ |
@@ -203,6 +203,16 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `categories` | `Category[]` | カテゴリ一覧（デフォルト7件＋ユーザー追加分、localStorage永続化） |
 | `snapToGrid` | `boolean` | グリッドスナップの有効/無効（default: `false`、localStorage永続化）（Phase 21） |
 | `edgeStyle` | `EdgeStyle` | `bezier \| smoothstep \| straight`（エッジ描画パス種別、default: `'bezier'`、localStorage永続化）（Phase 21-F） |
+| `syncPassword` | `string` | マスターパスワード（ローカル暗号化とDrive同期で共用・永続化しない） |
+| `apiKeyLock` | `'none' \| 'locked' \| 'unlocked'` | APIキーのロック状態（`none`=未保存、`locked`=要復号、`unlocked`=メモリ展開済み・永続化しない） |
+| `needsMasterPasswordSetup` | `boolean` | 移行後またはキー入力後にパスワード設定を促すセッションフラグ（永続化しない） |
+| `masterPasswordPromptDismissed` | `boolean` | 「スキップ」したセッションフラグ（永続化しない） |
+
+**APIキー管理アクション（Phase 27）:**
+- `initApiKey()` — 起動時に呼ぶ。新形式キーあり→`locked`、旧形式（ハードコード鍵）あり→自動移行・`unlocked`・`needsMasterPasswordSetup=true`、なし→`none`
+- `unlockApiKey(password)` — マスターパスワードで復号し `unlocked` にする
+- `setMasterPassword(password)` — マスターパスワードを設定し、メモリ上の apiKey を新形式で再暗号化して旧形式を削除
+- `dismissMasterPasswordPrompt()` — 設定促進をセッション中スキップ
 
 ---
 
@@ -572,10 +582,42 @@ updateLastChatMessage: (content: string) => void
 
 ## 10. APIキー暗号化設計（src/utils/encryption.ts）
 
-- Web Crypto API（AES-GCM）で暗号化してlocalStorageに保存
-- 鍵はブラウザフィンガープリントから導出（`userAgent`, `language`, `platform` 等）
+### 10.1 新形式（Phase 27〜）: マスターパスワード方式
+
+- ストレージキー: `localStorage['ideamap-apikey-mp']`（JSON `{ v: 2, encrypted, salt }`）
+- 暗号化: PBKDF2（100k iterations, SHA-256）+ AES-GCM 256bit
+- パスワード: ユーザーが任意に設定するマスターパスワード（Drive同期と共用の `syncPassword`）
+- マスターパスワード未設定時は apiKey をメモリのみで保持（セッション終了で消える）
 - サーバーへの送信なし
-- settingsStore はメモリ上に平文APIキーを保持し、永続化時のみ暗号化/復号を実行
+
+**ヘルパー関数（export）:**
+- `hasStoredApiKey()` — 新形式キーの有無
+- `hasLegacyApiKey()` — 旧形式キーの有無（移行チェック用）
+- `getLegacyApiKey()` — 旧形式を復号して返す（自動移行用）
+- `clearLegacyApiKey()` — 旧形式キーとsaltを削除
+- `setStoredApiKeyWithPassword(key, password)` — 新形式で保存
+- `getStoredApiKeyWithPassword(password)` — 新形式から復号（誤パスワードは throw）
+- `clearStoredApiKey()` — 新形式キーを削除
+
+### 10.2 旧形式（Phase 27 以前）: ハードコードパスフレーズ（非推奨・移行専用）
+
+- ストレージキー: `localStorage['ideamap-apikey-enc']`（saltは`ideamap-salt`）
+- パスフレーズ: `'ideamap-v1'`（ハードコード）→セキュリティ上問題のある方式。新規暗号化には使わない
+- 旧形式の復号専用関数 `decryptLegacyApiKey()` を `encryption.ts` に隔離して残す（移行専用・非推奨）
+
+### 10.3 Markdownサニタイズ（Phase 27〜）
+
+`utils/markdown.ts` の `renderMarkdownSimple()` が DOMPurify でホワイトリストサニタイズを実施:
+- `ALLOWED_TAGS`: `h1, h2, h3, strong, em, code, li, br`
+- `ALLOWED_ATTR`: `class`
+- 呼び出し4箇所（IdeaNode / PresentationMode / NodeDetailPanel / NodePanel）は変更不要
+
+### 10.4 MasterPasswordModal（src/components/common/MasterPasswordModal.tsx）
+
+`createPortal(content, document.body)` で `<body>` 直下にレンダリング（z-index: 80）。
+- **解錠モード**（`apiKeyLock==='locked'`・未スキップ）: パスワード入力 → `unlockApiKey()`。誤りはインラインエラー。「スキップ」「パスワードを忘れた場合」ボタン
+- **設定モード**（`needsMasterPasswordSetup`・未スキップ）: `setMasterPassword()` を呼ぶ。任意なのでスキップ可
+- Esc でスキップ（`dismissMasterPasswordPrompt()`)
 
 ---
 

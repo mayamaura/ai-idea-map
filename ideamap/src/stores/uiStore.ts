@@ -240,7 +240,7 @@ export const useUIStore = create<UIState>((set) => ({
   closeContextMenu: () => set({ contextMenu: null }),
   openConfirmDialog: (dialog) => set({ confirmDialog: dialog }),
   closeConfirmDialog: () => set({ confirmDialog: null }),
-  setSearchOpen: (open) => set({ isSearchOpen: open, searchQuery: open ? '' : '' }),
+  setSearchOpen: (open) => set({ isSearchOpen: open, ...(open ? {} : { searchQuery: '' }) }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   toggleCategoryFilter: (categoryId) =>
     set((state) => ({

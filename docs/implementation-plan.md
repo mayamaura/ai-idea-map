@@ -1093,29 +1093,29 @@
 
 > **Phase 27〜31 について**: Phase 1〜26 完了時点で実施したコードレビュー（セキュリティ・リファクタリング・パフォーマンス・UX の4観点 + 相互検証 + Web調査）の結果に基づく品質改善フェーズ群。詳細な根拠と検証済みの指摘は [docs/review/](review/) 配下（`findings-summary.md` が統合版）を参照。一次レビューの誤り（行数の過大申告、react-markdown 使用の誤認、IndexedDB 移行案の無効性など）は検証で訂正済み。
 
-### Phase 27: セキュリティ & 確定バグ修正（約2日）
+### Phase 27: セキュリティ & 確定バグ修正（約2日） 🔨 実装済み（確認中）
 
 **目標**: レビューで確定したセキュリティ課題と明確なバグを優先的に解消する。
 
 > **設計判断**: 一次レビューの「IndexedDB の `extractable:false` 鍵へ移行」案は、Web検証により無効と判明（XSS が成立すれば鍵素材なしで復号に使われるため localStorage と同等リスク）。代わりに **APIキーをマスターパスワード方式（起動時1回入力・既存の同期パスワードと統合）** に変更する。Claude API のブラウザ直接呼び出し（BYOK）は Anthropic 公式が許容するパターンのため維持し、被害上限の案内で緩和する。
 
 #### A. APIキー保管のマスターパスワード方式（同期パスワードと統合）
-- [ ] `utils/encryption.ts` のハードコードパスフレーズ `'ideamap-v1'`（`deriveKey`）を廃止
-- [ ] APIキーをユーザー設定のマスターパスワードで暗号化して localStorage に保存（既存の `encryptWithPassword` / `decryptWithPassword` を流用）
-- [ ] アプリ起動時、暗号化済みキーがある場合のみマスターパスワード入力プロンプトを表示し、復号して `settingsStore.apiKey`（メモリ）に展開
-- [ ] マスターパスワードと既存の `syncPassword`（Drive同期）を1つのパスワードに統合（ローカル暗号化とDrive同期で共用）
-- [ ] 後方互換: 旧方式（ハードコード鍵）で保存済みのキーは初回起動時に検出し、マスターパスワード設定を促す（再入力でも可）
-- [ ] `docs/design.md` / `docs/requirements.md` のAPIキー暗号化方式の記述を更新
+- [x] `utils/encryption.ts` のハードコードパスフレーズ `'ideamap-v1'`（`deriveKey`）を廃止（移行専用の `decryptLegacyApiKey` として隔離）
+- [x] APIキーをユーザー設定のマスターパスワードで暗号化して localStorage に保存（新キー `ideamap-apikey-mp`、JSON `{ v: 2, encrypted, salt }`）
+- [x] アプリ起動時、暗号化済みキーがある場合のみマスターパスワード入力プロンプトを表示し、復号して `settingsStore.apiKey`（メモリ）に展開（`initApiKey()`）
+- [x] マスターパスワードと既存の `syncPassword`（Drive同期）を1つのパスワードに統合（`setMasterPassword()` が置換）
+- [x] 後方互換: 旧方式（ハードコード鍵）で保存済みのキーは初回起動時に検出し、自動移行 + マスターパスワード設定を促す
+- [x] `docs/design.md` / `docs/requirements.md` のAPIキー暗号化方式の記述を更新
 
 #### B. Markdown 描画のサニタイズ強化
-- [ ] `DOMPurify` を導入し、`utils/markdown.ts` の `renderMarkdownSimple()` 出力をホワイトリスト sanitize（`ALLOWED_TAGS: ['h1','h2','h3','strong','em','code','li','br']`、`ALLOWED_ATTR: ['class']`）
-- [ ] 4箇所（`IdeaNode.tsx` / `PresentationMode.tsx` / `NodeDetailPanel.tsx` / `NodePanel.tsx`）の `dangerouslySetInnerHTML` 経路が sanitize 済み出力を使うことを確認
+- [x] `DOMPurify` を導入し、`utils/markdown.ts` の `renderMarkdownSimple()` 出力をホワイトリスト sanitize（`ALLOWED_TAGS: ['h1','h2','h3','strong','em','code','li','br']`、`ALLOWED_ATTR: ['class']`）
+- [x] 4箇所（`IdeaNode.tsx` / `PresentationMode.tsx` / `NodeDetailPanel.tsx` / `NodePanel.tsx`）の `dangerouslySetInnerHTML` 経路が sanitize 済み出力を使うことを確認（変更不要）
 - ※ react-markdown への移行は過剰（Tailwind クラス互換問題 + バンドル増）と検証で結論済み。DOMPurify 単体（gzip +約7-10KB）を採用
 
 #### C. 確定バグ・依存更新
-- [ ] `uiStore.ts:243` `setSearchOpen` のバグ修正（`searchQuery: open ? '' : ''` は常に `''`。検索バーを閉じた時のみクリアする正しい挙動に）
-- [ ] `vite` を 8.0.16+ に更新（CVE-2026-53571 / `server.fs.deny` バイパス、CVSS 7.5-8.2）
-- [ ] APIキー入力欄（`SettingsPanel`）に「Anthropic Console で利用上限を設定」「このアプリ専用のキーを推奨」の注意書きを追加
+- [x] `uiStore.ts` `setSearchOpen` のバグ修正（`open ? {} : { searchQuery: '' }` に修正）
+- [x] `vite` を 8.0.16+ に更新（8.1.0 に更新済み、CVE-2026-53571 解消）
+- [x] APIキー入力欄（`SettingsPanel`）に「Anthropic Console で利用上限を設定」「このアプリ専用のキーを推奨」の注意書きを追加
 
 **完了条件**: APIキーがマスターパスワードで実効的に暗号化され、起動時1回の入力で利用できる。Markdown が DOMPurify でサニタイズされる。検索バーのバグと vite 脆弱性が解消される。
 

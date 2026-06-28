@@ -2,7 +2,17 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '../types'
-import { getStoredApiKey, setStoredApiKey, encryptWithPassword, decryptWithPassword } from '../utils/encryption'
+import {
+  encryptWithPassword,
+  decryptWithPassword,
+  hasStoredApiKey,
+  hasLegacyApiKey,
+  getLegacyApiKey,
+  clearLegacyApiKey,
+  setStoredApiKeyWithPassword,
+  getStoredApiKeyWithPassword,
+  clearStoredApiKey,
+} from '../utils/encryption'
 import { saveAppSettings, loadAppSettings } from '../services/googleDriveService'
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -24,9 +34,17 @@ interface SettingsState {
   language: 'ja' | 'en'
   nodeShape: NodeShape
   categories: Category[]
+  /** マスターパスワード（ローカル暗号化とDrive同期で共用）。永続化しない */
   syncPassword: string
   snapToGrid: boolean
   edgeStyle: EdgeStyle
+  /** APIキーのロック状態。永続化しない */
+  apiKeyLock: 'none' | 'locked' | 'unlocked'
+  /** 旧形式移行後またはパスワード未設定でキー入力時に設定促進。永続化しない */
+  needsMasterPasswordSetup: boolean
+  /** 「スキップ」で設定促進を非表示にするセッションフラグ。永続化しない */
+  masterPasswordPromptDismissed: boolean
+
   setApiKey: (key: string) => void
   setAiModel: (model: AIModel) => void
   setSuggestionCount: (count: number) => void
@@ -34,14 +52,20 @@ interface SettingsState {
   setTheme: (theme: Theme) => void
   setLanguage: (lang: 'ja' | 'en') => void
   setNodeShape: (shape: NodeShape) => void
-  setSyncPassword: (password: string) => void
+  /** マスターパスワードを設定する（旧 setSyncPassword を置換）。メモリ上の apiKey があれば新形式へ再暗号化 */
+  setMasterPassword: (password: string) => void
   setSnapToGrid: (v: boolean) => void
   setEdgeStyle: (v: EdgeStyle) => void
   addCategory: (category: Omit<Category, 'id'>) => string
   updateCategory: (id: string, patch: Partial<Omit<Category, 'id'>>) => void
   deleteCategory: (id: string) => void
   getCategoryById: (id: string) => Category | undefined
-  loadApiKey: () => Promise<void>
+  /** 起動時に呼ぶ（旧 loadApiKey を置換）。旧形式の自動移行を含む */
+  initApiKey: () => Promise<void>
+  /** マスターパスワードでAPIキーを復号し apiKeyLock を 'unlocked' にする */
+  unlockApiKey: (password: string) => Promise<boolean>
+  /** MasterPasswordModal の「スキップ」ボタン用 */
+  dismissMasterPasswordPrompt: () => void
   saveSettingsToDrive: (token: string) => Promise<void>
   loadSettingsFromDrive: (token: string) => Promise<void>
 }
@@ -60,18 +84,48 @@ export const useSettingsStore = create<SettingsState>()(
       syncPassword: '',
       snapToGrid: false,
       edgeStyle: 'bezier',
+      apiKeyLock: 'none',
+      needsMasterPasswordSetup: false,
+      masterPasswordPromptDismissed: false,
 
       setApiKey: (key) => {
-        set({ apiKey: key })
-        void setStoredApiKey(key)
+        const { syncPassword } = get()
+        if (!key) {
+          set({ apiKey: '', apiKeyLock: 'none' })
+          clearStoredApiKey()
+          return
+        }
+        if (syncPassword) {
+          void setStoredApiKeyWithPassword(key, syncPassword).then(() => {
+            set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: false })
+          })
+        } else {
+          // マスターパスワード未設定: メモリのみで保持し設定を促す
+          set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: true })
+        }
       },
+
       setAiModel: (model) => set({ aiModel: model }),
       setSuggestionCount: (count) => set({ suggestionCount: count }),
       setAutoSave: (enabled) => set({ autoSave: enabled }),
       setTheme: (theme) => set({ theme }),
       setLanguage: (lang) => set({ language: lang }),
       setNodeShape: (shape) => set({ nodeShape: shape }),
-      setSyncPassword: (password) => set({ syncPassword: password }),
+
+      setMasterPassword: (password) => {
+        const { apiKey } = get()
+        set({ syncPassword: password })
+        if (apiKey) {
+          // メモリ上の apiKey を新形式で再暗号化して旧形式を削除
+          void setStoredApiKeyWithPassword(apiKey, password).then(() => {
+            clearLegacyApiKey()
+            set({ needsMasterPasswordSetup: false, apiKeyLock: 'unlocked' })
+          })
+        } else {
+          set({ needsMasterPasswordSetup: false })
+        }
+      },
+
       setSnapToGrid: (v) => set({ snapToGrid: v }),
       setEdgeStyle: (v) => set({ edgeStyle: v }),
 
@@ -96,14 +150,41 @@ export const useSettingsStore = create<SettingsState>()(
 
       getCategoryById: (id) => get().categories.find((c) => c.id === id),
 
-      loadApiKey: async () => {
-        const key = await getStoredApiKey()
-        set({ apiKey: key })
+      initApiKey: async () => {
+        if (hasStoredApiKey()) {
+          // 新形式キーあり: ロック状態にしてモーダルが解錠を促す
+          set({ apiKeyLock: 'locked' })
+        } else if (hasLegacyApiKey()) {
+          // 旧形式キーあり: 自動移行（ハードコード鍵で透過復号してメモリに展開）
+          const key = await getLegacyApiKey()
+          if (key) {
+            set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: true })
+            // 旧キーは再暗号化成功（setMasterPassword 呼び出し）後に削除する
+          } else {
+            set({ apiKeyLock: 'none' })
+          }
+        } else {
+          set({ apiKeyLock: 'none' })
+        }
+      },
+
+      unlockApiKey: async (password) => {
+        try {
+          const key = await getStoredApiKeyWithPassword(password)
+          set({ apiKey: key, syncPassword: password, apiKeyLock: 'unlocked' })
+          return true
+        } catch {
+          return false
+        }
+      },
+
+      dismissMasterPasswordPrompt: () => {
+        set({ masterPasswordPromptDismissed: true })
       },
 
       saveSettingsToDrive: async (token: string) => {
         const { apiKey, aiModel, syncPassword } = get()
-        if (!syncPassword) throw new Error('同期パスワードが設定されていません')
+        if (!syncPassword) throw new Error('マスターパスワードが設定されていません')
         if (!apiKey) throw new Error('APIキーが設定されていません')
         const { encrypted, salt } = await encryptWithPassword(apiKey, syncPassword)
         await saveAppSettings(token, {
@@ -117,7 +198,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       loadSettingsFromDrive: async (token: string) => {
         const { syncPassword } = get()
-        if (!syncPassword) throw new Error('同期パスワードが設定されていません')
+        if (!syncPassword) throw new Error('マスターパスワードが設定されていません')
         const settings = await loadAppSettings(token)
         if (!settings) throw new Error('Driveに設定ファイルが見つかりません')
         const apiKey = await decryptWithPassword(settings.encryptedApiKey, syncPassword, settings.salt)
@@ -137,6 +218,7 @@ export const useSettingsStore = create<SettingsState>()(
         categories: state.categories,
         snapToGrid: state.snapToGrid,
         edgeStyle: state.edgeStyle,
+        // apiKey / syncPassword / apiKeyLock / needsMasterPasswordSetup / masterPasswordPromptDismissed は永続化しない
       }),
     }
   )

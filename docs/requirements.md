@@ -346,9 +346,18 @@
 - ヘッダー・各種パネル（既対応）・ContextMenu・ConfirmDialog・Toast・SearchBar（既対応）
 
 ### 3.3 セキュリティ
-- Claude APIキーはlocalStorageに保存（サーバーに送信しない）
+- Claude APIキーはマスターパスワード方式で暗号化してlocalStorageに保存（サーバーに送信しない）
+  - ユーザーが任意に設定するマスターパスワードで PBKDF2 + AES-GCM 暗号化（`ideamap-apikey-mp`）
+  - マスターパスワード未設定時はAPIキーをセッション内メモリのみで保持（リロードで消える）
+  - 起動時にロック状態を検出し、マスターパスワード入力モーダルを表示（`MasterPasswordModal`）
+  - スキップ可能（AI機能なしで閲覧のみ使用できる）
+  - 旧形式（ハードコードパスフレーズ `ideamap-v1`）で保存された既存キーは起動時に自動移行し、マスターパスワード設定を促す（Phase 27）
+- Markdown 描画は DOMPurify でホワイトリストサニタイズ（XSS対策、Phase 27）
+  - 許可タグ: `h1, h2, h3, strong, em, code, li, br`
+  - 許可属性: `class`
 - Google OAuth トークンは標準的なセキュリティプラクティスに従う
 - APIキーを含むデータは外部サービスに送信しない
+- Anthropic Console での利用上限設定とアプリ専用キーの使用を推奨
 
 ### 3.4 オフライン対応
 - Googleドライブ未接続時はlocalStorageに一時保存
