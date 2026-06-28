@@ -70,6 +70,10 @@ export function useAutoSave(
 
   const performSave = useCallback(async () => {
     if (isSuspendedRef.current) return
+    // マップ未読込（起動直後・ダッシュボード表示中）は保存しない。
+    // リロードで mapStore は初期マップにリセットされる一方 currentFileId は localStorage から
+    // 前回ファイルのまま復元されるため、ガードしないと初期マップで実ファイルを上書きしてしまう。
+    if (!useUIStore.getState().hasActiveMap) return
 
     const { getSerializedNodes, getSerializedEdges } = useMapStore.getState()
     // fileId・mapId・mapTitle はクロージャに固定せず都度読む
@@ -188,6 +192,8 @@ export function useAutoSave(
   // データ変更・タイトル変更どちらでも同じデバウンスタイマーを共有する
   const scheduleSave = useCallback(() => {
     if (!autoSave) return
+    // マップ未読込のうちは保存をスケジュールしない（performSave と同じ理由）
+    if (!useUIStore.getState().hasActiveMap) return
     setSaveStatus('unsaved')
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
