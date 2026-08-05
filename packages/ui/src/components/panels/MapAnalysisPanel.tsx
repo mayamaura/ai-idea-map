@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { getPlatform } from '@ideamap/platform'
 import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 
@@ -162,7 +163,7 @@ export function MapAnalysisPanel() {
   )
 
   const copyToClipboard = useCallback(async (text: string) => {
-    await navigator.clipboard.writeText(text)
+    await getPlatform().system.copyToClipboard(text)
     addToast('コピーしました', 'success')
   }, [addToast])
 

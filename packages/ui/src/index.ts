@@ -28,3 +28,17 @@ export { useOnlineStatus } from './hooks/useOnlineStatus'
 export { useNodeFocus } from './hooks/useNodeFocus'
 
 export { renderMarkdownSimple } from './utils/markdown'
+
+export { default as App } from './App'
+export type { AppProps, AppCloudAuth } from './App'
+export { ExportImportPanel } from './components/panels/ExportImportPanel'
+export type { ExportImportPanelProps } from './components/panels/ExportImportPanel'
+export { useAutoSave } from './hooks/useAutoSave'
+export type { AutoSaveOptions } from './hooks/useAutoSave'
+export {
+  exportMapAsImage,
+  exportAsJson,
+  exportAsMarkdown,
+  importFromJson,
+  indentedTextToNodes,
+} from './services/exportService'

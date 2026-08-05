@@ -12,6 +12,8 @@ const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
 }
 
 interface HeaderProps {
+  /** クラウド同期UI（Google Drive 接続）を出すか。デスクトップ版は false */
+  showCloudAuth?: boolean
   isSignedIn: boolean
   isGoogleLoading: boolean
   clientIdMissing: boolean
@@ -21,6 +23,7 @@ interface HeaderProps {
 }
 
 export function Header({
+  showCloudAuth = true,
   isSignedIn,
   isGoogleLoading,
   clientIdMissing,
@@ -146,7 +149,7 @@ export function Header({
         </button>
 
         {/* Google Drive ボタン */}
-        {isSignedIn ? (
+        {!showCloudAuth ? null : isSignedIn ? (
           <>
             {/* モバイル用アイコンボタン（マップ一覧）は残す */}
             <button

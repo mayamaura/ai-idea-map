@@ -1,28 +1,38 @@
 import { getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
+import { getPlatform } from '@ideamap/platform'
 import type { IdeaNodeData, MapFile, SerializedNode, SerializedEdge } from '@ideamap/core'
 
 const EXPORT_WIDTH = 1920
 const EXPORT_HEIGHT = 1080
-// base64エンコード後のURL文字数がこれを超えると警告（ブラウザURL制限を考慮）
-const URL_SIZE_WARNING = 50000
 
-function downloadDataUrl(dataUrl: string, filename: string) {
-  const link = document.createElement('a')
-  link.download = filename
-  link.href = dataUrl
-  link.click()
+/**
+ * データURLをそのバイト列の Blob に戻す。
+ * 従来の `<a download href={dataUrl}>` はブラウザがデコードして書き出していたため、
+ * FileAdapter 経由でも同じバイト列になるようここでデコードする。
+ */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const commaIdx = dataUrl.indexOf(',')
+  const header = dataUrl.slice(0, commaIdx)
+  const body = dataUrl.slice(commaIdx + 1)
+  const mime = /data:([^;,]+)/.exec(header)?.[1] ?? 'application/octet-stream'
+  if (header.includes(';base64')) {
+    const bin = atob(body)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new Blob([bytes], { type: mime })
+  }
+  return new Blob([decodeURIComponent(body)], { type: mime })
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  // Web = <a download>、Desktop = 保存ダイアログ + fs。差は FileAdapter が吸収する
+  void getPlatform().file.exportBlob(filename, blob)
 }
 
 function downloadText(text: string, filename: string, mimeType: string) {
-  const blob = new Blob([text], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.download = filename
-  link.href = url
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(new Blob([text], { type: mimeType }), filename)
 }
 
 // PNG / SVG エクスポート
@@ -88,8 +98,10 @@ export async function exportMapAsImage(
 
   if (format === 'png') {
     const dataUrl = await toPng(viewportEl, imageOptions)
-    downloadDataUrl(dataUrl, filename)
+    downloadBlob(dataUrlToBlob(dataUrl), filename)
   } else {
+    // NOTE: SVG は toSvg が返すデータURL文字列をそのままファイル内容として書いている。
+    // 移行前からの挙動なので Phase 33 では変えない（要修正: 別途起票）
     const dataUrl = await toSvg(viewportEl, imageOptions)
     downloadText(dataUrl, filename, 'image/svg+xml')
   }
@@ -263,36 +275,4 @@ export function indentedTextToNodes(
   }
 
   return { nodes: resultNodes, edges: resultEdges }
-}
-
-// 共有URL生成
-export function generateShareUrl(mapFile: MapFile): { url: string; tooLarge: boolean } {
-  const json = JSON.stringify(mapFile)
-  const encoded = btoa(unescape(encodeURIComponent(json)))
-  const url = new URL(window.location.href)
-  url.search = ''
-  url.searchParams.set('map', encoded)
-  return { url: url.toString(), tooLarge: encoded.length > URL_SIZE_WARNING }
-}
-
-// URLからマップデータを解析
-export function parseMapFromUrl(): MapFile | null {
-  try {
-    const params = new URLSearchParams(window.location.search)
-    const encoded = params.get('map')
-    if (!encoded) return null
-    const json = decodeURIComponent(escape(atob(encoded)))
-    const data = JSON.parse(json) as MapFile
-    if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) return null
-    return data
-  } catch {
-    return null
-  }
-}
-
-// URLの map パラメーターをクリア（インポート後）
-export function clearMapFromUrl(): void {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('map')
-  window.history.replaceState({}, '', url.toString())
 }

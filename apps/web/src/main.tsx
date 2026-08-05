@@ -5,7 +5,7 @@ import { useUIStore, setAppSettingsSync } from '@ideamap/core'
 import { webPlatform } from './platform'
 import { saveAppSettings, loadAppSettings } from './services/googleDriveService'
 import '@ideamap/ui/styles.css'
-import App from './App.tsx'
+import { WebApp } from './WebApp.tsx'
 
 // ストアやコンポーネントが getPlatform() を呼ぶ前に注入する
 setPlatform(webPlatform)
@@ -23,7 +23,7 @@ void useUIStore
   .finally(() => {
     createRoot(document.getElementById('root')!).render(
       <StrictMode>
-        <App />
+        <WebApp />
       </StrictMode>,
     )
   })

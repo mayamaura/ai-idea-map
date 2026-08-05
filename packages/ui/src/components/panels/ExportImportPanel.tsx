@@ -2,18 +2,26 @@ import { useState, useRef, useCallback } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore, useUIStore, type IdeaNodeData, type MapFile } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
+import { getPlatform } from '@ideamap/platform'
 import {
   exportMapAsImage,
   exportAsJson,
   exportAsMarkdown,
   importFromJson,
   indentedTextToNodes,
-  generateShareUrl,
 } from '../../services/exportService'
 
 type Tab = 'export' | 'import' | 'share'
 
-export function ExportImportPanel() {
+export interface ExportImportPanelProps {
+  /**
+   * 共有URLの生成。ブラウザのURLバー前提の Web版専用機能なので実装は apps/web が渡す。
+   * 未指定のプラットフォーム（デスクトップ版）では「共有」タブ自体を出さない。
+   */
+  onGenerateShareUrl?: (mapFile: MapFile) => { url: string; tooLarge: boolean }
+}
+
+export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps = {}) {
   const { isExportPanelOpen, setExportPanelOpen, addToast, mapTitle, setMapTitle, currentMapId, openConfirmDialog, setRenderAllNodes } =
     useUIStore()
   const { nodes, edges, getSerializedNodes, getSerializedEdges, loadFromSerialized } = useMapStore()
@@ -115,8 +123,9 @@ export function ExportImportPanel() {
   }
 
   const handleGenerateShareUrl = () => {
+    if (!onGenerateShareUrl) return
     try {
-      const { url, tooLarge } = generateShareUrl(getMapFile())
+      const { url, tooLarge } = onGenerateShareUrl(getMapFile())
       setShareUrl(url)
       setShareUrlTooLarge(tooLarge)
     } catch {
@@ -125,14 +134,14 @@ export function ExportImportPanel() {
   }
 
   const handleCopyUrl = () => {
-    navigator.clipboard.writeText(shareUrl).then(() => {
+    void getPlatform().system.copyToClipboard(shareUrl).then(() => {
       setUrlCopied(true)
       addToast('URLをコピーしました', 'success')
       setTimeout(() => setUrlCopied(false), 2000)
     })
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = ([
     {
       id: 'export',
       label: 'エクスポート',
@@ -154,7 +163,7 @@ export function ExportImportPanel() {
       ),
     },
     {
-      id: 'share',
+      id: 'share' as const,
       label: '共有',
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -163,7 +172,7 @@ export function ExportImportPanel() {
         </svg>
       ),
     },
-  ]
+  ] as const).filter((t) => t.id !== 'share' || onGenerateShareUrl != null)
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center">

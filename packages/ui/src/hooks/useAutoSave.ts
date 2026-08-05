@@ -1,34 +1,54 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
+import { getPlatform, type FileRef } from '@ideamap/platform'
 import { useMapStore, useUIStore, useSettingsStore, type MapFile } from '@ideamap/core'
-import { saveMap, fetchMapAppProperties, loadMap } from '../services/googleDriveService'
-import { saveMapLocally } from '../services/storageService'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
 const FOCUS_RECHECK_MS = 60_000
 
-export function useAutoSave(
-  accessToken: string | null,
-  auth: { silentReauth: () => void; signIn: () => void }
-) {
+export interface AutoSaveOptions {
+  /**
+   * 永続保存先（クラウド／ローカルファイル）が今すぐ使えるか。
+   * false のときはローカル控えのみ書いて「保存済み」にする。
+   */
+  remoteReady: boolean
+  /**
+   * remoteReady を左右する資格情報の識別子（Web版は Google のアクセストークン）。
+   * 値が変わると連続失敗カウンタをリセットし、保留していた保存を再実行する。
+   */
+  credentialKey?: string | null
+  /**
+   * 保存失敗時の扱い。'retry' を返すと credentialKey が変わったタイミングで再保存する。
+   * 省略時は汎用トーストを出すだけ。attempt は credentialKey 更新後の連続失敗回数（1 始まり）。
+   */
+  onSaveError?: (err: unknown, attempt: number) => 'retry' | 'handled'
+}
+
+/**
+ * マップの自動保存。デバウンス・衝突検出・保存状態表示のオーケストレーションを担う。
+ * 保存先の実体は FileAdapter に委ねているため、Web版（Google Drive）でも
+ * デスクトップ版（ローカルファイル）でも同じフックが使える。
+ */
+export function useAutoSave(options: AutoSaveOptions) {
+  const { remoteReady, credentialKey = null, onSaveError } = options
   const { setSaveStatus } = useUIStore()
   const { autoSave } = useSettingsStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMountedRef = useRef(true)
-  // auth は呼び出し元で毎レンダリング新しいオブジェクトが作られるため ref で追跡し、
+  // onSaveError は呼び出し元で毎レンダリング新しい関数が作られるため ref で追跡し、
   // performSave の useCallback 依存配列に含めずにデバウンスタイマーが壊れないようにする
-  const authRef = useRef(auth)
-  authRef.current = auth
+  const onSaveErrorRef = useRef(onSaveError)
+  onSaveErrorRef.current = onSaveError
   /** 自動保存を一時停止中（衝突ダイアログ表示中）フラグ */
   const isSuspendedRef = useRef(false)
-  /** 今セッションで最初の PATCH 前チェックを済ませたか */
+  /** 今セッションで最初の上書き保存前チェックを済ませたか */
   const hasCheckedThisSessionRef = useRef(false)
   /** window がバックグラウンドになった時刻 */
   const hiddenAtRef = useRef<number | null>(null)
-  /** 401 後にサイレント再認証を既に試みたか（二重リトライを防ぐ） */
-  const reauthAttemptedRef = useRef(false)
-  /** サイレント再認証後に保存を再試行する必要があるか */
+  /** credentialKey 更新後の連続保存失敗回数 */
+  const failureCountRef = useRef(0)
+  /** 資格情報の更新後に保存を再試行する必要があるか */
   const pendingRetryRef = useRef(false)
 
   useEffect(() => {
@@ -68,16 +88,17 @@ export function useAutoSave(
   const performSave = useCallback(async () => {
     if (isSuspendedRef.current) return
     // マップ未読込（起動直後・ダッシュボード表示中）は保存しない。
-    // リロードで mapStore は初期マップにリセットされる一方 currentFileId は localStorage から
+    // リロードで mapStore は初期マップにリセットされる一方 currentFileId は永続化領域から
     // 前回ファイルのまま復元されるため、ガードしないと初期マップで実ファイルを上書きしてしまう。
     if (!useUIStore.getState().hasActiveMap) return
 
+    const file = getPlatform().file
     const { getSerializedNodes, getSerializedEdges } = useMapStore.getState()
     // fileId・mapId・mapTitle はクロージャに固定せず都度読む
     const { mapTitle, currentFileId, currentMapId, setCurrentFileId, setCurrentMapId, openConfirmDialog, setSaveStatus: setSS, presentationNodeIds } = useUIStore.getState()
     const { loadFromSerialized } = useMapStore.getState()
 
-    // POST 新規作成の場合は mapId を確定する
+    // 新規保存の場合は mapId を確定する
     const effectiveMapId = currentFileId
       ? (currentMapId ?? null)
       : (currentMapId ?? uuidv4())
@@ -93,14 +114,17 @@ export function useAutoSave(
       presentationNodeIds: presentationNodeIds.length > 0 ? presentationNodeIds : undefined,
     }
 
-    saveMapLocally(mapFile)
+    await file.saveLocalMirror(mapFile)
 
-    if (accessToken) {
+    if (remoteReady) {
+      const ref: FileRef | null = currentFileId
+        ? { id: currentFileId, name: mapTitle, origin: 'cloud', updatedAt: '' }
+        : null
       try {
-        // PATCH の場合：最初の保存 or バックグラウンド復帰後に衝突チェック
-        if (currentFileId && !hasCheckedThisSessionRef.current) {
-          const remote = await fetchMapAppProperties(accessToken, currentFileId)
-          if (remote.mapId !== null && remote.mapId !== effectiveMapId) {
+        // 上書き保存の場合：最初の保存 or バックグラウンド復帰後に衝突チェック
+        if (ref && !hasCheckedThisSessionRef.current) {
+          const remote = await file.getMetadata(ref)
+          if (remote && remote.mapId !== null && remote.mapId !== effectiveMapId) {
             // 衝突検出：自動保存を一時停止してダイアログを表示
             isSuspendedRef.current = true
             if (isMountedRef.current) {
@@ -115,8 +139,10 @@ export function useAutoSave(
                 secondaryAction: {
                   label: '最新版を読み込む',
                   onClick: async () => {
-                    // Drive から最新版を再ロード
-                    const data = (await loadMap(accessToken, currentFileId)) as MapFile & { mapId?: string }
+                    // 保存先から最新版を再ロード
+                    const opened = await file.openFile(ref)
+                    const data = opened?.content as (MapFile & { mapId?: string }) | undefined
+                    if (!data) return
                     loadFromSerialized(data.nodes, data.edges)
                     useUIStore.getState().setPresentationNodeIds(data.presentationNodeIds ?? [])
                     useUIStore.getState().setMapTitle(data.title || mapTitle)
@@ -142,40 +168,33 @@ export function useAutoSave(
           hasCheckedThisSessionRef.current = true
         }
 
-        const newId = await saveMap(accessToken, mapTitle, mapFile, currentFileId, mapFile.mapId)
+        const savedRef = ref
+          ? await file.saveFile(ref, mapFile)
+          : await file.saveFileAs(mapFile, mapTitle)
+
         if (isMountedRef.current) {
-          if (!currentFileId) {
-            // POST で採番された id と mapId を確定
-            setCurrentFileId(newId)
+          if (!ref && savedRef) {
+            // 新規保存で採番された id と mapId を確定
+            setCurrentFileId(savedRef.id)
             setCurrentMapId(mapFile.mapId)
             hasCheckedThisSessionRef.current = true
           }
+          failureCountRef.current = 0
           setSaveStatus('saved')
           useUIStore.getState().setLastSavedAt(new Date().toISOString())
         }
       } catch (err) {
         if (isMountedRef.current) {
-          const isAuthError = err instanceof Error && err.message.includes('401')
-          if (isAuthError) {
-            if (!reauthAttemptedRef.current) {
-              // 初回401: サイレント再認証を試みる。トーストは表示しない
-              reauthAttemptedRef.current = true
-              pendingRetryRef.current = true
-              authRef.current.silentReauth()
-              setSaveStatus('error')
-            } else {
-              // 再認証後も401: ユーザーに手動再接続を促すトーストを表示
-              setSaveStatus('error')
-              useUIStore.getState().addToast(
-                'Googleドライブの認証が切れました',
-                'error',
-                { label: '再接続', onClick: authRef.current.signIn }
-              )
-            }
+          setSaveStatus('error')
+          failureCountRef.current += 1
+          const handler = onSaveErrorRef.current
+          let decision: 'retry' | 'handled' = 'handled'
+          if (handler) {
+            decision = handler(err, failureCountRef.current)
           } else {
-            setSaveStatus('error')
-            useUIStore.getState().addToast('Googleドライブへの保存に失敗しました', 'error')
+            useUIStore.getState().addToast('保存に失敗しました', 'error')
           }
+          if (decision === 'retry') pendingRetryRef.current = true
         }
       }
     } else {
@@ -184,7 +203,7 @@ export function useAutoSave(
         useUIStore.getState().setLastSavedAt(new Date().toISOString())
       }
     }
-  }, [accessToken, setSaveStatus])
+  }, [remoteReady, setSaveStatus])
 
   // データ変更・タイトル変更どちらでも同じデバウンスタイマーを共有する
   const scheduleSave = useCallback(() => {
@@ -199,16 +218,16 @@ export function useAutoSave(
     }, DEBOUNCE_MS)
   }, [autoSave, performSave, setSaveStatus])
 
-  // accessToken が non-null になったとき再認証フラグをリセットし、必要なら保存をリトライ
+  // credentialKey が更新されたら失敗カウンタをリセットし、必要なら保存をリトライ
   useEffect(() => {
-    if (accessToken !== null) {
-      reauthAttemptedRef.current = false
+    if (credentialKey !== null) {
+      failureCountRef.current = 0
       if (pendingRetryRef.current) {
         pendingRetryRef.current = false
         scheduleSave()
       }
     }
-  }, [accessToken, scheduleSave])
+  }, [credentialKey, scheduleSave])
 
   // ノード・エッジの変更で保存
   useEffect(() => {
