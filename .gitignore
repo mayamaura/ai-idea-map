@@ -1,2 +1,21 @@
 .claude/*
 !.claude/settings.json
+
+node_modules
+dist
+dist-ssr
+*.local
+*.log
+
+# Environment variables
+.env
+.env.*.local
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

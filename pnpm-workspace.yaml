@@ -1,0 +1,6 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+# eslint-import-resolver-typescript が依存するネイティブリゾルバのビルドを許可する
+allowBuilds:
+  unrs-resolver: true
