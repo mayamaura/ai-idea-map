@@ -400,7 +400,9 @@ export function IdeaCanvas() {
 
   return (
     <FocusStateContext.Provider value={focusState}>
-      <div className="flex flex-col flex-1 min-h-0">
+      {/* min-w-0: BottomNav の min-content 幅（横スクロールする9〜10ボタン）がフレックスアイテムの
+          自動最小幅になり、キャンバス列がビューポートより広くなって右端が見切れるのを防ぐ */}
+      <div className="flex flex-col flex-1 min-h-0 min-w-0">
         {/* 接続モードバナー: 接続先のノードをタップするよう促す（スマホ用） */}
         {connectingFromNodeId && createPortal(
           <div

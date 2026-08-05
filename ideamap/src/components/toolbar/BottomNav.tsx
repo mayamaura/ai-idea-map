@@ -12,15 +12,17 @@ export function BottomNav() {
   )
   const canUndo = useMapStore((s) => s.past.length > 0)
   const canRedo = useMapStore((s) => s.future.length > 0)
-  const { setSettingsOpen, setShortcutsModalOpen, setSelectedNodeId, setEditingNodeId, setSearchOpen } = useUIStore(
+  const { setSettingsOpen, setShortcutsModalOpen, setSelectedNodeId, setEditingNodeId, setSearchOpen, setPresentationOrderOpen } = useUIStore(
     useShallow((s) => ({
       setSettingsOpen: s.setSettingsOpen,
       setShortcutsModalOpen: s.setShortcutsModalOpen,
       setSelectedNodeId: s.setSelectedNodeId,
       setEditingNodeId: s.setEditingNodeId,
       setSearchOpen: s.setSearchOpen,
+      setPresentationOrderOpen: s.setPresentationOrderOpen,
     }))
   )
+  const presentationCount = useUIStore((s) => s.presentationNodeIds.length)
 
   // Toolbar と同じ実装: 画面中央のフロー座標を起点に空きスペースへ追加
   const handleAddNode = () => {
@@ -73,6 +75,22 @@ export function BottomNav() {
           <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
         </svg>
         <span className="text-xs">検索</span>
+      </button>
+      {/* 発表: スマホには Toolbar（hidden sm:flex）が無いため、ここが発表モードへの唯一の入口 */}
+      <button
+        onClick={() => setPresentationOrderOpen(true)}
+        className="relative flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 flex-shrink-0"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        <span className="text-xs">発表</span>
+        {presentationCount > 0 && (
+          <span className="absolute top-0 right-0 bg-indigo-500 text-white rounded-full text-[10px] w-4 h-4 flex items-center justify-center leading-none">
+            {presentationCount}
+          </span>
+        )}
       </button>
       <button
         onClick={() => zoomIn()}

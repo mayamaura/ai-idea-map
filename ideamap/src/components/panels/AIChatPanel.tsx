@@ -295,7 +295,8 @@ export function AIChatPanel() {
     <>
       {/* モバイル限定の背景マスク。PC ではキャンバス操作を妨げないよう非表示にする */}
       <div className="sm:hidden fixed inset-0 bg-black/30 z-30" onClick={() => setChatPanelOpen(false)} />
-      <div className="fixed right-0 top-0 h-full w-full sm:w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-xl z-40 flex flex-col">
+      {/* モバイルは下部シート（上部にマスクを露出させて外タップで閉じられるようにする）／PC は右サイドパネル */}
+      <div className="fixed left-0 right-0 bottom-0 h-[85%] rounded-t-2xl border-t sm:left-auto sm:top-0 sm:h-full sm:w-96 sm:rounded-none sm:border-t-0 sm:border-l bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-xl z-40 flex flex-col">
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
@@ -464,8 +465,8 @@ export function AIChatPanel() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 入力エリア */}
-          <div className="border-t border-gray-200 dark:border-gray-700 p-3">
+          {/* 入力エリア。モバイルでは画面下端に接するためセーフエリア分を足す */}
+          <div className="border-t border-gray-200 dark:border-gray-700 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3">
             <div className="relative">
               {/* @メンション ドロップダウン */}
               {mentionState && filteredNodes.length > 0 && (

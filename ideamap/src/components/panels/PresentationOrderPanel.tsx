@@ -106,7 +106,7 @@ export function PresentationOrderPanel() {
             <p className="text-sm text-gray-400 text-center py-8">
               発表に追加されたノードがありません。
               <br />
-              ノードを右クリックして「発表に追加」してください。
+              ノードを右クリック（スマホは長押し）して「発表に追加」してください。
             </p>
           ) : (
             <>

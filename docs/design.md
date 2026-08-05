@@ -1075,14 +1075,14 @@ const groupChildPairs = useMapStore(
 
 | コンポーネント | モバイル | PC（`sm:`以上） | マスク |
 |---|---|---|---|
-| `AIChatPanel` | `w-full`（全幅） | `w-96`（右384px） | **モバイル限定**（`sm:hidden` の `bg-black/30` を背面 z-30 に。PC はマスクなしでキャンバス操作と共存） |
+| `AIChatPanel` | 下部シート（`w-full h-[85%] rounded-t-2xl`、上部15%にマスクを露出） | `w-96`（右384px・全高） | **モバイル限定**（`sm:hidden` の `bg-black/30` を背面 z-30 に。PC はマスクなしでキャンバス操作と共存） |
 | `MapAnalysisPanel` | `w-full` | `max-w-md`（右448px） | 既存 `inset-0` マスク（共通） |
 | `PresentationMode` | 下部シート（`w-full max-h-[55vh]`、`justify-end` で下端固定、ナビバー回避に `mb-14`） | 右480px・全高（`sm:w-[480px] sm:h-full`） | なし（スペーサは `pointerEvents:none` でキャンバス追従） |
 | `NodePanel` | 非表示（`hidden`、NodeActionBar が代替） | `sm:flex w-60` | — |
 
 **原則**: 背景マスクで PC のキャンバス操作を妨げてはならない。PC で共存させたいパネル（AIChatPanel）のマスクは `sm:hidden` にする。
 
-> **既知の不整合（Phase 31 で検出・未対応）**: `AIChatPanel` はモバイルで `w-full h-full` の全画面表示になるため、背面のマスクがパネル本体に完全に覆われてタップできない（`document.elementFromPoint(20, 300)` はパネル内要素を返す）。「パネル外タップで閉じる」はモバイルでは成立せず、閉じる手段はヘッダーの×のみ。対応方針（マスク削除 or パネルの下部シート化）は未決。
+> **マスクは必ず露出させること（Phase 31 で修正）**: `AIChatPanel` は当初モバイルでも `h-full` の全画面表示で、背面マスクがパネル本体に完全に覆われてタップできず「外タップで閉じる」が成立していなかった。`h-[85%]` の下部シートに変更して上部15%にマスクを露出させ、17.2 の下部シートパターンに揃えた。**モバイルでマスクを持つ全画面級のパネルを追加するときは、マスクに到達できる余白を必ず残すこと**（`document.elementFromPoint()` で到達可能か検証できる）。
 
 ### 17.4 コンテキストメニューの位置補正（`ContextMenu.tsx`）
 
@@ -1107,7 +1107,9 @@ const groupChildPairs = useMapStore(
 ### 17.7 BottomNav（モバイル専用ツールバー）
 
 - `sm:hidden` でモバイルのみ表示。「追加」は `screenToFlowPosition` → `findFreePosition`（[11.5](#115-ノード追加位置の重なり回避findfreeposition-phase-21)）→ `addNode` → `setSelectedNodeId`/`setEditingNodeId` で中央・非重複に追加し即編集（Toolbar と同一パターン。旧 `Math.random()` 配置は撤廃）。
-- 追加・元に戻す・やり直し・検索・拡大・全体・縮小・設定・ヘルプの計9ボタン。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロールにより全ボタンへ到達。Undo/Redo は `mapStore.undo/redo`（`past`/`future` の長さで `disabled`）、検索は `uiStore.setSearchOpen(true)`。
+- 追加・元に戻す・やり直し・検索・**発表**・拡大・全体・縮小・設定・ヘルプの計10ボタン。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロールにより全ボタンへ到達。Undo/Redo は `mapStore.undo/redo`（`past`/`future` の長さで `disabled`）、検索は `uiStore.setSearchOpen(true)`。
+- 「発表」（Phase 31 追加）は `setPresentationOrderOpen(true)` で発表順序パネルを開く。`Toolbar` が `hidden sm:flex` のためスマホでは**ここが発表モードへの唯一の入口**。PC の Toolbar と違いリストが空でも `disabled` にせず、パネルの空状態で追加方法を案内する。発表リストが1件以上ならバッジで件数を表示。
+- **`IdeaCanvas` のルート列には `min-w-0` が必須**（Phase 31 で修正）。BottomNav は横スクロールするが、その min-content 幅（10ボタンで約491px）がフレックスアイテムの自動最小幅になり、`min-w-0` がないとキャンバス列が 375px のビューポートより広くなって右端が見切れる（React Flow の座標系ごと画面外に出るため、右端のノードがタップできなくなる）。
 
 ### 17.8 スマホ タッチ操作（Phase 26）
 
