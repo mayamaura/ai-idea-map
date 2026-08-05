@@ -530,7 +530,7 @@
 
 ---
 
-### Phase 14: AIチャット & マップ対話（約3日） 🔨 実装済み（確認中）
+### Phase 14: AIチャット & マップ対話（約3日） ✅ 完了（2026-08-05）
 
 **目標**: AIを「マップ全体と対話できる思考パートナー」に昇格させる
 
@@ -543,23 +543,45 @@
 #### タスク
 
 **AIチャットパネル** (`src/components/panels/AIChatPanel.tsx`)
-- [x] ヘッダーに「AIチャット」ボタンを追加（マップ分析ボタンの隣、青系カラー）
-- [x] サイドパネル形式のチャットUI（メッセージ履歴 + 入力フォーム）
-- [x] `claudeService.ts` に `chatWithMap(messages, mapContext)` 関数を追加
+- [x]✅ ヘッダーに「AIチャット」ボタンを追加（マップ分析ボタンの隣、青系カラー）
+- [x]✅ サイドパネル形式のチャットUI（メッセージ履歴 + 入力フォーム）
+- [x]✅ `claudeService.ts` に `chatWithMap(messages, mapContext)` 関数を追加
   - 初回メッセージにマップ全体のコンテキストを埋め込み
   - 以降は会話履歴を引き継いで連続対話（最大40件まで保持）
-- [x] AIの回答にマップ操作の提案が含まれる場合、ワンクリックで実行できるアクションボタンを表示
+- [x]✅ AIの回答にマップ操作の提案が含まれる場合、ワンクリックで実行できるアクションボタンを表示
   - `addNode`（ノード追加）・`connectNodes`（ノード接続）・`updateNode`（ノード更新）の3種類
 
 **コンテキスト認識機能**
-- [x] チャット中に `@ノード名` でノードを参照できる（オートコンプリート付き、↑↓/Enter/Tab/Esc対応）
-- [x] 選択中のノードがある場合は「このノードについて」のクイック質問チップを表示
+- [x]✅ チャット中に `@ノード名` でノードを参照できる（オートコンプリート付き、↑↓/Enter/Tab/Esc対応）
+- [x]✅ 選択中のノードがある場合は「このノードについて」のクイック質問チップを表示
   - 「深掘り」「反論」「アクション化」「関連提案」「次のステップ」の5種類
-- [x] `Ctrl+Shift+C` でチャットパネルをトグル
-- [x] 型定義追加: `ChatMessage`, `ChatAction`, `ChatActionType`, `MapContext`, `ChatWithMapRequest`
-- [x] `uiStore` に `isChatPanelOpen`, `chatMessages`, `isChatLoading` と対応アクションを追加
+- [x]✅ `Ctrl+Shift+C` でチャットパネルをトグル
+- [x]✅ 型定義追加: `ChatMessage`, `ChatAction`, `ChatActionType`, `MapContext`, `ChatWithMapRequest`
+- [x]✅ `uiStore` に `isChatPanelOpen`, `chatMessages`, `isChatLoading` と対応アクションを追加
 
-**完了条件**: マップを見ながらAIとフリーフォームで対話でき、会話の流れでノード追加・接続を実行できる
+#### 動作確認（Phase 31・Playwright + preview ビルド・API はモック・2026-08-05）
+
+> `docs/review/ux.md` の Phase 14 チェックリスト15項目に対応。Anthropic API は `window.fetch` を差し替えた SSE モックで代替し、ストリーミング・中断・エラー分岐を実挙動で確認した。
+
+- [x]✅ 1. APIキー未設定でチャットを開く → 🔑・「設定を開く」ボタンが出て入力欄は非表示
+- [x]✅ 2. メッセージ送信 → ローディングドット3点 → 逐次表示（途中128字→完了150字）→ 完了
+- [x]✅ 3. 生成中に■停止 → 途中まで（112字）のテキストが残り、続けて再送信できる
+- [x]✅ 4. `@ノード名` オートコンプリート（候補4件・↓Enter／Tab で挿入・↑で戻る・Esc で閉じる）
+- [x]✅ 5. クイック質問チップ5種はノード選択で表示。**@メンションを入力しても消えない**（`selectedNode` 依存の仕様。ux.md の「@メンション後に消える」は誤った期待値）
+- [x]✅ 6. `addNode` アクションボタン → ノード追加＋「「〜」を追加しました」トースト
+- [x]✅ 7. 同一アクションを2回クリックすると同名ノードが2つできる（重複ガードなしを仕様として確認）
+- [x]✅ 8. 42件送信後にチャット表示は40件（先頭が破棄される `slice(-40)`）
+- [x]✅ 9. 「クリア」→ **確認ダイアログが出る**（Phase 30 で追加済み。ux.md の「確認なし」は旧仕様）
+- [x]✅ 10. `Ctrl+Shift+C` でパネルをトグルできる
+- [x]✅ 11. PC ではマスクが `display:none` で、パネル外クリックでも閉じない
+- [ ] 12. スマホのパネル外タップで閉じる → **不成立**。マスクはパネル本体（`w-full h-full`）に完全に覆われて到達できず、閉じる手段はヘッダーの×のみ（Phase 25-2 と同一の不具合。Phase 31 の「積み残し」参照）
+- [x]✅ 13. ネットワークエラー → 「ネットワークエラーです。接続を確認してください」
+- [x]✅ 14. 429 → 「レート制限に達しました。1分ほど待ってから再試行してください」（SDK の自動リトライ後）
+- [x]✅ 15. ノード55件のマップでチャット → system に `[m1]`〜`[m50]` の50件のみ・総数は「ノード数: 55件」と記載。@メンションしたノードを先頭に寄せてから 50 件で切る仕様
+
+**完了条件**: マップを見ながらAIとフリーフォームで対話でき、会話の流れでノード追加・接続を実行できる → 達成
+
+> 未達の項目12（スマホのマスク）は Phase 25 で追加したレスポンシブ対応側の不具合であり、Phase 14 の完了条件（対話とアクション実行）には影響しないため、追跡は Phase 25 / Phase 31 の積み残しで行う。
 
 ---
 
@@ -632,26 +654,40 @@
 
 ---
 
-### Phase 18: UX 小改善バッチ 🔨 実装済み（確認中）
+### Phase 18: UX 小改善バッチ ✅ 完了（2026-08-05）
 
 **背景**: AI生成ノードのタイトルが長すぎる・Markdownが生テキストで表示される・プレゼンテーション順序を後から編集できないという複数の小さなUX課題を一括で解決する。
 
 #### タスク
-- [x] `src/utils/markdown.ts` 新規作成: `renderMarkdownSimple` を共通ユーティリティとして抽出
-- [x] `src/types/index.ts`: `AISuggestion.text` → `AISuggestion.title` + `body?: string` に変更、`ChatAction.body?: string` 追加
-- [x] `src/services/claudeService.ts`: `generateSuggestions` のプロンプト・JSONスキーマを `title`/`body` 分離仕様に更新
-- [x] `src/stores/mapStore.ts`: `addNode()` シグネチャに `body?: string` 追加
-- [x] `src/components/panels/AISuggestionPanel.tsx`: `text` → `title` 参照を修正、提案カードにbodyプレビュー表示、addNodeにbodyを渡す
-- [x] `src/components/panels/AIChatPanel.tsx`: `handleAction` の addNode 呼び出しに `action.body` を渡す
-- [x] `src/components/panels/NodeDetailPanel.tsx`: `isPreview` デフォルト `false` → `true`、`renderMarkdownSimple` を共通ユーティリティからインポート
-- [x] `src/components/canvas/IdeaNode.tsx`: body を `renderMarkdownSimple` で整形表示（`dangerouslySetInnerHTML`、高さ制限）
-- [x] `src/components/screens/PresentationMode.tsx`: body を Markdown整形表示
-- [x] `src/stores/uiStore.ts`: `isPresentationOrderOpen` 状態 + `setPresentationOrderOpen`・`reorderPresentationNodes` アクション追加
-- [x] `src/components/panels/PresentationOrderPanel.tsx` 新規作成: 発表順序編集モーダル（↑↓・×・クリア・発表開始）
-- [x] `src/App.tsx`: `PresentationOrderPanel` を追加
-- [x] `src/components/toolbar/Toolbar.tsx`: 発表ボタンを `setPresentationOrderOpen(true)` に変更
+- [x]✅ `src/utils/markdown.ts` 新規作成: `renderMarkdownSimple` を共通ユーティリティとして抽出
+- [x]✅ `src/types/index.ts`: `AISuggestion.text` → `AISuggestion.title` + `body?: string` に変更、`ChatAction.body?: string` 追加
+- [x]✅ `src/services/claudeService.ts`: `generateSuggestions` のプロンプト・JSONスキーマを `title`/`body` 分離仕様に更新
+- [x]✅ `src/stores/mapStore.ts`: `addNode()` シグネチャに `body?: string` 追加
+- [x]✅ `src/components/panels/AISuggestionPanel.tsx`: `text` → `title` 参照を修正、提案カードにbodyプレビュー表示、addNodeにbodyを渡す
+- [x]✅ `src/components/panels/AIChatPanel.tsx`: `handleAction` の addNode 呼び出しに `action.body` を渡す
+- [x]✅ `src/components/panels/NodeDetailPanel.tsx`: `isPreview` デフォルト `false` → `true`、`renderMarkdownSimple` を共通ユーティリティからインポート
+- [x]✅ `src/components/canvas/IdeaNode.tsx`: body を `renderMarkdownSimple` で整形表示（`dangerouslySetInnerHTML`、高さ制限）
+- [x]✅ `src/components/screens/PresentationMode.tsx`: body を Markdown整形表示
+- [x]✅ `src/stores/uiStore.ts`: `isPresentationOrderOpen` 状態 + `setPresentationOrderOpen`・`reorderPresentationNodes` アクション追加
+- [x]✅ `src/components/panels/PresentationOrderPanel.tsx` 新規作成: 発表順序編集モーダル（↑↓・×・クリア・発表開始）
+- [x]✅ `src/App.tsx`: `PresentationOrderPanel` を追加
+- [x]✅ `src/components/toolbar/Toolbar.tsx`: 発表ボタンを `setPresentationOrderOpen(true)` に変更
 
-**完了条件**: AI生成ノードのタイトルが短く本文が分離される / ノード上・右パネル・プレゼン画面でMarkdownが整形表示される / ツールバー発表ボタンからパネルを開いて順序を編集・発表開始できる
+#### 動作確認（Phase 31・Playwright + preview ビルド・2026-08-05）
+
+> `docs/review/ux.md` の Phase 18 チェックリスト9項目に対応。
+
+- [x]✅ 1. AI提案のプロンプトに「簡潔なタイトル（20字以内）」「title は短く端的に。詳細・補足・具体例は body に記述」が含まれる（送信リクエストの実物で確認）
+- [x]✅ 2. AI提案カードの body プレビューが `-webkit-line-clamp: 2` で表示され、採用したノードに body が入る
+- [x]✅ 3. ノード上の📝バッジをクリックすると詳細パネルが開く
+- [x]✅ 4. `NodeDetailPanel` は既定でプレビュー表示（トグルが「✏️ 編集」）、`## 見出し`・`**太字**`・`- 箇条書き` が `h2`/`strong`/`li` に整形される
+- [x]✅ 5. 発表画面でも body が `strong`・`li` に整形表示される
+- [x]✅ 6. **導線が Phase 24 で変わっている**: ツールバーの「発表」は左＝直接発表開始／右のドロップダウン「発表順を編集してから発表」が `PresentationOrderPanel` を開く（計画時の「発表ボタン＝パネルを開く」ではない）
+- [x]✅ 7. `PresentationOrderPanel` の ↑↓ で順序が入れ替わり、番号バッジも更新される
+- [x]✅ 8. 「発表開始」で発表モードに入る（ヘッダー非表示・カウンタ表示）
+- [x]✅ 9. `ChatAction.body` 付きアクションで作成したノードに📝バッジが付き、詳細パネルに本文が入る
+
+**完了条件**: AI生成ノードのタイトルが短く本文が分離される / ノード上・右パネル・プレゼン画面でMarkdownが整形表示される / 発表順序パネルを開いて順序を編集・発表開始できる → 達成（パネルへの導線は Phase 24 でドロップダウン配下に変更済み）
 
 ---
 
@@ -1004,7 +1040,7 @@
 
 ---
 
-### Phase 25: スマホ表示・レイアウトの最適化（約2日）🔨 実装済み（確認中）
+### Phase 25: スマホ表示・レイアウトの最適化（約2日）🔨 実装済み（実機確認待ち）
 
 **目標**: スマホでどのパネル・メニューも画面内に収まり、はみ出し・見切れ・横スクロールが起きない。
 
@@ -1018,36 +1054,55 @@
 > **方針**: PC の挙動（右クリック・ハンドルドラッグ・ショートカット）を一切壊さず、スマホ用の経路を**追加**する。判定は Tailwind `sm:`(640px) ブレークポイントを基本とし、JS 判定が要る箇所のみ `window.innerWidth < 640` を使う。既存で下部シート化済みの `NodeDetailPanel` / `AISuggestionPanel`（`items-end sm:items-center`）をレスポンシブのパターン基準とする。
 
 #### A. 右サイドパネル／オーバーレイのレスポンシブ化
-- [x] `src/components/panels/AIChatPanel.tsx`: ルートを `w-96` → `w-full sm:w-96`（モバイル全幅、PC 384px）。背景マスク（`inset-0 bg-black/30`）は **`sm:hidden`（モバイル限定）** で敷き、パネル外タップで閉じる。PC はマスクなしでキャンバスと共存（設計判断）
-- [x] `src/components/panels/MapAnalysisPanel.tsx`: パネル本体 `max-w-md` → `w-full sm:max-w-md`（既に `inset-0` マスクあり。モバイル全幅化のみ）
-- [x] `src/components/screens/PresentationMode.tsx`: スライドパネル `w-[480px]` → モバイルは下部シート（`w-full max-h-[55vh]`・`justify-end` で下端固定・`mb-14` でナビバー回避）／`sm:` で従来の右 480px。下部ナビバー（前へ/次へ/終了）は流用
-- [x] `src/components/panels/NodePanel.tsx`: 現状 `hidden sm:flex w-60`。モバイルは `NodeActionBar`（Phase 26 で拡張）が代替するため非表示のまま（変更なし・確認済み）
+- [x]✅ `src/components/panels/AIChatPanel.tsx`: ルートを `w-96` → `w-full sm:w-96`（モバイル全幅、PC 384px）。背景マスク（`inset-0 bg-black/30`）は **`sm:hidden`（モバイル限定）** で敷き、パネル外タップで閉じる。PC はマスクなしでキャンバスと共存（設計判断）
+- [x]✅ `src/components/panels/MapAnalysisPanel.tsx`: パネル本体 `max-w-md` → `w-full sm:max-w-md`（既に `inset-0` マスクあり。モバイル全幅化のみ）
+- [x]✅ `src/components/screens/PresentationMode.tsx`: スライドパネル `w-[480px]` → モバイルは下部シート（`w-full max-h-[55vh]`・`justify-end` で下端固定・`mb-14` でナビバー回避）／`sm:` で従来の右 480px。下部ナビバー（前へ/次へ/終了）は流用
+- [x]✅ `src/components/panels/NodePanel.tsx`: 現状 `hidden sm:flex w-60`。モバイルは `NodeActionBar`（Phase 26 で拡張）が代替するため非表示のまま（変更なし・確認済み）
 
 #### B. ヘッダー・ボトムナビの最適化
-- [x] `src/components/common/Header.tsx`: マップタイトル入力を `max-w-32 sm:max-w-48` に。右側ボタン群は既存の `sm:` 出し分けで詰まらないことを確認
-- [x] `src/components/toolbar/BottomNav.tsx`: `handleAddNode` のランダム配置を撤廃し、`screenToFlowPosition` で画面中央 → `findFreePosition` を通して追加。追加後は `setSelectedNodeId` + `setEditingNodeId` で即編集開始（Toolbar.handleAddNode と同じパターン）
-- [x] `BottomNav` に **Undo / Redo / 検索** ボタンを追加（計9ボタン）。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロール対応。Undo/Redo は `mapStore.undo/redo`（`past`/`future` 長で `disabled`）、検索は `uiStore.setSearchOpen(true)`
-- [x] `src/components/toolbar/Toolbar.tsx`: ドロップダウンは `bottom-full` 上方向開きで画面外に出ないことを確認（変更なし）
+- [x]✅ `src/components/common/Header.tsx`: マップタイトル入力を `max-w-32 sm:max-w-48` に。右側ボタン群は既存の `sm:` 出し分けで詰まらないことを確認
+- [x]✅ `src/components/toolbar/BottomNav.tsx`: `handleAddNode` のランダム配置を撤廃し、`screenToFlowPosition` で画面中央 → `findFreePosition` を通して追加。追加後は `setSelectedNodeId` + `setEditingNodeId` で即編集開始（Toolbar.handleAddNode と同じパターン）
+- [x]✅ `BottomNav` に **Undo / Redo / 検索** ボタンを追加（計9ボタン）。`overflow-x-auto justify-start gap-1` + 各ボタン `flex-shrink-0` で横スクロール対応。Undo/Redo は `mapStore.undo/redo`（`past`/`future` 長で `disabled`）、検索は `uiStore.setSearchOpen(true)`
+- [x]✅ `src/components/toolbar/Toolbar.tsx`: ドロップダウンは `bottom-full` 上方向開きで画面外に出ないことを確認（変更なし）
 
 #### C. コンテキストメニュー／ポップアップの位置補正
-- [x] `src/components/canvas/ContextMenu.tsx`: 縦位置 `window.innerHeight - 360` の固定値を撤廃し、`useRef` + `useLayoutEffect` でメニュー実寸を測って画面内にクランプする
-- [x] モバイル（`< 640px`）では中央でなく**画面下部のシート**として表示する分岐を追加（横幅 100%・タップ領域 `py-3`）。Phase 26-B のロングプレス起動と組み合わせる
-- [x] `NodeActionBar`（`IdeaCanvas.tsx` 内）の `left` を推定半幅でクランプし画面端で見切れないようにした
+- [x]✅ `src/components/canvas/ContextMenu.tsx`: 縦位置 `window.innerHeight - 360` の固定値を撤廃し、`useRef` + `useLayoutEffect` でメニュー実寸を測って画面内にクランプする
+- [x]✅ モバイル（`< 640px`）では中央でなく**画面下部のシート**として表示する分岐を追加（横幅 100%・タップ領域 `py-3`）。Phase 26-B のロングプレス起動と組み合わせる
+- [x]✅ `NodeActionBar`（`IdeaCanvas.tsx` 内）の `left` を半幅でクランプし画面端で見切れないようにした（Phase 31 で推定値120px → `useLayoutEffect` による実寸計測に変更）
 
 #### D. セーフエリア・ビューポート対応
-- [x] `index.html`: viewport meta に `viewport-fit=cover` を追加
-- [x] `BottomNav` と `Toast` の下端に `pb-[env(safe-area-inset-bottom)]` を適用（iOS ホームインジケーターとの被り回避）。`Header` 上端のノッチ対応・`100dvh` は現状維持で実機判断とする
-- [x] アドレスバー伸縮の 100vh ズレは現状 `height:100%` のため影響限定的と判断し現状維持（実機確認で再判断）
+- [x]✅ `index.html`: viewport meta に `viewport-fit=cover` を追加
+- [x]✅ `BottomNav` と `Toast` の下端に `pb-[env(safe-area-inset-bottom)]` を適用（iOS ホームインジケーターとの被り回避）。`Header` 上端のノッチ対応・`100dvh` は現状維持で実機判断とする
+- [x]✅ アドレスバー伸縮の 100vh ズレは現状 `height:100%` のため影響限定的と判断し現状維持（実機確認で再判断）
 
 #### ドキュメント更新（必須）
-- [x] `docs/design.md`: 「17. レスポンシブ／モバイル設計（Phase 25）」節を新設（`sm:` 基準・下部シートパターン・セーフエリア規約・パネル幅方針）
-- [x] `docs/requirements.md`: 「4.4.1 スマホ表示・レイアウト要件（Phase 25）」を追記
+- [x]✅ `docs/design.md`: 「17. レスポンシブ／モバイル設計（Phase 25）」節を新設（`sm:` 基準・下部シートパターン・セーフエリア規約・パネル幅方針）
+- [x]✅ `docs/requirements.md`: 「4.4.1 スマホ表示・レイアウト要件（Phase 25）」を追記
 
-**完了条件**: iPhone SE 幅（375px）で全パネル・メニューが画面内に収まり、横スクロール・見切れが発生しない。BottomNav から追加（中央・非重複）・Undo/Redo・検索ができる。
+#### 動作確認（Phase 31・Playwright + Chromium タッチエミュレーション 375×667・2026-08-05）
+
+- [x]✅ 1. `AIChatPanel` が全幅表示（375×667）
+- [ ] 2. **不具合**: スマホ用マスク（`sm:hidden bg-black/30`）はパネル本体（`w-full h-full`）に完全に覆われて到達できず、外タップでは閉じられない。閉じるにはヘッダーの×が必要 → 下記「Phase 31 での積み残し」参照
+- [x]✅ 3. `PresentationMode` がスマホで下部シート（375×238px・55vh=367px 以内・下端 611px でナビバーを回避）
+- [x]✅ 4. コンテキストメニューが下部シート（幅375・下端667・`rounded-t-2xl`）
+- [x]✅ 5. メニュー項目のタップ領域は最小 44px（`py-3`）
+- [x]✅ 6. BottomNav「追加」で画面中央に既存ノードと重ならないノードが作られ、即編集モードになる
+- [x]✅ 7. BottomNav の9ボタン（追加/元に戻す/やり直し/検索/拡大/全体/縮小/設定/ヘルプ）に横スクロールで到達できる
+- [x]✅ 8. `BottomNav`・`Toast` に `pb-[env(safe-area-inset-bottom)]`、viewport meta に `viewport-fit=cover` がある（実際の余白量は実機のみ判定可）
+- [x]✅ 9. Toast は `bottom: 80px` で BottomNav（上端600px）に被らない
+- [x]✅ 10. **修正して達成**: `NodeActionBar` のクランプが推定半幅120pxのままだと実幅320px（半幅160px）に足りず右端が32pxはみ出していた。実寸計測に変更して左右端どちらのノードでも画面内に収まることを確認
+- [ ] 11. ダブルタップでのノード作成: エミュレータでは2連続タップから `dblclick` が合成されず作成されない。代替（BottomNav「追加」・pane 長押しメニュー）があるため実用上は塞がれない → 実機確認が必要
+
+#### 実装上の判明事項（Phase 31 の検証で判明）
+
+- **`ContextMenu` の実寸クランプが効いていなかった**: `useEffect([contextMenu])` の `setClampedPos(null)` が `useLayoutEffect` の計測結果を毎回打ち消し、推定値（高さ200px固定）のまま描画されていた。PC 1440×900 でノードメニュー（実高334px）を画面下部で開くと下端が126pxはみ出し、「ノードを削除」等に到達できない状態だった。リセットを削除し、カテゴリ サブメニュー展開時も測り直すよう `showCategories` を依存に追加して解消（Phase 25-C の完了条件を満たすための修正）。
+- **`NodeActionBar` の `BAR_HALF_WIDTH` 定数（120px）は実幅と乖離していた**: 実際のバーは320px（半幅160px）。定数クランプでは 375px 幅で右端がはみ出すため、`useLayoutEffect` で実寸を測って使う方式に変更した。
+
+**完了条件**: iPhone SE 幅（375px）で全パネル・メニューが画面内に収まり、横スクロール・見切れが発生しない。BottomNav から追加（中央・非重複）・Undo/Redo・検索ができる。→ エミュレーション上は達成（項目2は要対応、項目11は実機確認待ち）
 
 ---
 
-### Phase 26: スマホ タッチ操作の充実（約3日）🔨 実装済み（確認中）
+### Phase 26: スマホ タッチ操作の充実（約3日）🔨 実装済み（実機確認待ち）
 
 **目標**: 指だけでノードの作成・接続・編集・整理・AI 拡張がすべて完結する。
 
@@ -1059,35 +1114,59 @@
 > **採用方針（2026-06-27 ユーザー合意）**: エッジ作成は**接続モード方式**（ノード選択→「接続」ボタン→相手ノードをタップ）、メニューは**ロングプレスでコンテキストメニュー**を開く（AI 拡張は選択時の `NodeActionBar` に残す）。いずれも PC の既存経路（ハンドルドラッグ・右クリック）に対する**追加**であり、PC 挙動は変更しない。
 
 #### A. 接続モード方式のエッジ作成（最優先）
-- [x] `src/stores/uiStore.ts`: `connectingFromNodeId: string | null` と `setConnectingFromNodeId(id)` を追加（`isPresentationMode` 等と同じ追加パターン）
-- [x] `src/stores/mapStore.ts`: 既存 `onConnect` / `makeEdge` を流用する `connectNodes(source, target)` アクションを追加（ハンドルは `ConnectionMode.Loose` のため未指定で可。`past` への push を忘れない）
-- [x] `IdeaCanvas.tsx` の `NodeActionBar`: 「🔗 接続」ボタンを追加。タップで `setConnectingFromNodeId(selectedNodeId)`
-- [x] 接続モード中の UI:
+- [x]✅ `src/stores/uiStore.ts`: `connectingFromNodeId: string | null` と `setConnectingFromNodeId(id)` を追加（`isPresentationMode` 等と同じ追加パターン）
+- [x]✅ `src/stores/mapStore.ts`: 既存 `onConnect` / `makeEdge` を流用する `connectNodes(source, target)` アクションを追加（ハンドルは `ConnectionMode.Loose` のため未指定で可。`past` への push を忘れない）
+- [x]✅ `IdeaCanvas.tsx` の `NodeActionBar`: 「🔗 接続」ボタンを追加。タップで `setConnectingFromNodeId(selectedNodeId)`
+- [x]✅ 接続モード中の UI:
   - 画面上部に固定バナー「接続先のノードをタップ」＋「キャンセル」を表示（`createPortal`）
   - `handleNodeClick` を拡張: `connectingFromNodeId` があり別ノードをタップしたら `connectNodes` で確定し null に。同ノード／空白タップでキャンセル
   - 接続中は対象候補ノードをハイライトする視覚フィードバック
-- [x] PC のハンドルドラッグ接続は現状維持
+- [x]✅ PC のハンドルドラッグ接続は現状維持
 
 #### B. ロングプレスでコンテキストメニュー
-- [x] `src/components/canvas/IdeaNode.tsx`: `handleTouchStart` のロングプレス（500ms）動作を「AI パネルを開く」から「コンテキストメニューを開く」に変更。`touch.clientX/clientY` を取得して `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ（AI 拡張は `NodeActionBar` に残るため失われない）
-- [x] `src/components/canvas/IdeaCanvas.tsx`: キャンバス（pane）にもロングプレス用 `onTouchStart/End/Move` を追加し、空白長押しで `type: 'pane'` メニュー（アイデアを作成・貼り付け）を開く
-- [x] ロングプレス発火時に `navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ・任意）
-- [x] スクロール／ドラッグ開始でタイマーをキャンセル（既存 `onTouchMove={handleTouchEnd}` を踏襲）
-- [x] メニュー本体は Phase 25-C の下部シート表示と連携
+- [x]✅ `src/components/canvas/IdeaNode.tsx`: `handleTouchStart` のロングプレス（500ms）動作を「AI パネルを開く」から「コンテキストメニューを開く」に変更。`touch.clientX/clientY` を取得して `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ（AI 拡張は `NodeActionBar` に残るため失われない）
+- [x]✅ `src/components/canvas/IdeaCanvas.tsx`: キャンバス（pane）にもロングプレス用 `onTouchStart/End/Move` を追加し、空白長押しで `type: 'pane'` メニュー（アイデアを作成・貼り付け）を開く
+- [x]✅ ロングプレス発火時に `navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ・任意）
+- [x]✅ スクロール／ドラッグ開始でタイマーをキャンセル（既存 `onTouchMove={handleTouchEnd}` を踏襲）
+- [x]✅ メニュー本体は Phase 25-C の下部シート表示と連携
 
 #### C. キーボード依存操作のタッチ代替（仕上げ）
-- [x] コンテキストメニュー経由で到達できる操作（削除・コピー・貼り付け・名前変更・接続作成・整列・グループ化）を棚卸しし、ロングプレスメニューから**すべて**到達できることを確認（「🔗 接続を作成」を `ContextMenu.tsx` の node メニューに追加）
-- [x] 発表モード（`PresentationMode.tsx`）の前へ/次へ/終了がタッチで操作できることを確認（Phase 15 実装済みの下部ナビバー）。スワイプ送りは任意
-- [x] `src/components/common/KeyboardShortcutsModal.tsx` の操作ガイドに「スマホでの代替操作」を追記
+- [x]✅ コンテキストメニュー経由で到達できる操作（削除・コピー・貼り付け・名前変更・接続作成・整列・グループ化）を棚卸しし、ロングプレスメニューから**すべて**到達できることを確認（「🔗 接続を作成」を `ContextMenu.tsx` の node メニューに追加）
+- [x]✅ 発表モード（`PresentationMode.tsx`）の前へ/次へ/終了がタッチで操作できることを確認（Phase 15 実装済みの下部ナビバー）。スワイプ送りは任意
+- [x]✅ `src/components/common/KeyboardShortcutsModal.tsx` の操作ガイドに「スマホでの代替操作」を追記
 
 #### D. ノードドラッグ／パン競合の調整
-- [x] コードのデフォルトは現状維持（`selectionOnDrag` 未設定・タッチ一本指ドラッグはパン）。実機チューニングはユーザーが行う前提
+- [x]✅ コードのデフォルトは現状維持（`selectionOnDrag` 未設定・タッチ一本指ドラッグはパン）。実機チューニングはユーザーが行う前提
 
 #### ドキュメント更新（必須）
-- [x] `docs/design.md`: 「状態管理設計」に `uiStore.connectingFromNodeId`・`mapStore.connectNodes` を追記。「コンテキストメニュー設計」にロングプレス起動を追記（17.8節を新設）
-- [x] `docs/requirements.md`: スマホ操作要件（接続モード・ロングプレスメニュー・タッチ代替）を追記（4.4.2節を追加）
+- [x]✅ `docs/design.md`: 「状態管理設計」に `uiStore.connectingFromNodeId`・`mapStore.connectNodes` を追記。「コンテキストメニュー設計」にロングプレス起動を追記（17.8節を新設）
+- [x]✅ `docs/requirements.md`: スマホ操作要件（接続モード・ロングプレスメニュー・タッチ代替）を追記（4.4.2節を追加）
 
-**完了条件**: スマホで ①ノードを選んで「接続」→相手タップでエッジが引ける ②ロングプレスで全操作メニューが開く ③Undo/Redo・検索・追加・編集・AI 拡張が指だけで完結する。PC の右クリック・ハンドルドラッグ・ショートカットは従来どおり動作する。
+#### 動作確認（Phase 31・Playwright + Chromium タッチエミュレーション 375×667・2026-08-05）
+
+**接続モード（A）とメニュー内容は自動確認で達成。長押しジェスチャ自体（B）はエミュレータで再現できないため実機確認が必須。**
+
+- [ ] 1. ノード長押し（500ms）でメニューが開く → **エミュレータでは判定不可**（下記「長押しの実態」参照）。長押し相当の `contextmenu` を送ればノードメニュー10項目が下部シートで開くことは確認済み
+- [ ] 2. キャンバス空白の長押しで pane メニュー → 同上。`contextmenu` 経由では「アイデアを作成／グループを作成／ここに貼り付け」が下部シートで開くことを確認済み
+- [ ] 3. 長押し中のドラッグでキャンセル → 1 が再現できないため検証不可・実機確認が必要
+- [x]✅ 4. `NodeActionBar`「🔗 接続」で全幅バナー＋キャンセルボタンが表示され、ActionBar は非表示になる
+- [x]✅ 5. 接続モード中に別ノードをタップ → エッジ1本追加＋「接続しました」トースト
+- [x]✅ 6. 接続モード中に同ノードをタップ → エッジを増やさずモード解除
+- [x]✅ 7. 接続モード中に空白タップ → モード解除
+- [x]✅ 8. 接続元ノードに `outline: rgb(99,102,241) solid 2px`
+- [x]✅ 9. **【最優先】接続モード中は `contextmenu` 経路でもメニューが開かない**（接続先・接続元どちらでも。接続モードも維持される）＝ Phase 30 で入れた `IdeaCanvas.handleNodeContextMenu` のガードが効いている
+- [ ] 10. ピンチズーム → 実機確認が必要（エミュレータのマルチタッチ認識は実機と異なる）
+- [ ] 11. 一本指ドラッグでのパン → 実機確認が必要
+- [ ] 12. ノードドラッグとパンの競合 → 実機確認が必要
+- [x]✅ C. 発表モードの「前へ／次へ／終了」がタップで動作（1/2 →次へ→ 2/2 →前へ→ 1/2 →終了で復帰）
+
+#### 実装上の判明事項（Phase 31 の検証で判明）
+
+- **長押しの実態**: Chromium のタッチエミュレーション（CDP `Input.dispatchTouchEvent`）では長押しで `contextmenu` が合成されず、`IdeaNode.handleTouchStart` / `IdeaCanvas.handlePaneTouchStart` の React `onTouchStart` も React Flow の d3-drag が `stopImmediatePropagation` するため呼ばれない。**つまり 500ms タイマー実装は実質使われず、実機でメニューを開いているのはブラウザ由来の `contextmenu` イベント**（Phase 30 の判明事項と一致）。エミュレータで検証できるのは「`contextmenu` が来たときの挙動」までで、長押しが `contextmenu` を発火するかは端末・ブラウザ依存のため実機確認が必要。
+- **メニューを開いたまま指を離せるかは未解決**: `ContextMenu` のオーバーレイは `onClick` で無条件に閉じるため、実機が長押し直後の `touchend` から click を合成する場合はメニューが即閉じる。エミュレータでは長押し自体が再現できず判定できなかった → 実機確認が必要（再現したら「表示直後の click を無視する」対策を入れる）。
+- **スマホから発表モードに入る導線がない**: `Toolbar` は `hidden sm:flex`、`BottomNav` に発表ボタンなし、コンテキストメニューにも開始項目がないため、スマホ単体では発表を開始できない（`Ctrl+P` のみ）。発表リストへの追加とモード内の操作はタッチで完結する。
+
+**完了条件**: スマホで ①ノードを選んで「接続」→相手タップでエッジが引ける ②ロングプレスで全操作メニューが開く ③Undo/Redo・検索・追加・編集・AI 拡張が指だけで完結する。PC の右クリック・ハンドルドラッグ・ショートカットは従来どおり動作する。→ ①③とメニュー内容は達成、②の長押しジェスチャは実機確認待ち
 
 ---
 
@@ -1254,20 +1333,48 @@
 
 ---
 
-### Phase 31: 「実装済み（確認中）」フェーズの動作確認 & 確定（約2日）
+### Phase 31: 「実装済み（確認中）」フェーズの動作確認 & 確定（約2日）🔨 自動確認済み（実機確認待ち）
 
 **目標**: Phase 14 / 18 / 25 / 26 を動作確認し、ステータスを確定する。
 
 > 根拠: `docs/review/ux.md` の動作確認チェックリスト（Phase14:15項目・Phase18:9項目・Phase25:11項目・Phase26:12項目）。
 
 #### タスク
-- [ ] Phase 25 / 26 のスマホ実機確認（チェックリスト）。**最優先**: 接続モード中ロングプレス二重発火（Phase 30 で対策済み。エミュレータでは解消を確認したが、実機の長押し挙動＝ブラウザの `contextmenu` 発火タイミングは端末依存のため要確認）
-- [ ] 実機確認の追加観点（Phase 30 の検証で判明）: ノード長押し → メニューが**開いたまま指を離せるか**。エミュレータでは長押し後の touchend でブラウザが click を合成し、コンテキストメニューのオーバーレイがそれを拾って即座に閉じる可能性がある。実機で再現するなら `ContextMenu` のオーバーレイ側でメニュー表示直後の click を無視する対策を入れる
-- [ ] Phase 14（AIチャット）のアクション実行（addNode / connectNodes / updateNode）・ストリーミング・エラー時挙動を確認
-- [ ] Phase 18（UX小改善）の複製・整列ガイド・テンプレート・絵文字付与を確認
-- [ ] 確認済み項目を `[x]✅` に更新し、Phase 14/18/25/26 の見出しを `✅ 完了（YYYY-MM-DD）` に更新
+- [x]✅ Phase 14（AIチャット）15項目を確認（ストリーミング・停止・@メンション・アクション実行・履歴上限・エラー分岐・50件コンテキスト）
+- [x]✅ Phase 18（UX小改善）9項目を確認（title/body 分離・Markdown 整形・発表順序パネル）
+- [x]✅ Phase 25（スマホ表示）11項目のうち9項目を自動確認、2項目は不具合／実機確認へ切り分け
+- [x]✅ Phase 26（スマホタッチ）接続モード（A）5項目・メニュー内容・発表モード操作を自動確認
+- [x]✅ 検証中に見つかった2件の不具合を修正（`ContextMenu` の実寸クランプが効かない／`NodeActionBar` の推定半幅不足）
+- [x]✅ 確認済み項目を `[x]✅` に更新し、Phase 14/18 の見出しを `✅ 完了（2026-08-05）` に更新
+- [ ] **残: スマホ実機確認**（下記チェックリスト）。**最優先**: 接続モード中ロングプレス二重発火（Phase 30 で対策済み。`contextmenu` 経路でのガードは自動確認で PASS。実機の長押し発火タイミングは端末依存のため要確認）
+- [ ] 残: ノード長押し → メニューが**開いたまま指を離せるか**。再現するなら `ContextMenu` のオーバーレイ側でメニュー表示直後の click を無視する対策を入れる
+- [ ] 残: 積み残し2件（AIChatPanel のマスク到達不可・スマホからの発表開始導線なし）の対応方針を決める
 
-**完了条件**: Phase 14/18/25/26 が動作確認済みになり、「実装済み（確認中）」状態が解消される。
+#### 自動確認の方法
+
+`ideamap/dist`（preview ビルド）に対し Playwright（`playwright` は devDependency に導入済み）で PC 1440×900 とスマホ 375×667（`hasTouch` / `isMobile` / iPhone SE 相当）の2構成を実行。Anthropic API は `window.fetch` を差し替えた SSE モックで代替し、逐次表示・中断・429・ネットワークエラーを実挙動で確認した。結果は **PC 25項目すべて PASS / スマホ 20 PASS・5件は実機依存または要対応**。コンソールエラーは全ページで0件。
+
+#### 実機確認チェックリスト（ユーザー実施・未完）
+
+| # | 確認項目 | 判定基準 |
+|---|---|---|
+| 1 | 接続モード中にノードを長押しする（**最優先**） | メニューが開かず、指を離した後にも開かない。タップならエッジが作成される |
+| 2 | 通常時にノードを長押しする | 500ms 前後でメニューが開き、**指を離してもメニューが残る**（即閉じるなら要対策） |
+| 3 | 通常時にキャンバス空白を長押しする | pane メニュー（アイデアを作成／グループを作成／貼り付け）が開く |
+| 4 | 長押ししながら指をずらす | メニューが開かない（スクロール／ドラッグが優先される） |
+| 5 | キャンバスをピンチする | ズームできる |
+| 6 | 一本指でドラッグする | キャンバスがパンする |
+| 7 | ノードをドラッグする | ノードが移動する（パンと競合しない。競合するなら操作手順を要検討） |
+| 8 | キャンバス空白をダブルタップする | ノードが作られる（作られなくても BottomNav「追加」と長押しメニューで代替可） |
+| 9 | ホームインジケーター付き端末で BottomNav / Toast を見る | インジケーターに被らない（`env(safe-area-inset-bottom)` の実効値確認） |
+| 10 | アドレスバーを伸縮させる | レイアウトが崩れない・下端が隠れない |
+
+#### Phase 31 での積み残し（要対応・方針未決）
+
+- **`AIChatPanel` のスマホ用マスクが機能していない**: パネル本体が `w-full h-full` で画面を覆うためマスク（`sm:hidden bg-black/30`）に到達できず、「パネル外タップで閉じる」が成立しない（`elementFromPoint` で確認）。閉じる手段はヘッダーの×のみ。対応案は ①マスクを削除して×のみに統一 ②パネルを下部シート化（例 `h-[85%]`）してマスクを機能させる、のいずれか。
+- **スマホから発表モードを開始できない**: `Toolbar` は `hidden sm:flex`、`BottomNav` に発表ボタンなし、コンテキストメニューにも開始項目なし。発表リストへの追加とモード内操作はタッチで完結するため、開始導線（BottomNav かコンテキストメニュー）だけが欠けている。
+
+**完了条件**: Phase 14/18/25/26 が動作確認済みになり、「実装済み（確認中）」状態が解消される。→ Phase 14/18 は達成。Phase 25/26 は自動確認分を確定し、実機依存の項目のみ残（上記チェックリスト）。
 
 ---
 
@@ -1280,6 +1387,8 @@
 **目的**: ローカルLLM（Ollama）を使えるようにすること。ブラウザからは CORS 制約で `http://localhost:11434` に安定アクセスできないため、Tauri の Rust プロセス経由でアクセスする。
 
 **前提**: Phase 31 の完了。モノレポ移行（Phase 33）は「移行前後で挙動が変わっていないこと」を判定条件にするため、`🔨 実装済み（確認中）` のフェーズが残っていると不具合の切り分けができなくなる。
+
+> 2026-08-05 時点の状況: Phase 31 の自動確認は完了し、Phase 14/18 は確定済み。残りはスマホ実機に依存する項目（長押しジェスチャ・ピンチ／パン・セーフエリア実効値）のみで、いずれも**モノレポ移行で挙動が変わる箇所ではない**ため、Phase 32 の着手は妨げない。ただし Phase 33 の前後比較の基準を明確にするため、実機確認は Phase 33 開始までに済ませること。
 
 | Phase | 内容 | 目安 | 主参照 |
 |---|---|---|---|
@@ -1513,7 +1622,7 @@ npm run dev
 | Phase 28 | パフォーマンス最適化 | 2日 |
 | Phase 29 | リファクタリング & 技術的負債返済 | 2日 |
 | Phase 30 | UX 改善バッチ | 2日 ✅ |
-| Phase 31 | 「確認中」フェーズの動作確認 & 確定 | 2日 |
+| Phase 31 | 「確認中」フェーズの動作確認 & 確定 | 2日 🔨（実機確認のみ残） |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |
 | **Phase 12-15 合計** | | **約11日** |

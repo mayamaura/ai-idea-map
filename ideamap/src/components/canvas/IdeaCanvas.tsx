@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -25,6 +25,9 @@ import { Toolbar } from '../toolbar/Toolbar'
 import { BottomNav } from '../toolbar/BottomNav'
 import { FocusStateContext, type FocusState } from '../../hooks/useNodeFocus'
 import type { IdeaNodeData } from '../../types'
+
+/** 実寸を測るまでのフォールバック値 */
+const BAR_HALF_WIDTH_ESTIMATE = 120
 
 function NodeActionBar() {
   const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId, connectingFromNodeId, setConnectingFromNodeId, openConfirmDialog } = useUIStore(
@@ -77,6 +80,14 @@ function NodeActionBar() {
   useViewport() // ズーム・パン変化時に再レンダリングしてバーを再配置
   const { flowToScreenPosition, getNode } = useReactFlow()
 
+  // 推定半幅ではスマホ幅で右端がはみ出すため、描画後に実寸を測ってクランプに使う
+  const barRef = useRef<HTMLDivElement>(null)
+  const [halfWidth, setHalfWidth] = useState(BAR_HALF_WIDTH_ESTIMATE)
+  useLayoutEffect(() => {
+    const w = barRef.current?.offsetWidth
+    if (w && Math.abs(w / 2 - halfWidth) > 0.5) setHalfWidth(w / 2)
+  }, [selectedNodeId, halfWidth])
+
   // 接続モード中はバナーが主役なので非表示
   if (!selectedNodeId || connectingFromNodeId) return null
   if (!absPosition) return null
@@ -90,12 +101,11 @@ function NodeActionBar() {
     y: absPosition.y + nodeHeight,
   })
 
-  // バーの推定半幅でクランプして画面端でも見切れないようにする
-  const BAR_HALF_WIDTH = 120
-  const clampedLeft = Math.max(BAR_HALF_WIDTH + 8, Math.min(screenX, window.innerWidth - BAR_HALF_WIDTH - 8))
+  const clampedLeft = Math.max(halfWidth + 8, Math.min(screenX, window.innerWidth - halfWidth - 8))
 
   return createPortal(
     <div
+      ref={barRef}
       className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-1 py-1 whitespace-nowrap"
       style={{ position: 'fixed', left: clampedLeft, top: screenY + 8, transform: 'translateX(-50%)', zIndex: 40 }}
     >

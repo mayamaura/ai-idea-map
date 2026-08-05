@@ -1082,16 +1082,21 @@ const groupChildPairs = useMapStore(
 
 **原則**: 背景マスクで PC のキャンバス操作を妨げてはならない。PC で共存させたいパネル（AIChatPanel）のマスクは `sm:hidden` にする。
 
+> **既知の不整合（Phase 31 で検出・未対応）**: `AIChatPanel` はモバイルで `w-full h-full` の全画面表示になるため、背面のマスクがパネル本体に完全に覆われてタップできない（`document.elementFromPoint(20, 300)` はパネル内要素を返す）。「パネル外タップで閉じる」はモバイルでは成立せず、閉じる手段はヘッダーの×のみ。対応方針（マスク削除 or パネルの下部シート化）は未決。
+
 ### 17.4 コンテキストメニューの位置補正（`ContextMenu.tsx`）
 
 - 旧実装の縦位置固定値 `window.innerHeight - 360` を撤廃。`useRef` + `useLayoutEffect` でメニュー DOM の実寸（`offsetWidth/offsetHeight`）を測り、`Math.max(8, Math.min(pos, viewport - size - 8))` で画面内にクランプする。
+- **計測結果をリセットする副作用を置いてはならない（Phase 31 で修正）**: `useEffect([contextMenu])` 側で `setClampedPos(null)` していたため、パッシブ効果が `useLayoutEffect` の計測結果を毎回打ち消し、推定値（高さ200px固定）のまま描画されていた。結果としてノードメニュー（実高334px）を画面下部で開くと下端が画面外に出て「ノードを削除」等に到達できなかった。リセットは削除し、`showCategories`（カテゴリ サブメニューの展開で高さが変わる）を計測効果の依存に追加している。
 - モバイル（`window.innerWidth < 640`）では絶対配置をやめ、`fixed bottom-0 left-0 right-0 w-full rounded-t-2xl` の下部シートとして表示。項目のタップ領域を `py-3 sm:py-1.5` に拡大。背景の `fixed inset-0` はタップで閉じるマスクとして流用。
 - メニュー項目の内容（node/edge/pane/group）は不変。表示器の枠だけをレスポンシブ化する。
 - **Phase 26 追加**: モバイルでは `IdeaNode.tsx` の `onTouchStart` 長押し（500ms）でコンテキストメニューを起動する。`touch.clientX/clientY` を `setTimeout` の外のローカル変数に取り込み `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ。`navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ）。pane（空白）の長押しは `IdeaCanvas.tsx` の `onTouchStart` で同様に処理。
 
 ### 17.5 NodeActionBar の画面端クランプ（`IdeaCanvas.tsx`）
 
-ズーム/パン追従（`useViewport` + `flowToScreenPosition`）で算出した `left` を、推定半幅でクランプ（`Math.max(BAR_HALF_WIDTH+8, Math.min(screenX, innerWidth - BAR_HALF_WIDTH - 8))`）して画面端でも横方向に見切れないようにする。`translateX(-50%)` 追従は維持。
+ズーム/パン追従（`useViewport` + `flowToScreenPosition`）で算出した `left` を半幅でクランプ（`Math.max(halfWidth+8, Math.min(screenX, innerWidth - halfWidth - 8))`）して画面端でも横方向に見切れないようにする。`translateX(-50%)` 追従は維持。
+
+半幅は **`useLayoutEffect` でバー DOM の `offsetWidth` を測った実測値**を使う（Phase 31 で修正）。当初は定数 `BAR_HALF_WIDTH = 120` を使っていたが、実際のバーは 320px（半幅160px）あり、375px 幅の端末では右端が約32pxはみ出していた。定数 `BAR_HALF_WIDTH_ESTIMATE` は初回描画のフォールバックとしてのみ残す。計測は `[selectedNodeId, halfWidth]` を依存に取り、差が 0.5px 以下なら再設定しないことで更新ループを防ぐ。
 
 ### 17.6 セーフエリア・ビューポート規約
 
@@ -1123,6 +1128,8 @@ const groupChildPairs = useMapStore(
 - `IdeaNode.tsx`: `handleTouchStart(e: React.TouchEvent)` で `e.touches.length === 1` のみ処理。座標を先にローカル変数に取り込んで 500ms タイマーを張る。発火時に `openContextMenu({ type: 'node', x, y, targetId: id })` → `navigator.vibrate?.(10)`。
 - `IdeaCanvas.tsx`: 外側ラッパ div に `onTouchStart/End/Move` を追加。対象が `.react-flow__pane` 上かつ `.react-flow__node` でない場合のみ 500ms タイマーで `openContextMenu({ type: 'pane', x, y, flowPosition })` → `navigator.vibrate?.(10)`。`touchmove/touchend` でタイマー解除（パン・スクロールと競合させない）。`preventDefault` は呼ばない（React Flow のパン/ピンチを保護）。
 - `ContextMenu.tsx` の node メニューに「🔗 接続を作成」を追加 → `setConnectingFromNodeId(targetId)` で接続モード開始。
+
+> **実際に効いている経路（Phase 30・31 の検証結果）**: 上記2つの `onTouchStart` タイマーは、React Flow の d3-drag が `touchstart` を `stopImmediatePropagation()` するため React のバブル経由では呼ばれない。タッチ端末で実際にメニューを開いているのは**ブラウザが長押しで発火する `contextmenu`**（`IdeaCanvas.handleNodeContextMenu` / `handlePaneContextMenu`）である。したがって長押し関連の仕様変更・不具合対応は `contextmenu` 側を主経路として扱うこと。タイマー実装は非タッチ環境と将来の保険として残している。
 
 #### 接続モード中のメニュー抑止（Phase 30）
 

@@ -105,9 +105,10 @@ export function ContextMenu() {
   // マウント時に1度だけ評価するモバイル判定（メニューは一時的なためリサイズ追従は不要）
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
 
+  // clampedPos はここでリセットしない。パッシブ効果は下の useLayoutEffect より後に走るため、
+  // 実寸から求めたクランプ位置を毎回 null で打ち消してしまい、推定値のまま画面外にはみ出す
   useEffect(() => {
     setShowCategories(false)
-    setClampedPos(null)
   }, [contextMenu])
 
   useEffect(() => {
@@ -119,7 +120,8 @@ export function ContextMenu() {
     return () => window.removeEventListener('keydown', onKey)
   }, [contextMenu, closeContextMenu])
 
-  // メニューがDOMに現れたら実寸を測って画面内クランプ位置を確定する
+  // メニューがDOMに現れたら実寸を測って画面内クランプ位置を確定する。
+  // カテゴリのサブメニュー展開で高さが変わるため showCategories でも測り直す
   useLayoutEffect(() => {
     if (!contextMenu || isMobile || !menuRef.current) return
     const { x, y } = contextMenu
@@ -129,7 +131,7 @@ export function ContextMenu() {
       left: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
       top: Math.max(8, Math.min(y, window.innerHeight - h - 8)),
     })
-  }, [contextMenu, isMobile])
+  }, [contextMenu, isMobile, showCategories])
 
   if (!contextMenu) return null
 
