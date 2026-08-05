@@ -1162,19 +1162,19 @@
 
 ---
 
-### Phase 29: リファクタリング & 技術的負債返済（約2日）🔨 実装済み（確認中）
+### Phase 29: リファクタリング & 技術的負債返済（約2日）✅ 完了（2026-08-05）
 
 **目標**: 動作を変えずに保守性を上げる。検証で「肥大化」は `mapStore.ts`（1032行）のみと確定したため対象を限定する。
 
 > 根拠: `docs/review/refactoring.md` / `validation-tech.md`。`claudeService.ts`(400行)・`AIChatPanel.tsx`(460行) は通常サイズのため分割対象外。
 
 #### タスク
-- [x] Claude Sonnet 5 へのモデル更新（`AIModel` 型・既定値・設定UI・保存済み設定の読み替え）
-- [x] `claudeService.ts` の `new Anthropic()` 5重複を `createClient(apiKey)` ヘルパーに集約
-- [x] `mapStore.ts` のグループジオメトリ4関数（`computePushOut` / `findOverlappingGroup` / `isOutsideParent` / `syncGroupMeasured`）を `utils/groupGeometry.ts` へ抽出し、`applyGroupPushOut` との重複を解消
-- [x] `mapStore.ts` を軽量スライス分割（履歴 / ノード / エッジ / グループ操作 / ドキュメント）。全面再構成はせず責務ごとのファイル分割に留める
-- [x] 小規模DRY: APIキー未設定の空状態を `ApiKeyRequired` コンポーネントに共通化（3パネル）、`expandGroupIds` ヘルパーで重複解消、後方互換処理を `utils/mapFileCompat.ts` に集約
-- [x] `uiStore.ts` のフェーズコメントを意味ベースの記述に整理（CLAUDE.md コメント方針）
+- [x]✅ Claude Sonnet 5 へのモデル更新（`AIModel` 型・既定値・設定UI・保存済み設定の読み替え）
+- [x]✅ `claudeService.ts` の `new Anthropic()` 5重複を `createClient(apiKey)` ヘルパーに集約
+- [x]✅ `mapStore.ts` のグループジオメトリ4関数（`computePushOut` / `findOverlappingGroup` / `isOutsideParent` / `syncGroupMeasured`）を `utils/groupGeometry.ts` へ抽出し、`applyGroupPushOut` との重複を解消
+- [x]✅ `mapStore.ts` を軽量スライス分割（履歴 / ノード / エッジ / グループ操作 / ドキュメント）。全面再構成はせず責務ごとのファイル分割に留める
+- [x]✅ 小規模DRY: APIキー未設定の空状態を `ApiKeyRequired` コンポーネントに共通化（3パネル）、`expandGroupIds` ヘルパーで重複解消、後方互換処理を `utils/mapFileCompat.ts` に集約
+- [x]✅ `uiStore.ts` のフェーズコメントを意味ベースの記述に整理（CLAUDE.md コメント方針）
 
 #### Sonnet 5 移行の内訳
 
@@ -1191,16 +1191,16 @@
 - `npm run build`（tsc + vite）通過。lint の指摘件数は変更前と同一（既存の 14 errors / 3 warnings のみ、新規増加なし）
 - Playwright スモークテスト（preview ビルド）: 新規作成 → ノード追加（2件）→ 右クリック「アイデアを作成（接続）」でエッジ生成 → 元に戻す（エッジ消滅）→ やり直し（エッジ復活）。コンソールエラーなし
 
-#### 動作確認（要手動）
+#### 動作確認（手動・2026-08-05 実施）
 
-- [ ] AI提案・マップ分析・つながり提案・クラスタ提案・AIチャットが Sonnet 5 で正常に応答する（JSONの途中切れがないこと）
-- [ ] Claude Haiku 4.5 を選択した場合も同5機能が正常に応答する（`thinking: disabled` が受理されること）
-- [ ] Phase 29 以前から使っているブラウザで、設定の使用モデルが自動的に「Claude Sonnet 5」になっている
-- [ ] グループ操作: ドラッグでのグループ出入りダイアログ、枠外への押し出し、整列後の押し出し
-- [ ] Undo/Redo がノード・エッジ・グループ操作すべてで従来どおり動く
-- [ ] マップの保存・読み込み（旧フォーマットのファイルを含む）
+- [x]✅ AI提案・マップ分析・つながり提案・クラスタ提案・AIチャットが Sonnet 5 で正常に応答する（JSONの途中切れがないこと）
+- [x]✅ Claude Haiku 4.5 を選択した場合も同5機能が正常に応答する（`thinking: disabled` が受理されること）
+- [x]✅ Phase 29 以前から使っているブラウザで、設定の使用モデルが自動的に「Claude Sonnet 5」になっている
+- [x]✅ グループ操作: ドラッグでのグループ出入りダイアログ、枠外への押し出し、整列後の押し出し
+- [x]✅ Undo/Redo がノード・エッジ・グループ操作すべてで従来どおり動く
+- [x]✅ マップの保存・読み込み（旧フォーマットのファイルを含む）
 
-**完了条件**: mapStore のジオメトリ計算が分離・テスト可能になり、Anthropic クライアント生成と空状態UIが一元化される。既存の動作は不変。→ 実装は達成、手動確認待ち
+**完了条件**: mapStore のジオメトリ計算が分離・テスト可能になり、Anthropic クライアント生成と空状態UIが一元化される。既存の動作は不変。→ 達成
 
 ---
 
