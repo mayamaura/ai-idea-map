@@ -5,7 +5,7 @@ import {
   computePushOut,
   expandGroupIds,
   DEFAULT_NODE_SIZE,
-} from '../../utils/groupGeometry'
+} from '@ideamap/core'
 import { pushPast, snapshot } from './history'
 import { GROUP_NODE_COLOR } from './constants'
 import type { GroupSlice, IdeaNode, MapSliceCreator } from './types'

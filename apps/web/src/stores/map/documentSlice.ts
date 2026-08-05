@@ -1,6 +1,5 @@
 import type { Edge } from '@xyflow/react'
-import { getGroupSize } from '../../utils/groupGeometry'
-import { readEdgeHandles, readNodeTitle } from '../../utils/mapFileCompat'
+import { getGroupSize, readEdgeHandles, readNodeTitle } from '@ideamap/core'
 import { ARROW, EDGE_STYLE, GROUP_NODE_COLOR, initialNodes } from './constants'
 import type { DocumentSlice, IdeaNode, MapSliceCreator } from './types'
 

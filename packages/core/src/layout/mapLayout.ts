@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { IdeaNodeData } from '@ideamap/core'
+import type { IdeaNodeData } from '../types'
 import { computePushOut, type Size } from './groupGeometry'
 
 type DagreModule = typeof import('@dagrejs/dagre').default

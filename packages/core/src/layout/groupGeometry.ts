@@ -1,5 +1,5 @@
 import type { Node } from '@xyflow/react'
-import type { IdeaNodeData } from '@ideamap/core'
+import type { IdeaNodeData } from '../types'
 
 /**
  * グループノードとフリーノードの当たり判定・押し出し計算。

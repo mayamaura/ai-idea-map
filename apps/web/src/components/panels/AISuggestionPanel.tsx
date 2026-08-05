@@ -6,7 +6,7 @@ import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateSuggestions, toFriendlyAIError } from '../../services/claudeService'
 import Anthropic from '@anthropic-ai/sdk'
-import { calcSuggestionPositions } from '../../utils/mapLayout'
+import { calcSuggestionPositions } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import type { AISuggestion } from '@ideamap/core'
 

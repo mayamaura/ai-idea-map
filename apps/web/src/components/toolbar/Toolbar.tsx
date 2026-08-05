@@ -4,7 +4,7 @@ import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition } from '../../utils/mapLayout'
+import { applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition } from '@ideamap/core'
 import type { IdeaNodeData } from '@ideamap/core'
 import type { Node, Edge } from '@xyflow/react'
 
