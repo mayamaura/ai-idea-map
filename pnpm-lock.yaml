@@ -129,6 +129,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 0.98.0
+        version: 0.98.0(zod@4.4.3)
       '@dagrejs/dagre':
         specifier: 3.0.0
         version: 3.0.0

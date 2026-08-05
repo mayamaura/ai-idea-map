@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuidv4 } from 'uuid'
-import { useUIStore, useMapStore, useSettingsStore, type ChatMessage, type ChatAction, type MapContext, type IdeaNodeData } from '@ideamap/core'
-import { chatWithMap, toFriendlyAIError } from '../../services/claudeService'
+import { useUIStore, useMapStore, useSettingsStore, chatWithMap, toFriendlyAIError, type ChatMessage, type ChatAction, type MapContext, type IdeaNodeData } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import type { Node } from '@xyflow/react'
 

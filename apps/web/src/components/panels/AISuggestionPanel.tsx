@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, type AISuggestion } from '@ideamap/core'
-import { generateSuggestions, toFriendlyAIError } from '../../services/claudeService'
+import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, type AISuggestion } from '@ideamap/core'
 import Anthropic from '@anthropic-ai/sdk'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 

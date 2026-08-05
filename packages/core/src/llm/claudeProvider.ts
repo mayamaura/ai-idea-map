@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { getPlatform } from '@ideamap/platform'
 import type {
   JsonSchema,
   LLMProvider,
@@ -46,9 +47,19 @@ export class ClaudeProvider implements LLMProvider {
     }
   }
 
-  /** ブラウザのみで動作するSPAのため dangerouslyAllowBrowser が必須。生成箇所を1つに集約する */
+  /**
+   * ブラウザのみで動作するSPAのため dangerouslyAllowBrowser が必須。生成箇所を1つに集約する。
+   *
+   * 実際の HTTP 送出は HttpAdapter に委ねる。Web版はブラウザの fetch、
+   * デスクトップ版は Tauri の http プラグイン（Rust 側から発行）になり、
+   * packages/core が fetch を直接呼ばないという制約もここで満たされる。
+   */
   private client(): Anthropic {
-    return new Anthropic({ apiKey: this.apiKey, dangerouslyAllowBrowser: true })
+    return new Anthropic({
+      apiKey: this.apiKey,
+      dangerouslyAllowBrowser: true,
+      fetch: getPlatform().http.getFetch(),
+    })
   }
 
   /** Anthropic SDK の例外をプロバイダ非依存の LLMError に変換する。SDK依存はこのメソッド内に閉じる */

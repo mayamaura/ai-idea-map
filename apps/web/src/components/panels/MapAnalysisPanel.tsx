@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore, useMapStore, useSettingsStore, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
-import { analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError } from '../../services/claudeService'
+import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 
 type TabKey = 'analysis' | 'connections' | 'clusters'

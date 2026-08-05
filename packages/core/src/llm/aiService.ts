@@ -1,7 +1,7 @@
-import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '@ideamap/core'
-import { ClaudeProvider } from './llm/claudeProvider'
-import { LLMError } from './llm/types'
-import { AIParseError } from './llm/jsonUtils'
+import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '../types'
+import { ClaudeProvider } from './claudeProvider'
+import { LLMError } from './types'
+import { AIParseError } from './jsonUtils'
 
 // 生レスポンスのコピー導線（MapAnalysisPanel）が型判定に使うため再エクスポートする
 export { AIParseError }
