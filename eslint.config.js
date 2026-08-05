@@ -24,4 +24,12 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // ルートと apps/web の両方に tsconfig.json があるため typescript-eslint が
+    // プロジェクトルートを自動判別できない。extends より後ろのブロックで明示的に上書きする
+    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: { tsconfigRootDir: import.meta.dirname },
+    },
+  },
 ])
