@@ -4,7 +4,7 @@
 
 AIと一緒に育てるアイデアマップアプリ。React Flow でノード・エッジを管理し、Claude API でアイデアを拡張する。バックエンドなしのフロントエンドのみ SPA。
 
-ソースコードは `ideamap/` ディレクトリ以下にある。
+ソースコードは `packages/`（core・ui・platform）と `apps/web` に分かれている（Phase 33 でモノレポ化）。
 
 ---
 
@@ -38,14 +38,18 @@ AIと一緒に育てるアイデアマップアプリ。React Flow でノード�
 
 ## 開発環境
 
+pnpm workspaces のモノレポ。コマンドはすべてリポジトリのルートで実行する。
+
 ```bash
-cd ideamap
-npm run dev      # 開発サーバー起動（http://localhost:5173）
-npm run build    # プロダクションビルド
-npm run preview  # ビルド結果を確認
+pnpm install     # 依存インストール（初回・依存追加時）
+pnpm dev         # 開発サーバー起動（http://localhost:5173）
+pnpm build       # 型検査（tsc -b）+ プロダクションビルド
+pnpm preview     # ビルド結果を確認
+pnpm lint        # 全パッケージの ESLint
+pnpm typecheck   # 型検査のみ
 ```
 
-必要な環境変数（`.env` ファイルに設定）:
+必要な環境変数（`apps/web/.env` に設定）:
 ```
 VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ```
@@ -101,14 +105,12 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 - メニュー表示中はキーボードショートカットを抑制する（`uiStore.contextMenu` チェック）。
 
 ### Google Drive
-- `googleDriveService.ts` の `folderIdCache` はプロセス内メモリキャッシュ。アクセストークンが変わった場合は `clearDriveCache()` を呼ぶ。
+- `apps/web/src/services/googleDriveService.ts` の `folderIdCache` はプロセス内メモリキャッシュ。アクセストークンが変わった場合は `clearDriveCache()` を呼ぶ。
 - ファイル保存は既存 fileId があれば `PATCH`、なければ `POST`（マルチパートアップロード）。
 
 ---
 
-## モノレポ構成（Phase 33 移行後に適用）
-
-**現在はまだ移行前**であり、ソースは `ideamap/` 配下の単一 Vite プロジェクトにある。以下は Phase 33（モノレポ移行）完了後に適用されるルール。移行を実施したら本節の「移行後に適用」の但し書きを削除すること。
+## モノレポ構成
 
 ### ディレクトリと責務
 
@@ -122,7 +124,7 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 
 ### 守るべきルール
 
-- 依存方向は `apps/* → packages/ui → packages/core → packages/platform` の**一方向のみ**。逆方向の import は禁止（`eslint-plugin-import` の `import/no-restricted-paths` で検出される）。
+- 依存方向は `apps/* → packages/ui → packages/core → packages/platform` の**一方向のみ**。逆方向の import は禁止（相対パス越えは `import/no-restricted-paths`、`@ideamap/*` 指定は `no-restricted-imports` で検出される）。
 - `packages/core` と `packages/ui` から `localStorage`・`sessionStorage`・`fetch`・Google Drive API・GIS認証・`<a download>` を**直接呼ばない**。必ず `getPlatform()` 経由で Adapter を使う。
 - `getPlatform()` はモジュールのトップレベルではなく、必ず関数の内部（ストアのアクション、イベントハンドラ、`useEffect`）で呼ぶ。`setPlatform()` より先に評価されるのを防ぐため。
 - Adapter にメソッドを追加するときは、`packages/platform` の型追加・`apps/web` 実装・`apps/desktop` 実装の3点を**同一コミット内で揃える**。
@@ -130,17 +132,14 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 - Web版とデスクトップ版で同じロジックを別々に書かない。それが起きたら `packages/core` に上げる合図。
 - 移行作業中は「ファイル移動（`git mv`）のみのコミット」と「ロジック変更のコミット」を必ず分離する。
 
-### 上記「作業パターン」のパス読み替え
+### Phase 33 時点で Adapter 未接続の箇所
 
-移行後は本ファイルの「新しいノードアクションを追加する」「新しいパネルを追加する」手順のパスを次のように読み替える。
+- `settingsStore` の zustand `persist` は既定の localStorage のまま。StorageAdapter は非同期でハイドレーションが遅れ初回描画がちらつくため、Phase 34 で非同期ハイドレーション込みで対応する。
 
-| 移行前 | 移行後 |
-|---|---|
-| `src/types/index.ts` | `packages/core/src/types/index.ts` |
-| `src/stores/*.ts` | `packages/core/src/stores/*.ts` |
-| `src/components/**` | `packages/ui/src/components/**` |
-| `src/hooks/*.ts` | `packages/ui/src/hooks/*.ts` |
-| `src/services/claudeService.ts` | `packages/core/src/llm/aiService.ts` |
+### Web専用として `apps/web` に残っているもの
+
+`useGoogleAuth`（GIS認証）・`MapListPanel`／`FileOpenDashboard`（Drive一覧・起動画面）・`googleDriveService`・`storageService`・`shareUrl`（共有URL）・`encryption`（APIキーの保存先）。
+これらを `packages/ui` から使いたくなったら、直接 import せず `App` の props（`cloudAuth` / `mapListSlot` / `dashboardSlot` / `onGenerateShareUrl`）で渡す。
 
 ---
 
@@ -150,17 +149,17 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ドキュメント更新は任意ではなく開発作業の一部として扱う。
 
 ### 新しいノードアクションを追加する
-1. `src/types/index.ts` に必要な型を追加
-2. `src/stores/mapStore.ts` にアクションを追加（`past` への push を忘れずに）
-3. `src/components/canvas/ContextMenu.tsx` にメニュー項目を追加
-4. `src/hooks/useKeyboardShortcuts.ts` にショートカットを追加（任意）
+1. `packages/core/src/types/index.ts` に必要な型を追加
+2. `packages/core/src/stores/map/*.ts` の該当スライスにアクションを追加（`past` への push を忘れずに）
+3. `packages/ui/src/components/canvas/ContextMenu.tsx` にメニュー項目を追加
+4. `packages/ui/src/hooks/useKeyboardShortcuts.ts` にショートカットを追加（任意）
 5. **必ず** `docs/design.md` の「状態管理設計」「コンテキストメニュー設計」を更新
 6. **必ず** `docs/requirements.md` に対応する機能要件を追記・修正
 
 ### 新しいパネル（サイドパネル）を追加する
-1. `src/stores/uiStore.ts` に `isXxxOpen` と `setXxxOpen` を追加
-2. `src/components/panels/XxxPanel.tsx` を作成
-3. `src/App.tsx` にコンポーネントを追加
+1. `packages/core/src/stores/uiStore.ts` に `isXxxOpen` と `setXxxOpen` を追加
+2. `packages/ui/src/components/panels/XxxPanel.tsx` を作成
+3. `packages/ui/src/App.tsx` にコンポーネントを追加し、`packages/ui/src/index.ts` から export する
 4. **必ず** `docs/design.md` の「コンポーネント設計」を更新
 5. **必ず** `docs/requirements.md` に対応する機能要件を追記・修正
 

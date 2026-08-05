@@ -234,6 +234,10 @@ graph TD
 
 ## 3. Platform Adapter インタフェース定義
 
+> **Phase 33（2026-08-06）実施時に4点変更しています。** 実体は `packages/platform/src/types.ts` を参照し、
+> 変更理由は [README.md](README.md) §3.1-C を読んでください。本節の以下の記述は当初案です。
+
+
 ### 3.1 型定義本体（`packages/platform/src/types.ts`）
 
 ```typescript
@@ -676,6 +680,13 @@ export default {
 ---
 
 ## 5. 段階的移行手順
+
+> **Phase 33 で Step 0〜7・9 を実施済み（2026-08-06）。** 実際の順序・判断は
+> [../implementation-plan.md](../implementation-plan.md) の Phase 33 に記録しています。
+> 当初案からの主な差分は、①Step 5-2（mapStore 移動）と 5-3（uiStore 移動）を入れ替えたこと
+> （mapStore が uiStore に依存するため）、②パッケージ間に composite なプロジェクト参照を張らないこと
+> （ソース直接参照方式では成立しない）、③依存バージョンを移行前ロックファイルに固定したことの3点です。
+
 
 既存の `ideamap/` は現在動作しているWeb版であり、移行中も壊さないことを最優先とする。各ステップは**独立したコミット（可能ならPR）**とし、`git mv` でファイル移動の履歴を保つ。ロジック変更を伴うステップとファイル移動のみのステップを分離することで、問題発生時の原因切り分けを容易にする。
 

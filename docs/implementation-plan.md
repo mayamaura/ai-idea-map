@@ -1446,31 +1446,87 @@
 
 ---
 
-### Phase 33: モノレポ移行（約5日）
+### Phase 33: モノレポ移行（約5日）🔨 実装済み（実機確認待ち）
 
 **目標**: 既存 Web 版を壊さずに `packages/core` / `packages/ui` / `packages/platform` / `apps/web` へ分割し、デスクトップ版を追加できる土台を作る。
 
 > 参照: `docs/desktop/architecture.md` §2〜5（移行手順 Step 0〜7）。**各ステップの完了判定条件を満たすまで次に進まないこと。** 「ファイル移動のみ」と「ロジック変更」のコミットを必ず分離する。
 
 #### タスク
-- [ ] Step 0: `feature/monorepo-migration` ブランチ作成。移行前ベースライン（`npm run build` / `npm run lint` 通過）を記録
-- [ ] Step 1: ルートに `pnpm-workspace.yaml` / `package.json` / `tsconfig.base.json` / `eslint.config.js` を追加（既存 `ideamap/` はまだ動かさない）
-- [ ] Step 2: `git mv ideamap apps/web`。`package.json` の `name` を `@ideamap/web` に変更
-- [ ] Step 3: `packages/platform` 新設（Adapter インタフェース＋`setPlatform`/`getPlatform` レジストリのみ。未参照でよい）
-- [ ] Step 4: `apps/web/src/platform/*.web.ts` を既存サービスのラッパーとして作成（**未接続**）
-- [ ] Step 5-1: `types/index.ts` を `packages/core` へ移動
-- [ ] Step 5-2: `mapStore.ts` を無改修で `packages/core` へ移動
-- [ ] Step 5-3: `uiStore.ts` を移動し、`saveDriveFileId`/`loadDriveFileId` 直呼びを `getPlatform().storage` 経由に置換
-- [ ] Step 5-4: `settingsStore.ts` を移動し、`encryption.ts` 呼び出しを `getPlatform().secret` へ。Drive 同期は `apps/web` からのコールバック注入に変更
-- [ ] Step 6: `packages/ui` へコンポーネント・hooks を `common → canvas → panels → screens` の順に移動。`useAutoSave` を `FileAdapter` 経由に。`useGoogleAuth` と `FileOpenDashboard` の Google 連携部分は `apps/web` に残す
-- [ ] Step 6: Phase 32 で作った `src/services/llm/` を `packages/core/src/llm/` へ移動し、HTTP 呼び出しを `getPlatform().http` 経由に変更
-- [ ] Step 7: `apps/web/src/main.tsx` で `setPlatform(webPlatform)` を呼んでから `<App/>` をレンダーする構成に整理
-- [ ] Step 9: GitHub Actions のビルドパスを `ideamap/` → `apps/web/` に更新
-- [ ] `eslint-plugin-import` の `import/no-restricted-paths` で依存方向違反を検出できるようにする
-- [ ] `CLAUDE.md` にモノレポ構成のルールを追記（`docs/desktop/architecture.md` §6 の内容）
-- [ ] `docs/design.md` の「3. プロジェクト構成」をモノレポ構成に更新
+- [x] Step 0: `feature/monorepo-migration` ブランチ作成。移行前ベースライン（`npm run build` 通過・`npm run lint` は 14 errors / 3 warnings）を記録
+- [x] Step 1: ルートに `pnpm-workspace.yaml` / `package.json` / `tsconfig.base.json` / `tsconfig.json` / `eslint.config.js` を追加（既存 `ideamap/` はまだ動かさない）
+- [x] Step 2: `git mv ideamap apps/web`。`package.json` の `name` を `@ideamap/web` に変更。npm → pnpm へ移行し、依存は移行前ロックファイルの版に固定（後述）
+- [x] Step 3: `packages/platform` 新設（Adapter インタフェース＋`setPlatform`/`getPlatform` レジストリのみ。未参照）
+- [x] Step 4: `apps/web/src/platform/*.web.ts` を既存サービスのラッパーとして作成（**未接続**）
+- [x] Step 5-1: `types/index.ts` を `packages/core` へ移動
+- [x] Step 5-2a: `mapLayout.ts` / `groupGeometry.ts` / `mapFileCompat.ts` を `packages/core` へ移動
+- [x] Step 5-3: `uiStore.ts` を移動し、`saveDriveFileId`/`loadDriveFileId` 直呼びを `getPlatform().storage` 経由に置換
+- [x] Step 5-2b: `mapStore.ts` と `stores/map/*` を無改修で `packages/core` へ移動
+- [x] Step 5-4: `settingsStore.ts` を移動し、`encryption.ts` 呼び出しを `getPlatform().secret` へ。Drive 同期は `apps/web` からのコールバック注入に変更
+- [x] Step 6b: Phase 32 で作った `src/services/llm/` を `packages/core/src/llm/` へ移動し、HTTP 呼び出しを `getPlatform().http` 経由に変更（`claudeService.ts` → `aiService.ts`）
+- [x] Step 6a-1: `packages/ui` へコンポーネント・hooks を移動（Google 依存のないものをまとめて）。`useGoogleAuth` と `FileOpenDashboard` / `MapListPanel` は `apps/web` に残す
+- [x] Step 6a-2: `exportService` を分割（画像/JSON/Markdown → `packages/ui`、共有URL → `apps/web`）。`useAutoSave` を `FileAdapter` 経由に。クリップボードを `SystemAdapter` 経由に
+- [x] Step 7: `App` を `packages/ui` の共通シェルにし、Google 依存を props（`cloudAuth` / `mapListSlot` / `dashboardSlot` / `onGenerateShareUrl`）で受け取る形に整理。`apps/web/src/WebApp.tsx` を新設し、`main.tsx` で `setPlatform(webPlatform)` してからレンダーする
+- [x] Step 9: GitHub Actions を pnpm ワークスペース対応に更新（`apps/web/dist` を配信）
+- [x] `import/no-restricted-paths` ＋ `no-restricted-imports` ＋ `no-restricted-globals` で依存方向違反を検出できるようにする
+- [x] `CLAUDE.md` にモノレポ構成のルールを反映（「移行後に適用」の但し書きを削除）
+- [x] `docs/design.md` の「1. アーキテクチャ概要」「3. プロジェクト構成」をモノレポ構成に更新
 
 **完了条件**: `pnpm build` が全パッケージで通る。Web版の全機能（マップ作成・Undo/Redo・保存・Drive同期・AI提案・エクスポート・プレゼンモード）が移行前と同じ動作をする。GitHub Pages へのデプロイが成功する。依存方向違反が ESLint で検出される。
+
+#### 動作確認（移行前ビルドとの A/B スモークテスト・Playwright + preview ビルド・2026-08-06）
+
+移行前コミット（`5ec6ca1`）を git worktree に展開して `npm ci && npm run build` した「移行前ビルド」と、
+移行後ビルドに対して**同一の Playwright スクリプト17項目を並走**させ、全項目の結果が一致することを確認した。
+Anthropic API はルート傍受でモックしている。検証スクリプトは確認後に削除済み。
+
+- [x] 起動・ファイルダッシュボード表示・新規作成でキャンバスに入る
+- [x] 初期ノードの描画、テーマ切替（`<html>` の `dark` クラス）
+- [x] ノード選択 + Tab で子ノード追加 → Ctrl+Z で取り消し → Ctrl+Y でやり直し（エッジ本数で判定）
+- [x] ノード右クリックのコンテキストメニュー表示
+- [x] JSON エクスポート（ダウンロード内容が `MapFile` 形式・`version: '1.0'`）
+- [x] Markdown エクスポート（`# 見出し` と `- **タイトル**` のツリー生成）
+- [x] 共有URL生成（`map=` を含む URL が入力欄に入る）
+- [x] 設定パネルの表示
+- [x] APIキー入力 → マスターパスワード設定 → `ideamap-apikey-mp` に v2 形式で保存され**平文を含まない**
+- [x] リロード後にロック状態になる／誤ったパスワードを拒否する／正しいパスワードで解錠できる
+- [x] AI拡張が Anthropic API を呼び、送信ボディの `x-api-key` / `model` / `max_tokens` / `thinking: disabled` が一致し、提案がUIに反映される
+- [x] `currentFileId` がリロードをまたいで復元される
+- [x] 全項目で console error / pageerror がゼロ（移行前ビルドも同様）
+- [x] `pnpm build` 通過。CSS 出力 46.38 kB・`ai` チャンク 144.40 kB は移行前と一致
+- [x] `pnpm lint` は 16 problems（移行前 17 から `storageService` の空 catch 1件が減っただけで、新規指摘ゼロ）
+- [x] 意図的な違反ファイル3件で依存方向ルールが5件すべてエラー検出することを確認（core→ui、platform→core、ui→apps の相対 import、core での `localStorage`/`fetch` 直呼び）
+
+#### 実機確認が必要な項目（未実施）
+
+Playwright では確認できていないため、`pnpm dev` での手動確認が必要。
+
+- [ ] Google Drive へのサインイン → マップの保存・読み込み・一覧・削除
+- [ ] Drive 保存の 401 リトライ（サイレント再認証 → 再接続トースト）
+- [ ] 別デバイスとの衝突ダイアログ（「上書き保存」「最新版を読み込む」）
+- [ ] 設定のDrive同期（`saveSettingsToDrive` / `loadSettingsFromDrive`）
+- [ ] PNG / SVG の画像エクスポート
+- [ ] プレゼンテーションモード
+- [ ] GitHub Pages へのデプロイ成功（`main` へマージ後）
+
+#### 移行に伴う判断（設計ドキュメントからの差分）
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | 依存バージョン | ロックファイル破棄で依存が drift し `@xyflow/react` 12.11 の型変更でビルドが落ちたため、**全依存を移行前ロックファイルの版に固定**した。「移行前後で挙動が変わっていないこと」が判定条件のフェーズなので依存更新は混ぜない |
+| 2 | Step 5-2 と 5-3 の順序 | `mapStore` が `uiStore` に依存するため入れ替えた。逆順だと core の `mapStore` が `apps/web` の `uiStore` を import することになり依存方向に違反する |
+| 3 | project references | パッケージ間に composite なプロジェクト参照は張らない。ソース直接参照方式では参照先に `composite: true` と emit が要求されて成立しない（TS6306 / TS6310）ため、ルートの solution ファイルからのみ参照する |
+| 4 | `FileAdapter` のマップ内容の型 | `MapFile` ではなく `unknown`。`packages/platform` → `packages/core` の循環依存を避けるため（既存 `googleDriveService` も同じ扱い） |
+| 5 | `SecretAdapter` の拡張 | `getSecret`/`setSecret` に `passphrase` 引数と、旧形式移行用の `hasLegacySecret`/`getLegacySecret`/`clearLegacySecret` を追加。Web のマスターパスワード方式と Phase 27 以前のキー移行を維持するため |
+| 6 | `FileAdapter` の追加メソッド | `exportBlob`（PNG/SVG/Markdown の書き出し）・`saveLocalMirror`（ローカル控え）・`isRemoteReady` を追加。`saveFileAs` はマップ本体の保存専用のため |
+| 7 | `HttpAdapter.getFetch()` | `@anthropic-ai/sdk` の `fetch` 差し替え口に渡すために追加 |
+| 8 | `settingsStore` の `persist` | zustand 既定の localStorage のまま据え置き（Phase 34 で対応。理由はコード内 NOTE 参照） |
+| 9 | ESLint 設定の一本化 | `apps/web/eslint.config.js` を削除しルートに集約。ESLint 10 は lint 対象ファイル側から設定を探索するため、両方あると typescript-eslint がプロジェクトルートを判別できず全ファイル parse error になる |
+
+#### 積み残し
+
+- SVG エクスポートは `toSvg` が返すデータURL文字列をそのままファイル内容として書き出している（移行前からのバグ）。Phase 33 の判定条件が「移行前と同じ動作」のため本フェーズでは修正していない
+- `packages/ui` のコンポーネントに `showCloudAuth` などデスクトップ向けの分岐を入れたが、実際の動作確認は Phase 34 で行う
 
 ---
 

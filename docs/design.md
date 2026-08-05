@@ -9,24 +9,37 @@
 
 フロントエンドのみのSPAとして構成する。バックエンドサーバーは持たない。
 
+Phase 33 でモノレポへ移行し、プラットフォーム差分を Platform Adapter で吸収する構成になった。
+アプリ本体（`packages/core` / `packages/ui`）は「どこに保存するか」「誰が HTTP を送出するか」を知らない。
+
 ```
-ブラウザ
-├── React SPA (Vite + React 18 + TypeScript)
-│   ├── React Flow（マインドマップキャンバス）
-│   ├── Zustand（状態管理: mapStore / uiStore / settingsStore）
-│   └── Tailwind CSS（スタイリング）
-│
-├── 外部API呼び出し（ブラウザから直接）
-│   ├── Anthropic API（Claude）
-│   └── Google Drive API（GIS Token モデル）
-│
-└── ローカル永続化
-    └── localStorage（マップデータ・設定・暗号化APIキー）
+apps/web（Web版シェル）                    apps/desktop（Phase 34 で追加予定）
+  └ Adapter の Web 実装を setPlatform()      └ Adapter の Tauri 実装を setPlatform()
+        │                                          │
+        └──────────────┬───────────────────────────┘
+                       ▼
+   packages/ui（React コンポーネント・UI hooks）
+                       │
+                       ▼
+   packages/core（型・Zustand ストア・レイアウト計算・LLMProvider）
+                       │  getPlatform() で参照
+                       ▼
+   packages/platform（Adapter の型定義と registry のみ）
+
+Adapter が吸収する差:
+  StorageAdapter … 設定・最近使ったマップ（Web=localStorage）
+  FileAdapter   … マップの読み書き・書き出し（Web=Google Drive + <a download>）
+  SecretAdapter … APIキーの保管（Web=マスターパスワード + AES-GCM）
+  HttpAdapter   … HTTP の送出（Web=ブラウザの fetch。ここが Ollama の CORS 回避点）
+  SystemAdapter … クリップボード・外部URL・終了前確認・通知
 ```
 
-> **デスクトップアプリ版について（Phase 32〜）**
-> ローカルLLM（Ollama）対応のため、Tauri v2 によるデスクトップアプリ版を計画しています。あわせて Web版とコアを共通化するモノレポ構成（`packages/core` / `packages/ui` / `packages/platform` + `apps/web` / `apps/desktop`）へ移行します。
-> 本書は **移行完了までの間は現行の Web 版（`ideamap/` 単一プロジェクト）を記述**します。デスクトップ版の設計は [desktop/README.md](desktop/README.md) を起点とする `docs/desktop/` 配下を参照してください。第18章に要点を記載しています。
+Web版は引き続きバックエンドサーバーを持たない SPA で、Anthropic API と Google Drive API を
+ブラウザから直接叩き、localStorage に永続化する。
+
+> **デスクトップアプリ版について（Phase 34〜）**
+> ローカルLLM（Ollama）対応のため、Tauri v2 によるデスクトップアプリ版を計画しています。
+> 設計は [desktop/README.md](desktop/README.md) を起点とする `docs/desktop/` 配下を参照してください。第18章に要点を記載しています。
 
 ---
 
@@ -53,91 +66,128 @@
 
 ## 3. プロジェクト構成
 
+Phase 33 で pnpm workspaces のモノレポへ移行した。詳細な設計根拠は
+[desktop/architecture.md](desktop/architecture.md)、パッケージ間の裁定は
+[desktop/README.md](desktop/README.md) §3 を参照。
+
 ```
-ideamap/
-├── public/
-│   └── index.html
-├── src/
-│   ├── main.tsx                    # エントリーポイント
-│   ├── App.tsx                     # ルートコンポーネント
-│   ├── components/
-│   │   ├── canvas/
-│   │   │   ├── IdeaCanvas.tsx      # React Flowのメインキャンバス
-│   │   │   ├── IdeaNode.tsx        # カスタムノードコンポーネント
-│   │   │   └── ContextMenu.tsx     # 右クリックコンテキストメニュー
-│   │   ├── panels/
-│   │   │   ├── NodePanel.tsx       # ノード選択時のサイドパネル（簡易表示）
-│   │   │   ├── NodeDetailPanel.tsx # ノード詳細パネル（タイトル・本文・カテゴリ編集、デフォルトプレビューモード）
-│   │   │   ├── AISuggestionPanel.tsx # AI提案表示パネル（title+body分離表示、種別フィルタ・提案数スライダー付き）
-│   │   │   ├── SettingsPanel.tsx   # 設定パネル（カテゴリ管理含む）
-│   │   │   ├── MapListPanel.tsx    # マップ一覧パネル
-│   │   │   ├── ExportImportPanel.tsx # エクスポート/インポート/共有パネル（Phase 9）
-│   │   │   ├── MapAnalysisPanel.tsx  # AIマップ分析パネル（分析・接続提案・クラスタリング）（Phase 10）
-│   │   │   ├── AIChatPanel.tsx      # AIチャットパネル（継続会話・@参照・アクションボタン）（Phase 14）
-│   │   │   └── PresentationOrderPanel.tsx # 発表順序編集モーダル（↑↓ボタン・削除・発表開始）（Phase 18）
-│   │   ├── toolbar/
-│   │   │   ├── Toolbar.tsx         # ツールバー（PC用）。右端に ❓ ヘルプボタン（Phase 22 G）
-│   │   │   └── BottomNav.tsx       # ボトムナビ（スマホ用）。「ヘルプ」ボタン追加（Phase 22 G）
-│   │   └── common/
-│   │       ├── Header.tsx
-│   │       ├── Modal.tsx
-│   │       ├── Toast.tsx
-│   │       ├── ConfirmDialog.tsx
-│   │       ├── InputDialog.tsx         # 1行テキスト入力ダイアログ（window.prompt の代替）（Phase 30）
-│   │       ├── SearchBar.tsx           # 検索バー（Phase 8）
-│   │       ├── ApiKeyRequired.tsx      # APIキー未設定時の空状態（AI系3パネル共通）（Phase 29）
-│   │       └── LoadingSpinner.tsx
-│   ├── stores/
-│   │   ├── mapStore.ts             # マップ状態のストア本体（スライスを合成するだけ）
-│   │   ├── map/                    # mapStore のスライス（Phase 29 で分割）
-│   │   │   ├── types.ts            # IdeaNode / Snapshot / 各スライスの型・MapState
-│   │   │   ├── constants.ts        # ノード色・矢印マーカー・初期ノード・makeEdge
-│   │   │   ├── history.ts          # past / future / undo / redo・snapshot / pushPast
-│   │   │   ├── nodeSlice.ts        # ノード追加・編集・削除・整列・コピー＆ペースト
-│   │   │   ├── edgeSlice.ts        # エッジ作成・向き変更・ラベル・削除
-│   │   │   ├── groupSlice.ts       # グループ作成・所属変更・押し出し
-│   │   │   └── documentSlice.ts    # ロード・シリアライズ・リセット
-│   │   ├── settingsStore.ts        # 設定状態（APIキー・テーマ・自動保存）
-│   │   └── uiStore.ts              # UI状態（パネル開閉・コンテキストメニュー等）
-│   ├── services/
-│   │   ├── claudeService.ts        # AI機能5関数（generateSuggestions / analyzeMap / suggestConnections / suggestClusters / chatWithMap）。プロンプト構築のみを持ち、API呼び出しは LLMProvider へ委譲（Phase 32）
-│   │   ├── llm/                    # LLMプロバイダ抽象化（Phase 32。Phase 33 で packages/core/src/llm/ へ移動）
-│   │   │   ├── types.ts            # LLMProvider / LLMRequest / LLMError / ProviderCapabilities / ModelInfo
-│   │   │   ├── jsonUtils.ts        # sanitizeJsonString / safeParseJson / AIParseError（プロバイダ非依存）
-│   │   │   └── claudeProvider.ts   # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
-│   │   ├── googleDriveService.ts   # Google Drive API操作
-│   │   ├── storageService.ts       # localStorageのラッパー
-│   │   └── exportService.ts        # エクスポート/インポート/共有URLロジック（Phase 9）
-│   ├── hooks/
-│   │   ├── useAutoSave.ts          # 自動保存フック
-│   │   ├── useGoogleAuth.ts        # Googleログイン状態管理
-│   │   ├── useKeyboardShortcuts.ts # キーボードショートカット
-│   │   ├── useFocusTrap.ts         # モーダル内に Tab フォーカスを閉じ込める（Phase 30）
-│   │   └── useNodeFocus.ts         # フォーカス／発表／接続モードの dim 判定 Context（Phase 28）
-│   ├── types/
-│   │   └── index.ts                # 型定義
-│   └── utils/
-│       ├── mapLayout.ts            # ノード自動配置ロジック（dagre・円形配置）
-│       ├── groupGeometry.ts        # グループとノードの当たり判定・押し出し計算（Phase 29）
-│       ├── mapFileCompat.ts        # 旧バージョンのマップファイル互換処理（Phase 29）
-│       ├── encryption.ts           # APIキーの暗号化・復号（AES-GCM）
-│       └── markdown.ts             # Markdown→HTML変換ユーティリティ（Phase 18）
-├── .env.example
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── tailwind.config.js
+ai-idea-map/
+├── pnpm-workspace.yaml
+├── package.json                     # ワークスペースルート（dev / build / lint / typecheck）
+├── tsconfig.json                    # 各プロジェクトを束ねる solution ファイル
+├── tsconfig.base.json               # 共有 compilerOptions
+├── eslint.config.js                 # 共有設定 + 依存方向の強制ルール
+│
+├── packages/
+│   ├── platform/                    # Platform Adapter の「型」と registry のみ（他パッケージに依存しない）
+│   │   └── src/
+│   │       ├── types.ts             # StorageAdapter / FileAdapter / SecretAdapter / HttpAdapter / SystemAdapter
+│   │       ├── registry.ts          # setPlatform / getPlatform
+│   │       └── index.ts
+│   │
+│   ├── core/                        # 型・ストア・純粋ロジック・LLM 抽象化（UI を持たない）
+│   │   └── src/
+│   │       ├── types/index.ts       # 型定義
+│   │       ├── stores/
+│   │       │   ├── mapStore.ts      # マップ状態のストア本体（スライスを合成するだけ）
+│   │       │   ├── map/             # mapStore のスライス（Phase 29 で分割）
+│   │       │   │   ├── types.ts     # IdeaNode / Snapshot / 各スライスの型・MapState
+│   │       │   │   ├── constants.ts # ノード色・矢印マーカー・初期ノード・makeEdge
+│   │       │   │   ├── history.ts   # past / future / undo / redo・snapshot / pushPast
+│   │       │   │   ├── nodeSlice.ts # ノード追加・編集・削除・整列・コピー＆ペースト
+│   │       │   │   ├── edgeSlice.ts # エッジ作成・向き変更・ラベル・削除
+│   │       │   │   ├── groupSlice.ts   # グループ作成・所属変更・押し出し
+│   │       │   │   └── documentSlice.ts # ロード・シリアライズ・リセット
+│   │       │   ├── uiStore.ts       # UI状態。currentFileId の永続化は StorageAdapter 経由
+│   │       │   └── settingsStore.ts # 設定状態。APIキーは SecretAdapter、Drive 同期は注入
+│   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動）
+│   │       │   ├── types.ts         # LLMProvider / LLMRequest / LLMError / isAbortError ほか
+│   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / AIParseError
+│   │       │   ├── claudeProvider.ts # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
+│   │       │   └── aiService.ts     # AI機能5関数（旧 claudeService.ts）
+│   │       ├── layout/
+│   │       │   ├── mapLayout.ts     # ノード自動配置ロジック（dagre・円形配置）
+│   │       │   └── groupGeometry.ts # グループとノードの当たり判定・押し出し計算
+│   │       ├── crypto/passwordCrypto.ts # PBKDF2 + AES-GCM の純粋関数
+│   │       ├── utils/mapFileCompat.ts   # 旧バージョンのマップファイル互換処理
+│   │       └── index.ts
+│   │
+│   └── ui/                          # React コンポーネントと UI hooks
+│       ├── tailwind-preset.js       # デザイントークンの共有プリセット
+│       └── src/
+│           ├── App.tsx              # 共通シェル。プラットフォーム固有部分は props で受け取る
+│           ├── index.css
+│           ├── components/
+│           │   ├── canvas/          # IdeaCanvas / IdeaNode / GroupNode / FloatingEdge / ContextMenu
+│           │   ├── panels/          # NodePanel / NodeDetailPanel / AISuggestionPanel / SettingsPanel /
+│           │   │                    # ExportImportPanel / MapAnalysisPanel / AIChatPanel / PresentationOrderPanel
+│           │   ├── screens/         # PresentationMode
+│           │   ├── toolbar/         # Toolbar（PC用）/ BottomNav（スマホ用）
+│           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
+│           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired
+│           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
+│           │                        # useNodeFocus / useOnlineStatus
+│           ├── services/exportService.ts # 画像・JSON・Markdown の書き出しとインポート
+│           ├── utils/markdown.ts    # Markdown→HTML変換ユーティリティ
+│           └── index.ts
+│
+└── apps/
+    └── web/                         # Web版シェル（GitHub Pages 配信）
+        ├── index.html
+        ├── vite.config.ts           # base: '/ai-idea-map/'
+        ├── tailwind.config.js       # packages/ui のプリセットを読み込む
+        └── src/
+            ├── main.tsx             # setPlatform → setAppSettingsSync → currentFileId 復元 → render
+            ├── WebApp.tsx           # Google 依存を集約し <App> に props で渡すシェル
+            ├── platform/            # Adapter の Web 実装
+            │   ├── storage.web.ts   # localStorage
+            │   ├── file.web.ts      # Google Drive + ローカル控え + <a download>
+            │   ├── secret.web.ts    # マスターパスワード方式（encryption.ts）
+            │   ├── http.web.ts      # ブラウザの fetch
+            │   ├── system.web.ts    # クリップボード / 外部URL / beforeunload / トースト
+            │   └── index.ts
+            ├── components/
+            │   ├── panels/MapListPanel.tsx      # Drive のマップ一覧（Web専用）
+            │   └── screens/FileOpenDashboard.tsx # 起動時のファイル選択（Web専用）
+            ├── hooks/useGoogleAuth.ts   # GIS 認証（Web専用）
+            ├── services/
+            │   ├── googleDriveService.ts # Google Drive API操作
+            │   ├── storageService.ts     # localStorage のラッパー
+            │   └── shareUrl.ts           # 共有URLの生成・解析（Web専用）
+            ├── utils/encryption.ts       # APIキーの保存先（暗号化本体は core）
+            └── types/google.d.ts         # GIS の型宣言
 ```
+
+### 3.1 パッケージの責務と依存方向
+
+| パッケージ | 置くもの | 置いてはいけないもの |
+|---|---|---|
+| `packages/platform` | Adapter の型定義と `setPlatform`/`getPlatform` | Adapter の実装、他パッケージへの依存 |
+| `packages/core` | 型・ストア・レイアウト計算・暗号化・`LLMProvider` | `.tsx` のUI、`localStorage`/`fetch` の直接呼び出し |
+| `packages/ui` | React コンポーネント・UI hooks | Google Drive / GIS 認証など特定プラットフォーム依存 |
+| `apps/web` | Web版シェル、Adapter Web実装、Drive同期、GIS認証、共有URL | `packages/*` に置くべき汎用ロジックの重複実装 |
+
+依存方向は `apps/* → packages/ui → packages/core → packages/platform` の一方向のみ。
+ESLint の `import/no-restricted-paths`・`no-restricted-imports`・`no-restricted-globals` で機械的に検出する。
+
+`getPlatform()` はモジュールのトップレベルではなく必ず関数の内部で呼ぶ
+（`setPlatform()` より先に評価されるのを防ぐため）。
+
+### 3.2 Phase 33 時点の Adapter 未接続箇所
+
+| 箇所 | 現状 | 対応予定 |
+|---|---|---|
+| `settingsStore` の `persist` | zustand 既定の localStorage のまま | Phase 34。StorageAdapter は非同期でハイドレーションが遅れ、初回描画がテーマ既定値で走るため、実プラットフォームが2つになってから非同期ハイドレーション込みで対応する |
 
 ---
 
 ## 4. 状態管理設計
 
-### 4.1 mapStore（src/stores/mapStore.ts）
+### 4.1 mapStore（packages/core/src/stores/mapStore.ts）
 
 マップの実体データと操作履歴を管理する中心的なストア。
 
-**Phase 29 でスライス分割**: 実装は `src/stores/map/` 配下の5スライス（history / node / edge / group / document）に分かれ、`mapStore.ts` はそれらを合成するだけになった。スライスは同じ `set`/`get` で `MapState` 全体を触れるため、`deleteNodes` がエッジも消すようなスライスをまたぐ更新はそのまま書ける。利用側のインタフェース（`useMapStore` から取れるアクション）は分割前と同一。
+**Phase 29 でスライス分割**: 実装は `packages/core/src/stores/map/` 配下の5スライス（history / node / edge / group / document）に分かれ、`mapStore.ts` はそれらを合成するだけになった。スライスは同じ `set`/`get` で `MapState` 全体を触れるため、`deleteNodes` がエッジも消すようなスライスをまたぐ更新はそのまま書ける。利用側のインタフェース（`useMapStore` から取れるアクション）は分割前と同一。
 
 | スライス | 責務 |
 |---|---|
@@ -174,14 +224,14 @@ ideamap/
 - `undo`, `redo` — 履歴操作
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
 
-内部ヘルパー（Phase 29 で `src/utils/groupGeometry.ts` に集約）:
+内部ヘルパー（Phase 29 で `packages/core/src/layout/groupGeometry.ts` に集約）:
 - `computePushOut(pos, measured, groupNodes, fallbackSize?)` — フリーノードをグループ枠外へ最小移動距離で押し出す。mapStore のドラッグ処理と `mapLayout.applyGroupPushOut` の両方から使う（Phase 29 で重複実装を統合。整列時は 192×64、ドラッグ時は 160×60 をフォールバックサイズに使う差分は引数で吸収）
 - `findOverlappingGroup(pos, measured, groupNodes)` / `isOutsideParent(pos, measured, parentGroup)` / `clampInsideParent(...)` — グループ出入りダイアログの判定と位置補正
 - `getGroupSize(group)` — `style.width/height` が number のときだけ採用し、それ以外は 400×300 を返す
 - `syncGroupMeasured(nodes)` — グループノードの `style.width/height` を `measured` に同期。`setNodes` / `setNodesNoHistory` / `commitNodesWithHistory` で共通使用（Phase 21: `setNodes` から抽出）
 - `expandGroupIds(ids, nodes)` — 削除対象にグループが含まれるとき子ノードIDも加えた集合を返す。`deleteNodes` / `deleteSelected` / `deleteGroupWithChildren` で共通使用（Phase 29）
 
-### 4.2 uiStore（src/stores/uiStore.ts）
+### 4.2 uiStore（packages/core/src/stores/uiStore.ts）
 
 UIの表示状態と、現在開いているマップのメタ情報（タイトル・fileId）を管理する。原則副作用なしだが、例外として `setCurrentFileId` のみ fileId を localStorage（`ideamap-drive-fileid`）と同期する。
 
@@ -226,7 +276,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `renderAllNodes` | `boolean` | 画像エクスポート時のみ true。`onlyRenderVisibleElements` を一時無効化して全ノードをDOM描画させ、マップ全体エクスポートの欠落を防ぐ（Phase 24） |
 | `connectingFromNodeId` | `string \| null` | 接続モード中の接続元ノードID。null=接続モードでない。`setConnectingFromNodeId(id)` で更新（Phase 26） |
 
-### 4.3 settingsStore（src/stores/settingsStore.ts）
+### 4.3 settingsStore（packages/core/src/stores/settingsStore.ts）
 
 設定と永続化を担当。APIキーはマスターパスワード方式で暗号化して保存（Phase 27〜）。
 
@@ -260,18 +310,30 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 
 ## 5. コンポーネント設計
 
-### 5.1 App（src/App.tsx）
+### 5.1 App（packages/ui/src/App.tsx）
 
 `ReactFlowProvider` でアプリ全体をラップ。`AppInner` で以下のフックを最上位でマウント:
 - `useKeyboardShortcuts()` — グローバルキーイベント
-- `useAutoSave(accessToken, auth)` — マップ変更監視と自動保存。`auth: { silentReauth, signIn }` を受け取り、401 時のサイレント再認証・リトライを担う（Phase 19）
-- `useGoogleAuth()` — Google認証状態管理
+- `useAutoSave(options)` — マップ変更監視と自動保存。保存先は `FileAdapter`。
+  `options.onSaveError(err, attempt)` が `'retry'` を返すと `credentialKey` 更新時に再保存する（Phase 19 / Phase 33）
+
+Phase 33 以降、プラットフォーム固有の部分は props で受け取る（`AppProps`）:
+
+| props | 用途 | Web版が渡すもの |
+|---|---|---|
+| `cloudAuth` | クラウド認証の状態。未指定ならクラウド関連UIを描画しない | `useGoogleAuth()` の戻り値 |
+| `autoSave` | 自動保存の可否とエラー時の扱い | アクセストークンと 401 リトライ方針 |
+| `mapListSlot` | クラウドのマップ一覧パネル | `<MapListPanel>` |
+| `dashboardSlot` | 起動時のファイル選択画面 | `<FileOpenDashboard>` |
+| `onGenerateShareUrl` | 共有URL生成。未指定なら共有タブを出さない | `generateShareUrl` |
+
+終了前確認は `SystemAdapter.onBeforeExit`、ウェルカム表示フラグは `StorageAdapter` 経由。
 
 テーマ適用: `settingsStore.theme` に応じて `<html>` の `dark` クラスを切替。
 
 発表モード中（`isPresentationMode: true`）: ヘッダー・NodePanel・各種サイドパネルを非表示。`PresentationMode` コンポーネントが全面オーバーレイとして表示される。
 
-### 5.1.1 PresentationMode（src/components/screens/PresentationMode.tsx）
+### 5.1.1 PresentationMode（packages/ui/src/components/screens/PresentationMode.tsx）
 
 `createPortal(content, document.body)` で `<body>` 直下にレンダリング（z-index: 100）。`isPresentationMode: false` のとき `null` を返す。
 
@@ -282,7 +344,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 - 右スライドパネル（`w-[480px]`）: カレントノードのタイトル（text-4xl）＋本文（text-xl）＋ドットインジケーター
 - 下部ナビバー（`fixed bottom-0`）: 前へ/次へボタン、X/N カウンター、終了ボタン
 
-### 5.2 IdeaCanvas（src/components/canvas/IdeaCanvas.tsx）
+### 5.2 IdeaCanvas（packages/ui/src/components/canvas/IdeaCanvas.tsx）
 
 React Flow の主要設定:
 
@@ -303,7 +365,7 @@ React Flow の主要設定:
 
 フォーカス／発表／接続モードの dim は `FocusStateContext` 経由で各ノード・エッジに配る（§16.3）。`<ReactFlow>` に渡す `nodes` / `edges` はストアの配列そのままで、加工しない。
 
-### 5.3 IdeaNode（src/components/canvas/IdeaNode.tsx）
+### 5.3 IdeaNode（packages/ui/src/components/canvas/IdeaNode.tsx）
 
 カスタムノードコンポーネント。`React.memo` でラップ。
 
@@ -331,7 +393,7 @@ React Flow の主要設定:
 - ロングプレス 500ms → 選択 + AI提案パネルを開く
 - `onTouchMove` でロングプレスタイマーをキャンセル（誤発火防止）
 
-### 5.4 ContextMenu（src/components/canvas/ContextMenu.tsx）
+### 5.4 ContextMenu（packages/ui/src/components/canvas/ContextMenu.tsx）
 
 `createPortal(content, document.body)` で `<body>` 直下にレンダリング（z-index問題を回避）。
 
@@ -353,13 +415,13 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 **アクセシビリティ（Phase 30）**: メニュー本体に `role="menu"` とメニュー種別ごとの `aria-label`、各項目に `role="menuitem"`、Divider に `role="separator"` を付与。カテゴリ一覧は `role="group"` ＋ 各項目 `role="menuitemradio"` / `aria-checked`、「カテゴリを変更」項目には `aria-haspopup` / `aria-expanded` を付ける。
 
-### 5.5 WelcomeModal（src/components/common/WelcomeModal.tsx）
+### 5.5 WelcomeModal（packages/ui/src/components/common/WelcomeModal.tsx）
 
 初回起動時のみ表示。`localStorage.getItem('ideamap-welcomed')` がなければ表示し、閉じ時にセット。  
 3ステップ（アイデア追加 / 接続 / AI拡張）のスライドモーダル。`createPortal` で `<body>` に描画。  
 最終ステップ（3ステップ目）に「❓ ボタンまたは Ctrl+/ で操作ガイドを確認できます」のヒントを表示（Phase 22 G）。
 
-### 5.5.1 KeyboardShortcutsModal（src/components/common/KeyboardShortcutsModal.tsx）
+### 5.5.1 KeyboardShortcutsModal（packages/ui/src/components/common/KeyboardShortcutsModal.tsx）
 
 `uiStore.isShortcutsModalOpen` で制御。`createPortal` で `<body>` に描画。  
 `Ctrl+/` ショートカットのほか、Toolbar の ❓ ボタン（デスクトップ）・BottomNav の「ヘルプ」ボタン（モバイル）から開ける（Phase 22 G）。  
@@ -367,7 +429,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 **内容**: キーボードショートカット（基本操作・ノード編集・表示検索・検索バー内・ダイアログ）＋マウス・タッチ操作セクション。  
 「表示・検索」セクションには実装済みの `Ctrl+Shift+C`（AIチャット）と `Ctrl+P`（発表モード）も記載する（Phase 30 で追記）。
 
-### 5.6 ConfirmDialog（src/components/common/ConfirmDialog.tsx）
+### 5.6 ConfirmDialog（packages/ui/src/components/common/ConfirmDialog.tsx）
 
 取り消しにコストがある操作の前に表示する共通ダイアログ。呼び出し元は `uiStore.openConfirmDialog()`。
 
@@ -386,7 +448,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 - `confirmDialog` 表示中はキャンバス操作ショートカット全体を抑制
 - `role="dialog"` / `aria-modal` / `aria-labelledby` を付与し、`useFocusTrap` で確定ボタンへ初期フォーカス＋Tab をダイアログ内に閉じ込める（Phase 30）
 
-### 5.6.1 InputDialog（src/components/common/InputDialog.tsx）（Phase 30）
+### 5.6.1 InputDialog（packages/ui/src/components/common/InputDialog.tsx）（Phase 30）
 
 `window.prompt` の代替となる1行入力ダイアログ。`uiStore.openInputDialog()` で開く。エッジのラベル編集・グループ名の編集で使用（`window.prompt` はスマホでフォーカスやスタイルが破綻するため置換）。
 
@@ -402,14 +464,14 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 - `Enter` で確定、`Escape` / 背景クリック / キャンセルで中断。`useFocusTrap` で入力欄に初期フォーカス
 - `inputDialog` 表示中はキャンバス操作ショートカットを抑制（`useKeyboardShortcuts`）
 
-### 5.6.2 useFocusTrap（src/hooks/useFocusTrap.ts）（Phase 30）
+### 5.6.2 useFocusTrap（packages/ui/src/hooks/useFocusTrap.ts）（Phase 30）
 
 モーダル内に Tab フォーカスを閉じ込め、閉じたときに開く前の要素へフォーカスを戻す共通フック。`useFocusTrap(containerRef, active, initialFocusRef?)`。
 
 - 適用先: `ConfirmDialog`（初期フォーカス＝確定ボタン）/ `InputDialog`（＝入力欄）/ `NodeDetailPanel` / `KeyboardShortcutsModal` / `MasterPasswordModal`
 - モーダルが重なった場合（詳細パネルの上に確認ダイアログ等）は、DOM 上で最後にある `[role="dialog"]` を最前面とみなし、そこだけがトラップを効かせる
 
-### 5.7 ApiKeyRequired（src/components/common/ApiKeyRequired.tsx）（Phase 29）
+### 5.7 ApiKeyRequired（packages/ui/src/components/common/ApiKeyRequired.tsx）（Phase 29）
 
 APIキー未設定時に AI系パネル（AISuggestionPanel / MapAnalysisPanel / AIChatPanel）が表示する空状態。3パネルで重複していたマークアップを共通化したもの。
 
@@ -438,7 +500,7 @@ APIキー未設定時に AI系パネル（AISuggestionPanel / MapAnalysisPanel /
 
 ---
 
-## 6. 型定義（src/types/index.ts）
+## 6. 型定義（packages/core/src/types/index.ts）
 
 ```typescript
 interface Category {
@@ -615,7 +677,7 @@ Redo: future の先頭を復元 → 現在状態を past 末尾に追加 → fut
 
 ---
 
-## 9. AI連携設計（src/services/claudeService.ts + src/services/llm/）
+## 9. AI連携設計（packages/core/src/llm/）
 
 ### 9.0 LLMProvider 抽象化（Phase 32）
 
@@ -739,7 +801,7 @@ updateLastChatMessage: (content: string) => void
 
 ---
 
-## 10. APIキー暗号化設計（src/utils/encryption.ts）
+## 10. APIキー暗号化設計（apps/web/src/utils/encryption.ts）
 
 ### 10.1 新形式（Phase 27〜）: マスターパスワード方式
 
@@ -771,7 +833,7 @@ updateLastChatMessage: (content: string) => void
 - `ALLOWED_ATTR`: `class`
 - 呼び出し4箇所（IdeaNode / PresentationMode / NodeDetailPanel / NodePanel）は変更不要
 
-### 10.4 MasterPasswordModal（src/components/common/MasterPasswordModal.tsx）
+### 10.4 MasterPasswordModal（packages/ui/src/components/common/MasterPasswordModal.tsx）
 
 `createPortal(content, document.body)` で `<body>` 直下にレンダリング（z-index: 80）。
 - **解錠モード**（`apiKeyLock==='locked'`・未スキップ）: パスワード入力 → `unlockApiKey()`。誤りはインラインエラー。「スキップ」「パスワードを忘れた場合」ボタン
@@ -780,7 +842,7 @@ updateLastChatMessage: (content: string) => void
 
 ---
 
-## 11. ノード配置ロジック（src/utils/mapLayout.ts）
+## 11. ノード配置ロジック（packages/core/src/layout/mapLayout.ts）
 
 ### 11.1 AI提案ノードの円形配置（`calcSuggestionPositions`）
 
@@ -886,7 +948,7 @@ Google Drive/
 - fileId は `uiStore.currentFileId` を単一の真実源とし、`setCurrentFileId` 経由で localStorage（`ideamap-drive-fileid`）に同期する。ロード／新規作成／インポート／保存後／サインアウトはすべてこのアクションを通すため、新規作成時に前マップの fileId が残って別ファイルを上書き消失させる事故を構造的に防ぐ
 - 保存時は Drive ファイルの `appProperties: { mapId }` も更新する。`appProperties` は JSON 内容をダウンロードせずに照合できる軽量なメタデータとして衝突チェックに使用
 
-### 12.4 自動保存（src/hooks/useAutoSave.ts）
+### 12.4 自動保存（packages/ui/src/hooks/useAutoSave.ts）
 
 - `useMapStore.subscribe()`（ノード・エッジ変更）に加え、`useUIStore.subscribe()` で `mapTitle` 変更も監視（差分比較で mapTitle のみ拾い、パネル開閉等の他UI状態変更では保存しない）。両者は同一デバウンスタイマーを共有
 - デバウンス: 変更から **3000ms** 後に保存実行
@@ -933,7 +995,7 @@ remote.mapId ≠ currentMapId → 衝突検出
 
 ---
 
-## 13. キーボードショートカット設計（src/hooks/useKeyboardShortcuts.ts）
+## 13. キーボードショートカット設計（packages/ui/src/hooks/useKeyboardShortcuts.ts）
 
 | ショートカット | 動作 |
 |---|---|
@@ -1013,7 +1075,7 @@ Phase 24 の「全面化」後も `dark:` クラスが1つもないコンポー�
 3. `exportMapAsImage(...)` を実行
 4. `finally` ブロックで `setRenderAllNodes(false)` に戻す（成功・失敗どちらでも戻す）
 
-### 16.3 フォーカス表示の Context 配布（`src/hooks/useNodeFocus.ts`）（Phase 28）
+### 16.3 フォーカス表示の Context 配布（`packages/ui/src/hooks/useNodeFocus.ts`）（Phase 28）
 
 フォーカスモード（選択ノードと直接接続だけを明るく表示）・発表モード・接続モードの dim / 強調は、**ノード配列に `style` を差し込まない**。
 

@@ -26,11 +26,20 @@ AIと一緒に育てるアイデアマップ。ノードをつなぎながら思
 
 ## ローカル開発
 
+pnpm workspaces のモノレポです。コマンドはリポジトリのルートで実行します。
+
 ```bash
-cd ideamap
-npm install
-npm run dev
+pnpm install
+pnpm dev        # http://localhost:5173
+pnpm build      # 型検査 + プロダクションビルド
 ```
+
+| ディレクトリ | 中身 |
+|---|---|
+| `packages/platform` | Platform Adapter の型定義と registry |
+| `packages/core` | 型・Zustand ストア・レイアウト計算・LLM 抽象化 |
+| `packages/ui` | React コンポーネントと UI hooks |
+| `apps/web` | Web版シェル（Google Drive 連携・GIS 認証・共有URL） |
 
 ## 使い方
 
@@ -42,4 +51,6 @@ npm run dev
 ## ドキュメント
 
 - [要件定義書](docs/requirements.md)
+- [設計書](docs/design.md)
 - [実装計画書](docs/implementation-plan.md)
+- [デスクトップ版・モノレポ設計](docs/desktop/README.md)

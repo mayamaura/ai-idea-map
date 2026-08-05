@@ -3,7 +3,7 @@
 **このディレクトリは「Web版とデスクトップ版でコアを共通化しながら、ローカルLLM（Ollama）対応のデスクトップ版を作る」ための設計群です。**
 作業を始める AI エージェント・開発者は、まず本ファイルを読んでから個別ドキュメントに進んでください。
 
-最終更新: 2026-08-05
+最終更新: 2026-08-06
 
 ---
 
@@ -63,6 +63,21 @@
 
 `llm-abstraction.md` の記述から意図的に変えた点が4つあります（中断時の `stream()` の返し方、`LLMError.name`、`maxContextTokens`、`toFriendlyAIError` の文言の置き場所）。**同ファイル §7 冒頭の表が優先されます。** そちらに理由とあわせて記載しています。
 
+### 3.1-C モノレポ移行時の Adapter インタフェース変更（Phase 33 実施済み・2026-08-06）
+
+`architecture.md` §3.1 の定義から意図的に変えた点が4つあります。**本節が優先されます。**
+
+| 変更 | 内容 | 理由 |
+|---|---|---|
+| マップ内容の型 | `FileAdapter` の `openFile`/`saveFile`/`saveFileAs`/`saveLocalMirror` は `MapFile` ではなく `unknown` を受け渡す | `packages/platform` → `packages/core` の循環依存を避けるため。既存 `googleDriveService` も `saveMap(content: unknown)` で同じ扱いをしている |
+| `SecretAdapter` の引数とメソッド | `getSecret(key, passphrase?)` / `setSecret(key, value, passphrase?)` に加え、`hasLegacySecret` / `getLegacySecret` / `clearLegacySecret` を追加 | Web のマスターパスワード方式（PBKDF2+AES-GCM）と Phase 27 以前のキー自動移行を維持するため。Desktop は passphrase を無視し、legacy 3メソッドは no-op / false / null を返す |
+| `FileAdapter` の追加メソッド | `exportBlob(name, blob)` / `saveLocalMirror(content)` / `isRemoteReady` | `architecture.md` §1.2 は「`<a download>` は `saveFileAs` に置き換え可能」としていたが、`saveFileAs` はマップ本体の保存専用でシグネチャが合わないため、生成物（PNG/SVG/Markdown/JSON）の書き出しは別メソッドに分けた |
+| `HttpAdapter.getFetch()` | `fetch` 互換関数そのものを返すメソッドを追加 | `@anthropic-ai/sdk` のように fetch 実装の差し替え口を持つライブラリへ渡すため。`ClaudeProvider` はこれで `packages/core` から `fetch` を直接呼ばずに済む |
+
+あわせて、`settingsStore` の zustand `persist` は Phase 33 時点では **StorageAdapter に載せていません**。
+非同期ストレージにするとハイドレーションが1マイクロタスク遅れ、初回描画がテーマ既定値で走ってちらつくためです。
+Phase 33 の判定条件が「移行前と同じ動作」であることを優先し、Phase 34 で非同期ハイドレーション込みで対応します。
+
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 
 `platform-integration.md` §3.2 は「`import.meta.env` や `'__TAURI__' in window` 判定でエントリポイントを分ける」と書いていますが、これは `architecture.md` §3.5 で**明示的に却下された案C**です。
@@ -93,7 +108,7 @@
 ```mermaid
 graph LR
     P31["Phase 31<br/>既存フェーズの動作確認<br/>（前提）"] --> P32["Phase 32<br/>LLM抽象化<br/>（Web版のまま）"]
-    P32 --> P33["Phase 33<br/>モノレポ移行"]
+    P32 --> P33["Phase 33<br/>モノレポ移行<br/>（実装済み）"]
     P33 --> P34["Phase 34<br/>Tauri骨格<br/>ローカルファイル保存"]
     P34 --> P35["Phase 35<br/>Ollama統合<br/>★主目的達成"]
     P35 --> P36["Phase 36<br/>ビルド・配布・自動更新"]
@@ -104,7 +119,7 @@ graph LR
 | Phase | 内容 | 目安 | 主参照 | 完了時に得られるもの |
 |---|---|---|---|---|
 | 32 ✅ | LLMプロバイダ抽象化（Claude のみ、既存構成のまま） | 2日 | llm-abstraction §2〜3, §7 Step1-2 | Web版の挙動は不変。AbortSignal の実装漏れ解消とエラー分類の統一という副産物 |
-| 33 | モノレポ移行（`packages/*` + `apps/web`） | 5日 | architecture §4〜5 Step0-7 | Web版が従来通り動き、コアが共通パッケージに分離された状態 |
+| 33 🔨 | モノレポ移行（`packages/*` + `apps/web`） | 5日 | architecture §4〜5 Step0-7 | Web版が従来通り動き、コアが共通パッケージに分離された状態（実装済み・Drive 連携とデプロイの実機確認待ち） |
 | 34 | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる |
 | 35 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成** |
 | 36 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | 他人に配れるインストーラと自動更新 |

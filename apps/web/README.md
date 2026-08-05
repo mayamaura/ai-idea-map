@@ -1,17 +1,23 @@
-# IdeaMap — ideamap app
+# @ideamap/web — Web版シェル
 
-React + TypeScript + Vite で構築されたフロントエンドアプリです。
-プロジェクト全体の情報はリポジトリルートの [README.md](../README.md) を参照してください。
+`packages/ui` と `packages/core` を土台にした Web 版のシェルです。
+Google Drive 同期・GIS 認証・共有URL という Web でしか成立しない機能をここに閉じ込めています。
+プロジェクト全体の情報はリポジトリルートの [README.md](../../README.md) を参照してください。
 
-## 開発サーバー起動
+## 開発
+
+コマンドはリポジトリのルートで実行してください（pnpm workspaces）。
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev      # このアプリの開発サーバーが起動する
+pnpm build
 ```
 
-## ビルド
+## 環境変数
 
-```bash
-npm run build
+`.env` に以下を設定します。
+
+```
+VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ```
