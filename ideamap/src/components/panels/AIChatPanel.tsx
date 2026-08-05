@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { chatWithMap, toFriendlyAIError } from '../../services/claudeService'
+import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import type { ChatMessage, ChatAction, MapContext } from '../../types'
 import type { Node } from '@xyflow/react'
 import type { IdeaNodeData } from '../../types'
@@ -322,26 +323,13 @@ export function AIChatPanel() {
         </div>
       </div>
 
-      {/* APIキー未設定時の空状態 */}
       {!apiKey && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-4">
-          <span className="text-4xl">🔑</span>
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            Claude APIキーが必要です
-          </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            AI機能を使うには Anthropic の APIキーを設定してください
-          </p>
-          <button
-            onClick={() => {
-              setChatPanelOpen(false)
-              setSettingsOpen(true)
-            }}
-            className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            設定を開く
-          </button>
-        </div>
+        <ApiKeyRequired
+          onOpenSettings={() => {
+            setChatPanelOpen(false)
+            setSettingsOpen(true)
+          }}
+        />
       )}
 
       {/* APIキー設定済み時の通常UI */}

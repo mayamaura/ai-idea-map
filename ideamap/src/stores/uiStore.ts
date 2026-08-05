@@ -63,37 +63,37 @@ interface UIState {
   toasts: Toast[]
   contextMenu: ContextMenuState | null
   confirmDialog: ConfirmDialogState | null
-  // Phase 8: 検索 & フィルター
+  // 検索 & カテゴリフィルター
   isSearchOpen: boolean
   searchQuery: string
   activeCategoryFilters: string[]
   recentNodeIds: string[]
-  // Phase 9: エクスポート & インポート
+  // エクスポート & インポート
   isExportPanelOpen: boolean
-  // Phase 10: AI高度化
+  // AIマップ分析（全体分析・つながり提案・クラスタ提案）
   isAnalysisPanelOpen: boolean
   isAnalysisLoading: boolean
   mapAnalysis: MapAnalysis | null
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
-  // Phase 14: AIチャット
+  // AIチャット
   isChatPanelOpen: boolean
   chatMessages: ChatMessage[]
   isChatLoading: boolean
-  // Phase 15: プレゼンテーションモード
+  // プレゼンテーションモード
   isPresentationMode: boolean
   isPresentationOrderOpen: boolean
   presentationNodeIds: string[]
   presentationCurrentIndex: number
-  // Phase 26: スマホ接続モード（ノード選択→「接続」→相手タップでエッジ作成）
+  /** スマホの接続モード（ノード選択→「接続」→相手タップでエッジ作成）の接続元ノード */
   connectingFromNodeId: string | null
-  // Phase 12: グループ操作
+  /** ドラッグ中のノードが重なっているグループ（ハイライト表示用） */
   dragOverGroupId: string | null
   setDragOverGroupId: (id: string | null) => void
-  // Phase 11: デバイス間連携
+  // ファイルダッシュボード & ショートカット一覧
   isFileDashboardOpen: boolean
   isShortcutsModalOpen: boolean
-  // Phase 24: 画像エクスポート時のみ true にして onlyRenderVisibleElements を一時無効化し、画面外ノードをDOMに描画させる
+  /** 画像エクスポート中のみ true。onlyRenderVisibleElements を一時無効化し画面外ノードもDOMに描画させる */
   renderAllNodes: boolean
   setSelectedNodeId: (id: string | null) => void
   setEditingNodeId: (id: string | null) => void
@@ -116,24 +116,24 @@ interface UIState {
   closeContextMenu: () => void
   openConfirmDialog: (dialog: ConfirmDialogState) => void
   closeConfirmDialog: () => void
-  // Phase 8: 検索 & フィルター
+  // 検索 & カテゴリフィルター
   setSearchOpen: (open: boolean) => void
   setSearchQuery: (query: string) => void
   toggleCategoryFilter: (categoryId: string) => void
   clearCategoryFilters: () => void
   trackRecentNode: (nodeId: string) => void
-  // Phase 9: エクスポート & インポート
+  // エクスポート & インポート
   setExportPanelOpen: (open: boolean) => void
-  // Phase 10: AI高度化
+  // AIマップ分析
   setAnalysisPanelOpen: (open: boolean) => void
-  // Phase 14: AIチャット
+  // AIチャット
   setChatPanelOpen: (open: boolean) => void
   addChatMessage: (message: ChatMessage) => void
   setChatLoading: (loading: boolean) => void
   clearChatHistory: () => void
   /** chatMessages 末尾が assistant メッセージの場合、その content を置換する */
   updateLastChatMessage: (content: string) => void
-  // Phase 15: プレゼンテーションモード
+  // プレゼンテーションモード
   startPresentation: () => void
   exitPresentation: () => void
   goToNextPresentation: () => void
@@ -144,11 +144,10 @@ interface UIState {
   clearPresentationNodes: () => void
   setPresentationNodeIds: (ids: string[]) => void
   setPresentationOrderOpen: (open: boolean) => void
-  // Phase 11: デバイス間連携
+  // ファイルダッシュボード & ショートカット一覧
   setFileDashboardOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
   setRenderAllNodes: (v: boolean) => void
-  // Phase 26
   setConnectingFromNodeId: (id: string | null) => void
   setAnalysisLoading: (loading: boolean) => void
   setMapAnalysis: (analysis: MapAnalysis | null) => void

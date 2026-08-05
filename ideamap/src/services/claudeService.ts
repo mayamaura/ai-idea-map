@@ -1,6 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '../types'
 
+/** ブラウザのみで動作するSPAのため dangerouslyAllowBrowser が必須。生成箇所を1つに集約する */
+function createClient(apiKey: string): Anthropic {
+  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+}
+
+/**
+ * Claude Sonnet 5 は thinking を省略すると adaptive thinking が既定で有効になる
+ * （Sonnet 4.6 までは無効が既定）。本アプリの呼び出しは短いJSON／チャット応答が中心で、
+ * max_tokens の枠を思考トークンに取られると出力が途中で切れるため明示的に無効化する。
+ */
+const THINKING_DISABLED = { type: 'disabled' } as const
+
 // AIが出力するJSONの文字列値内に含まれる未エスケープ制御文字を修正する
 function sanitizeJsonString(raw: string): string {
   let result = ''
@@ -89,7 +101,7 @@ interface SuggestionRequest {
 }
 
 export async function generateSuggestions(req: SuggestionRequest, signal?: AbortSignal): Promise<AISuggestion[]> {
-  const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
+  const client = createClient(req.apiKey)
 
   const bodySection = req.selectedNodeBody
     ? `\n【選択ノードの詳細メモ】\n${req.selectedNodeBody}`
@@ -156,6 +168,7 @@ title は短く端的に。詳細・補足・具体例は body に記述して�
   const message = await client.messages.create({
     model: req.model,
     max_tokens: 2048,
+    thinking: THINKING_DISABLED,
     messages: [{ role: 'user', content: prompt }],
   }, { signal })
 
@@ -188,7 +201,7 @@ interface AnalyzeMapRequest {
 }
 
 export async function analyzeMap(req: AnalyzeMapRequest): Promise<MapAnalysis> {
-  const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
+  const client = createClient(req.apiKey)
 
   const nodeList = req.nodes
     .map((n) => {
@@ -229,6 +242,7 @@ ${edgeList || '（接続なし）'}
   const message = await client.messages.create({
     model: req.model,
     max_tokens: 2048,
+    thinking: THINKING_DISABLED,
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -250,7 +264,7 @@ interface SuggestConnectionsRequest {
 }
 
 export async function suggestConnections(req: SuggestConnectionsRequest): Promise<ConnectionSuggestion[]> {
-  const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
+  const client = createClient(req.apiKey)
 
   if (req.nodes.length < 2) return []
 
@@ -284,6 +298,7 @@ ${req.existingEdges.map((e) => `${e.source} → ${e.target}`).join('\n') || '（
   const message = await client.messages.create({
     model: req.model,
     max_tokens: 2048,
+    thinking: THINKING_DISABLED,
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -313,7 +328,7 @@ interface SuggestClustersRequest {
 }
 
 export async function suggestClusters(req: SuggestClustersRequest): Promise<ClusterSuggestion[]> {
-  const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
+  const client = createClient(req.apiKey)
 
   if (req.nodes.length < 3) return []
 
@@ -347,6 +362,7 @@ JSON形式のみで回答してください（説明文不要）:
   const message = await client.messages.create({
     model: req.model,
     max_tokens: 4096,
+    thinking: THINKING_DISABLED,
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -370,7 +386,7 @@ export async function chatWithMap(
   onText?: (partialText: string) => void,
   signal?: AbortSignal,
 ): Promise<{ content: string; actions: ChatAction[] }> {
-  const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
+  const client = createClient(req.apiKey)
 
   const prioritizedNodeIds = new Set(req.mentionedNodeIds ?? [])
   const orderedNodes = [
@@ -429,6 +445,7 @@ ${edgeList}${mentionedBlock}
       {
         model: req.model,
         max_tokens: 2048,
+        thinking: THINKING_DISABLED,
         system: systemContext,
         messages: apiMessages,
       },

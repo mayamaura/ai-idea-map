@@ -84,9 +84,18 @@ ideamap/
 │   │       ├── Toast.tsx
 │   │       ├── ConfirmDialog.tsx
 │   │       ├── SearchBar.tsx           # 検索バー（Phase 8）
+│   │       ├── ApiKeyRequired.tsx      # APIキー未設定時の空状態（AI系3パネル共通）（Phase 29）
 │   │       └── LoadingSpinner.tsx
 │   ├── stores/
-│   │   ├── mapStore.ts             # マップ状態（ノード・エッジ・Undo/Redo）
+│   │   ├── mapStore.ts             # マップ状態のストア本体（スライスを合成するだけ）
+│   │   ├── map/                    # mapStore のスライス（Phase 29 で分割）
+│   │   │   ├── types.ts            # IdeaNode / Snapshot / 各スライスの型・MapState
+│   │   │   ├── constants.ts        # ノード色・矢印マーカー・初期ノード・makeEdge
+│   │   │   ├── history.ts          # past / future / undo / redo・snapshot / pushPast
+│   │   │   ├── nodeSlice.ts        # ノード追加・編集・削除・整列・コピー＆ペースト
+│   │   │   ├── edgeSlice.ts        # エッジ作成・向き変更・ラベル・削除
+│   │   │   ├── groupSlice.ts       # グループ作成・所属変更・押し出し
+│   │   │   └── documentSlice.ts    # ロード・シリアライズ・リセット
 │   │   ├── settingsStore.ts        # 設定状態（APIキー・テーマ・自動保存）
 │   │   └── uiStore.ts              # UI状態（パネル開閉・コンテキストメニュー等）
 │   ├── services/
@@ -103,6 +112,8 @@ ideamap/
 │   │   └── index.ts                # 型定義
 │   └── utils/
 │       ├── mapLayout.ts            # ノード自動配置ロジック（dagre・円形配置）
+│       ├── groupGeometry.ts        # グループとノードの当たり判定・押し出し計算（Phase 29）
+│       ├── mapFileCompat.ts        # 旧バージョンのマップファイル互換処理（Phase 29）
 │       ├── encryption.ts           # APIキーの暗号化・復号（AES-GCM）
 │       └── markdown.ts             # Markdown→HTML変換ユーティリティ（Phase 18）
 ├── .env.example
@@ -119,6 +130,17 @@ ideamap/
 ### 4.1 mapStore（src/stores/mapStore.ts）
 
 マップの実体データと操作履歴を管理する中心的なストア。
+
+**Phase 29 でスライス分割**: 実装は `src/stores/map/` 配下の5スライス（history / node / edge / group / document）に分かれ、`mapStore.ts` はそれらを合成するだけになった。スライスは同じ `set`/`get` で `MapState` 全体を触れるため、`deleteNodes` がエッジも消すようなスライスをまたぐ更新はそのまま書ける。利用側のインタフェース（`useMapStore` から取れるアクション）は分割前と同一。
+
+| スライス | 責務 |
+|---|---|
+| `history.ts` | `past` / `future` / `undo` / `redo`、履歴ヘルパー `snapshot` / `pushPast` |
+| `nodeSlice.ts` | ノードの追加・更新・削除・整列・コピー＆ペースト、`onNodesChange` |
+| `edgeSlice.ts` | エッジの作成・向き変更・ラベル編集・削除、`onEdgesChange` / `onConnect` |
+| `groupSlice.ts` | グループ作成・解除・所属変更・枠外への押し出し |
+| `documentSlice.ts` | `loadFromSerialized` / `getSerialized*` / `reset` / `pendingFitView` |
+
 
 | 状態 | 型 | 説明 |
 |------|-----|------|
@@ -146,8 +168,12 @@ ideamap/
 - `undo`, `redo` — 履歴操作
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
 
-内部ヘルパー（store外関数）:
+内部ヘルパー（Phase 29 で `src/utils/groupGeometry.ts` に集約）:
+- `computePushOut(pos, measured, groupNodes, fallbackSize?)` — フリーノードをグループ枠外へ最小移動距離で押し出す。mapStore のドラッグ処理と `mapLayout.applyGroupPushOut` の両方から使う（Phase 29 で重複実装を統合。整列時は 192×64、ドラッグ時は 160×60 をフォールバックサイズに使う差分は引数で吸収）
+- `findOverlappingGroup(pos, measured, groupNodes)` / `isOutsideParent(pos, measured, parentGroup)` / `clampInsideParent(...)` — グループ出入りダイアログの判定と位置補正
+- `getGroupSize(group)` — `style.width/height` が number のときだけ採用し、それ以外は 400×300 を返す
 - `syncGroupMeasured(nodes)` — グループノードの `style.width/height` を `measured` に同期。`setNodes` / `setNodesNoHistory` / `commitNodesWithHistory` で共通使用（Phase 21: `setNodes` から抽出）
+- `expandGroupIds(ids, nodes)` — 削除対象にグループが含まれるとき子ノードIDも加えた集合を返す。`deleteNodes` / `deleteSelected` / `deleteGroupWithChildren` で共通使用（Phase 29）
 
 ### 4.2 uiStore（src/stores/uiStore.ts）
 
@@ -200,7 +226,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | 状態 | 型 | 説明 |
 |------|-----|------|
 | `apiKey` | `string` | Claude APIキー（メモリ上・永続化しない） |
-| `model` | `AIModel` | `claude-sonnet-4-6 \| claude-haiku-4-5-20251001` |
+| `model` | `AIModel` | `claude-sonnet-5 \| claude-haiku-4-5-20251001` |
 | `suggestionCount` | `number` | AI提案件数（3〜7） |
 | `autoSave` | `boolean` | 自動保存のオン/オフ |
 | `theme` | `Theme` | `light \| dark` |
@@ -212,6 +238,10 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `apiKeyLock` | `'none' \| 'locked' \| 'unlocked'` | APIキーのロック状態（`none`=未保存、`locked`=要復号、`unlocked`=メモリ展開済み・永続化しない） |
 | `needsMasterPasswordSetup` | `boolean` | 移行後またはキー入力後にパスワード設定を促すセッションフラグ（永続化しない） |
 | `masterPasswordPromptDismissed` | `boolean` | 「スキップ」したセッションフラグ（永続化しない） |
+
+**永続化（`persist` ミドルウェア）:**
+- `partialize` で `apiKey` / `syncPassword` / ロック状態を除いた項目のみ localStorage に保存
+- `version: 1` + `migrate`（Phase 29）: 保存済みの `aiModel` を `normalizeAiModel` で現行IDへ読み替える。廃止した `claude-sonnet-4-6` や未知の値は既定モデル（`claude-sonnet-5`）へ倒す。Drive から設定を読み込む `loadSettingsFromDrive` も同じ関数を通す
 
 **APIキー管理アクション（Phase 27）:**
 - `initApiKey()` — 起動時に呼ぶ。新形式キーあり→`locked`、旧形式（ハードコード鍵）あり→自動移行・`unlocked`・`needsMasterPasswordSetup=true`、なし→`none`
@@ -331,6 +361,17 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 - `Enter` → 確認、`Escape` → キャンセル（ショートカット有効）
 - `confirmDialog` 表示中はキャンバス操作ショートカット全体を抑制
 
+### 5.7 ApiKeyRequired（src/components/common/ApiKeyRequired.tsx）（Phase 29）
+
+APIキー未設定時に AI系パネル（AISuggestionPanel / MapAnalysisPanel / AIChatPanel）が表示する空状態。3パネルで重複していたマークアップを共通化したもの。
+
+| Props | 型 | 説明 |
+|---|---|---|
+| `onOpenSettings` | `() => void` | 「設定を開く」押下時の処理。呼び出し元パネルを閉じて設定パネルを開く |
+| `className` | `string` | 配置差分の吸収用。既定は `'flex-1 p-6'`、AISuggestionPanel のみ `'px-5 py-10'` |
+
+ボタン配色は `primary-600` に統一（旧 AIChatPanel の `blue-500` から変更）。
+
 ---
 
 ## 6. 型定義（src/types/index.ts）
@@ -388,7 +429,7 @@ interface AISuggestion {
 }
 
 type Theme = 'light' | 'dark'
-type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
+type AIModel = 'claude-sonnet-5' | 'claude-haiku-4-5-20251001'
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
 type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
@@ -515,6 +556,17 @@ Redo: future の先頭を復元 → 現在状態を past 末尾に追加 → fut
 ### 9.1 ブラウザからの直接呼び出し
 
 `dangerouslyAllowBrowser: true` で Anthropic SDK をブラウザから直接使用。APIキーはユーザー管理（サーバー経由なし）。
+
+クライアント生成は `createClient(apiKey)` に集約する（Phase 29。以前は5関数それぞれで `new Anthropic()` していた）。
+
+**`thinking: { type: 'disabled' }` を全リクエストに付ける理由（Phase 29）**: Claude Sonnet 5 は `thinking` を省略すると adaptive thinking が既定で有効になる（Sonnet 4.6 までは無効が既定）。本アプリの呼び出しは `max_tokens` 2048〜4096 の短いJSON／チャット応答が中心で、枠を思考トークンに取られると出力が途中で切れてパースに失敗する。品質より応答の確実性と体感速度を優先し、明示的に無効化している。
+
+### 9.1.1 対応モデル
+
+| モデルID | 表示名 | 位置づけ |
+|---|---|---|
+| `claude-sonnet-5` | Claude Sonnet 5（高品質） | 既定。Phase 29 で `claude-sonnet-4-6` から更新 |
+| `claude-haiku-4-5-20251001` | Claude Haiku 4.5（高速・低コスト） | コスト重視時の選択肢 |
 
 ### 9.2 プロンプト設計
 

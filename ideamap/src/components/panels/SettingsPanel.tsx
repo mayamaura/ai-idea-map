@@ -489,7 +489,7 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
                   onChange={(e) => setAiModel(e.target.value as AIModel)}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-primary-500"
                 >
-                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6（高品質）</option>
+                  <option value="claude-sonnet-5">Claude Sonnet 5（高品質）</option>
                   <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5（高速・低コスト）</option>
                 </select>
               </div>

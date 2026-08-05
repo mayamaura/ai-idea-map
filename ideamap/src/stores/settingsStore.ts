@@ -15,6 +15,17 @@ import {
 } from '../utils/encryption'
 import { saveAppSettings, loadAppSettings } from '../services/googleDriveService'
 
+export const DEFAULT_AI_MODEL: AIModel = 'claude-sonnet-5'
+
+/**
+ * 保存済み設定のモデルIDを現行IDへ読み替える。
+ * localStorage（旧 'claude-sonnet-4-6'）と Drive 上の設定ファイルの両方が対象で、
+ * 未知の値も既定モデルへ倒して不正なIDがAPIに渡るのを防ぐ。
+ */
+function normalizeAiModel(model: unknown): AIModel {
+  return model === 'claude-haiku-4-5-20251001' ? model : DEFAULT_AI_MODEL
+}
+
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-main', name: 'メインアイデア', color: '#e0e7ff', icon: '💡', description: 'マップの核心' },
   { id: 'cat-question', name: '問い・疑問', color: '#fef3c7', icon: '❓', description: '未解決の問い' },
@@ -70,11 +81,25 @@ interface SettingsState {
   loadSettingsFromDrive: (token: string) => Promise<void>
 }
 
+/** localStorage に永続化する項目（APIキー・パスワード・一時状態は含めない） */
+type PersistedSettings = Pick<
+  SettingsState,
+  | 'aiModel'
+  | 'suggestionCount'
+  | 'autoSave'
+  | 'theme'
+  | 'language'
+  | 'nodeShape'
+  | 'categories'
+  | 'snapToGrid'
+  | 'edgeStyle'
+>
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       apiKey: '',
-      aiModel: 'claude-sonnet-4-6',
+      aiModel: DEFAULT_AI_MODEL,
       suggestionCount: 4,
       autoSave: true,
       theme: 'light',
@@ -203,12 +228,19 @@ export const useSettingsStore = create<SettingsState>()(
         if (!settings) throw new Error('Driveに設定ファイルが見つかりません')
         const apiKey = await decryptWithPassword(settings.encryptedApiKey, syncPassword, settings.salt)
         get().setApiKey(apiKey)
-        if (settings.model) set({ aiModel: settings.model as AIModel })
+        if (settings.model) set({ aiModel: normalizeAiModel(settings.model) })
       },
     }),
     {
       name: 'ideamap-settings',
-      partialize: (state) => ({
+      // v0（バージョン未指定）の保存データには廃止済みモデルIDが残るため読み替える
+      version: 1,
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Partial<PersistedSettings>
+        // 欠けたキーは zustand が既定値とマージするため PersistedSettings として扱ってよい
+        return { ...state, aiModel: normalizeAiModel(state.aiModel) } as PersistedSettings
+      },
+      partialize: (state): PersistedSettings => ({
         aiModel: state.aiModel,
         suggestionCount: state.suggestionCount,
         autoSave: state.autoSave,

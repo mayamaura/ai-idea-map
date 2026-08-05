@@ -108,7 +108,7 @@ export interface JsonSchema {
 
 ```typescript
 export interface ModelInfo {
-  /** Claude: 'claude-sonnet-4-6' など固定ID / Ollama: 'gemma3:12b' など /api/tags の name */
+  /** Claude: 'claude-sonnet-5' など固定ID / Ollama: 'gemma3:12b' など /api/tags の name */
   id: string
   /** UI表示用ラベル */
   label: string
@@ -220,7 +220,7 @@ import { LLMError } from './types'
 import { safeParseJson } from './jsonUtils'
 
 const CLAUDE_MODELS: ModelInfo[] = [
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6（高品質）' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5（高品質）' },
   { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5（高速・低コスト）' },
 ]
 
@@ -661,7 +661,7 @@ export type LLMProviderId = 'claude' | 'ollama'
 /** UIやプロンプト構築側では常に「今アクティブなプロバイダ + モデルID」の組で扱う */
 export interface AIModelSelection {
   provider: LLMProviderId
-  /** Claude: 'claude-sonnet-4-6' 等の固定ID。Ollama: 'gemma3:12b' など /api/tags の name */
+  /** Claude: 'claude-sonnet-5' 等の固定ID。Ollama: 'gemma3:12b' など /api/tags の name */
   model: string
 }
 ```
@@ -692,7 +692,7 @@ interface SuggestionRequest {
 interface SettingsState {
   apiKey: string                 // Claude APIキー（既存のまま）
   llmProvider: LLMProviderId     // 新規: 'claude' | 'ollama'（デフォルト 'claude'）
-  claudeModel: string            // 旧 aiModel を改名。デフォルト 'claude-sonnet-4-6'
+  claudeModel: string            // 旧 aiModel を改名。デフォルト 'claude-sonnet-5'
   ollamaModel: string            // 新規。デフォルト '' （未選択）
   ollamaBaseUrl: string          // 新規。デフォルト 'http://localhost:11434'
   // ...
@@ -726,7 +726,7 @@ export const useSettingsStore = create<SettingsState>()(
           return {
             ...(persisted as object),
             llmProvider: 'claude',
-            claudeModel: old.aiModel ?? 'claude-sonnet-4-6',
+            claudeModel: old.aiModel ?? 'claude-sonnet-5',
             ollamaModel: '',
             ollamaBaseUrl: 'http://localhost:11434',
           }

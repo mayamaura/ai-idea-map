@@ -87,7 +87,7 @@ export interface ClusterSuggestion {
 }
 
 export type Theme = 'light' | 'dark'
-export type AIModel = 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001'
+export type AIModel = 'claude-sonnet-5' | 'claude-haiku-4-5-20251001'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
 export type EdgeStyle = 'bezier' | 'smoothstep' | 'straight'

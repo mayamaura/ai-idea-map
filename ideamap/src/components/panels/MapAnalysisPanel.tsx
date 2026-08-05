@@ -4,6 +4,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError } from '../../services/claudeService'
+import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import type { ConnectionSuggestion, ClusterSuggestion } from '../../types'
 
 type TabKey = 'analysis' | 'connections' | 'clusters'
@@ -209,26 +210,13 @@ export function MapAnalysisPanel() {
           </button>
         </div>
 
-        {/* APIキー未設定時の空状態 */}
         {!apiKey ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-4">
-            <span className="text-4xl">🔑</span>
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Claude APIキーが必要です
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              AI機能を使うには Anthropic の APIキーを設定してください
-            </p>
-            <button
-              onClick={() => {
-                setAnalysisPanelOpen(false)
-                setSettingsOpen(true)
-              }}
-              className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
-            >
-              設定を開く
-            </button>
-          </div>
+          <ApiKeyRequired
+            onOpenSettings={() => {
+              setAnalysisPanelOpen(false)
+              setSettingsOpen(true)
+            }}
+          />
         ) : (
           <>
             {/* タブ */}

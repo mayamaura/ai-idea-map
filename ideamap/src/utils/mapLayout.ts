@@ -1,5 +1,6 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { IdeaNodeData } from '../types'
+import { computePushOut, type Size } from './groupGeometry'
 
 type DagreModule = typeof import('@dagrejs/dagre').default
 
@@ -94,6 +95,7 @@ export function findFreePosition(
 const RADIUS = 220
 const NODE_WIDTH = 192
 const NODE_HEIGHT = 64
+const LAYOUT_NODE_SIZE: Size = { width: NODE_WIDTH, height: NODE_HEIGHT }
 
 const RADIAL_BASE_RADIUS = 220
 const RADIAL_RADIUS_INCREMENT = 190
@@ -225,33 +227,11 @@ function applyGroupPushOut(nodes: Node<IdeaNodeData>[]): Node<IdeaNodeData>[] {
 
   return nodes.map((node) => {
     if (node.type === 'groupNode' || node.parentId) return node
-    let { x, y } = node.position
-    const nodeW = node.measured?.width ?? NODE_WIDTH
-    const nodeH = node.measured?.height ?? NODE_HEIGHT
-
-    for (const group of groupNodes) {
-      const gW = typeof group.style?.width === 'number' ? group.style.width : 400
-      const gH = typeof group.style?.height === 'number' ? group.style.height : 300
-      const gx = group.position.x
-      const gy = group.position.y
-
-      if (!(x < gx + gW && x + nodeW > gx && y < gy + gH && y + nodeH > gy)) continue
-
-      const dLeft = x + nodeW - gx
-      const dRight = gx + gW - x
-      const dUp = y + nodeH - gy
-      const dDown = gy + gH - y
-      const min = Math.min(dLeft, dRight, dUp, dDown)
-
-      if (min === dLeft) x = gx - nodeW
-      else if (min === dRight) x = gx + gW
-      else if (min === dUp) y = gy - nodeH
-      else y = gy + gH
-    }
-
-    return x === node.position.x && y === node.position.y
+    // 整列直後は measured が未確定なことがあるためレイアウト用の想定サイズを使う
+    const pushed = computePushOut(node.position, node.measured, groupNodes, LAYOUT_NODE_SIZE)
+    return pushed.x === node.position.x && pushed.y === node.position.y
       ? node
-      : { ...node, position: { x, y } }
+      : { ...node, position: pushed }
   })
 }
 

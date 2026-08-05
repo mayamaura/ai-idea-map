@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { generateSuggestions, toFriendlyAIError } from '../../services/claudeService'
 import Anthropic from '@anthropic-ai/sdk'
 import { calcSuggestionPositions } from '../../utils/mapLayout'
+import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import type { AISuggestion } from '../../types'
 
 export function AISuggestionPanel() {
@@ -300,26 +301,14 @@ export function AISuggestionPanel() {
           </button>
         </div>
 
-        {/* APIキー未設定時の空状態 */}
         {!apiKey ? (
-          <div className="flex flex-col items-center justify-center px-5 py-10 text-center gap-4">
-            <span className="text-4xl">🔑</span>
-            <h3 className="text-sm font-semibold text-gray-800">
-              Claude APIキーが必要です
-            </h3>
-            <p className="text-xs text-gray-500">
-              AI機能を使うには Anthropic の APIキーを設定してください
-            </p>
-            <button
-              onClick={() => {
-                setAIPanelOpen(false)
-                setSettingsOpen(true)
-              }}
-              className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
-            >
-              設定を開く
-            </button>
-          </div>
+          <ApiKeyRequired
+            className="px-5 py-10"
+            onOpenSettings={() => {
+              setAIPanelOpen(false)
+              setSettingsOpen(true)
+            }}
+          />
         ) : (
           <>
             <div className="px-5 py-4 space-y-3">
