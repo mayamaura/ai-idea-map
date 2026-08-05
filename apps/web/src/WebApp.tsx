@@ -13,20 +13,21 @@ import { generateShareUrl, parseMapFromUrl, clearMapFromUrl } from './services/s
  */
 export function WebApp() {
   const googleAuth = useGoogleAuth()
+  const { accessToken, silentReauth, signIn } = googleAuth
 
   // FileAdapter はトークンを引数に取らないため、変わるたびに流し込む。
   // レンダー中に副作用を起こさないよう useEffect ではなく同期で入れると
   // StrictMode の二重実行で順序が乱れるため useEffect に置く
   useEffect(() => {
-    setDriveAccessToken(googleAuth.accessToken)
-  }, [googleAuth.accessToken])
+    setDriveAccessToken(accessToken)
+  }, [accessToken])
 
   useShareUrlImport()
 
   const autoSave = useMemo(
     () => ({
-      remoteReady: googleAuth.accessToken !== null,
-      credentialKey: googleAuth.accessToken,
+      remoteReady: accessToken !== null,
+      credentialKey: accessToken,
       onSaveError: (err: unknown, attempt: number): 'retry' | 'handled' => {
         const isAuthError = err instanceof Error && err.message.includes('401')
         if (!isAuthError) {
@@ -35,7 +36,7 @@ export function WebApp() {
         }
         if (attempt === 1) {
           // 初回401: サイレント再認証を試みる。トーストは表示しない
-          googleAuth.silentReauth()
+          silentReauth()
           return 'retry'
         }
         // 再認証後も401: ユーザーに手動再接続を促す
@@ -43,12 +44,12 @@ export function WebApp() {
           .getState()
           .addToast('Googleドライブの認証が切れました', 'error', {
             label: '再接続',
-            onClick: googleAuth.signIn,
+            onClick: signIn,
           })
         return 'handled'
       },
     }),
-    [googleAuth.accessToken, googleAuth.silentReauth, googleAuth.signIn]
+    [accessToken, silentReauth, signIn]
   )
 
   return (
@@ -56,13 +57,13 @@ export function WebApp() {
       cloudAuth={googleAuth}
       autoSave={autoSave}
       onGenerateShareUrl={generateShareUrl}
-      mapListSlot={<MapListPanel accessToken={googleAuth.accessToken} />}
+      mapListSlot={<MapListPanel accessToken={accessToken} />}
       dashboardSlot={
         <FileOpenDashboard
-          accessToken={googleAuth.accessToken}
+          accessToken={accessToken}
           isSignedIn={googleAuth.isSignedIn}
           isGoogleLoading={googleAuth.isLoading}
-          onGoogleSignIn={googleAuth.signIn}
+          onGoogleSignIn={signIn}
         />
       }
     />
