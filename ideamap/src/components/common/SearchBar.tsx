@@ -1,10 +1,14 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useReactFlow } from '@xyflow/react'
+import { useShallow } from 'zustand/react/shallow'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import type { IdeaNodeData } from '../../types'
 import type { Node } from '@xyflow/react'
+
+// 検索バーが閉じているときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
+const NO_NODES: Node<IdeaNodeData>[] = []
 
 function matchesQuery(node: Node<IdeaNodeData>, query: string): boolean {
   const q = query.toLowerCase()
@@ -15,18 +19,28 @@ function matchesQuery(node: Node<IdeaNodeData>, query: string): boolean {
 
 export function SearchBar() {
   const { isSearchOpen, searchQuery, setSearchOpen, setSearchQuery, setSelectedNodeId, recentNodeIds } =
-    useUIStore()
-  const { nodes } = useMapStore()
+    useUIStore(
+      useShallow((s) => ({
+        isSearchOpen: s.isSearchOpen,
+        searchQuery: s.searchQuery,
+        setSearchOpen: s.setSearchOpen,
+        setSearchQuery: s.setSearchQuery,
+        setSelectedNodeId: s.setSelectedNodeId,
+        recentNodeIds: s.recentNodeIds,
+      }))
+    )
+  // 検索バーを開いている間だけノード一覧を購読する
+  const nodes = useMapStore((s) => (isSearchOpen ? s.nodes : NO_NODES))
   const { fitView } = useReactFlow()
   const inputRef = useRef<HTMLInputElement>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
 
   const matchedNodes = searchQuery.trim()
-    ? (nodes as Node<IdeaNodeData>[]).filter((n) => matchesQuery(n, searchQuery))
+    ? nodes.filter((n) => matchesQuery(n, searchQuery))
     : []
 
   const recentNodes = recentNodeIds
-    .map((id) => (nodes as Node<IdeaNodeData>[]).find((n) => n.id === id))
+    .map((id) => nodes.find((n) => n.id === id))
     .filter((n): n is Node<IdeaNodeData> => n !== undefined)
     .slice(0, 5)
 

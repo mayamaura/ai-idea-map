@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useReactFlow } from '@xyflow/react'
+import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -15,9 +16,21 @@ export function PresentationMode() {
     goToNextPresentation,
     goToPrevPresentation,
     exitPresentation,
-  } = useUIStore()
-  const { nodes } = useMapStore()
-  const { getCategoryById } = useSettingsStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      isPresentationMode: s.isPresentationMode,
+      presentationNodeIds: s.presentationNodeIds,
+      presentationCurrentIndex: s.presentationCurrentIndex,
+      goToNextPresentation: s.goToNextPresentation,
+      goToPrevPresentation: s.goToPrevPresentation,
+      exitPresentation: s.exitPresentation,
+    }))
+  )
+  // 表示中のノードだけを購読する（他ノードの変化では再描画しない）
+  const currentNode = useMapStore((s) =>
+    s.nodes.find((n) => n.id === presentationNodeIds[presentationCurrentIndex])
+  )
+  const getCategoryById = useSettingsStore((s) => s.getCategoryById)
   const { fitView } = useReactFlow()
 
   // インデックスが変わるたびに該当ノードへズームアニメーション
@@ -33,8 +46,6 @@ export function PresentationMode() {
 
   if (!isPresentationMode || presentationNodeIds.length === 0) return null
 
-  const currentNodeId = presentationNodeIds[presentationCurrentIndex]
-  const currentNode = nodes.find((n) => n.id === currentNodeId)
   const nodeData = currentNode?.data as IdeaNodeData | undefined
   const category = nodeData?.categoryId ? getCategoryById(nodeData.categoryId) : undefined
   const total = presentationNodeIds.length

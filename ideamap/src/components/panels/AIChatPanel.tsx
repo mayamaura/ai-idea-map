@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuidv4 } from 'uuid'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
@@ -7,6 +8,9 @@ import { chatWithMap, toFriendlyAIError } from '../../services/claudeService'
 import type { ChatMessage, ChatAction, MapContext } from '../../types'
 import type { Node } from '@xyflow/react'
 import type { IdeaNodeData } from '../../types'
+
+// メンション候補を購読しないときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
+const NO_MENTION_CANDIDATES: Node<IdeaNodeData>[] = []
 
 const QUICK_QUESTIONS = [
   { label: '深掘り', template: (t: string) => `「${t}」をもっと深掘りして` },
@@ -40,9 +44,40 @@ export function AIChatPanel() {
     addToast,
     mapTitle,
     setSettingsOpen,
-  } = useUIStore()
-  const { nodes, edges, addNode, onConnect, updateNodeTitle } = useMapStore()
-  const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      isChatPanelOpen: s.isChatPanelOpen,
+      setChatPanelOpen: s.setChatPanelOpen,
+      chatMessages: s.chatMessages,
+      addChatMessage: s.addChatMessage,
+      isChatLoading: s.isChatLoading,
+      setChatLoading: s.setChatLoading,
+      clearChatHistory: s.clearChatHistory,
+      updateLastChatMessage: s.updateLastChatMessage,
+      selectedNodeId: s.selectedNodeId,
+      addToast: s.addToast,
+      mapTitle: s.mapTitle,
+      setSettingsOpen: s.setSettingsOpen,
+    }))
+  )
+  // nodes / edges 全体はドラッグ中に毎フレーム更新されるため購読しない。
+  // 送信時・アクション実行時は getState() から読み、表示に必要な値だけをセレクタで購読する
+  const { addNode, onConnect, updateNodeTitle } = useMapStore(
+    useShallow((s) => ({
+      addNode: s.addNode,
+      onConnect: s.onConnect,
+      updateNodeTitle: s.updateNodeTitle,
+    }))
+  )
+  const nodeCount = useMapStore((s) => s.nodes.length)
+  const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore(
+    useShallow((s) => ({
+      apiKey: s.apiKey,
+      aiModel: s.aiModel,
+      categories: s.categories,
+      getCategoryById: s.getCategoryById,
+    }))
+  )
 
   const [input, setInput] = useState('')
   const [mentionState, setMentionState] = useState<{ query: string; startIndex: number } | null>(
@@ -54,12 +89,14 @@ export function AIChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId) as
-    | Node<IdeaNodeData>
-    | undefined
+  const selectedNode = useMapStore((s) => s.nodes.find((n) => n.id === selectedNodeId))
 
+  // メンション入力中だけノード一覧を購読する
+  const mentionCandidates = useMapStore((s) =>
+    mentionState ? s.nodes : NO_MENTION_CANDIDATES,
+  )
   const filteredNodes = mentionState
-    ? (nodes as Node<IdeaNodeData>[]).filter((n) =>
+    ? mentionCandidates.filter((n) =>
         n.data.title.toLowerCase().includes(mentionState.query.toLowerCase()),
       )
     : []
@@ -115,21 +152,24 @@ export function AIChatPanel() {
     }
   }
 
-  const buildMapContext = (): MapContext => ({
-    mapTitle,
-    nodes: (nodes as Node<IdeaNodeData>[]).map((n) => ({
-      id: n.id,
-      title: n.data.title,
-      body: n.data.body,
-      categoryId: n.data.categoryId,
-    })),
-    edges: edges.map((e) => ({
-      source: e.source,
-      target: e.target,
-      label: typeof e.label === 'string' ? e.label : undefined,
-    })),
-    categories: categories.map((c) => ({ id: c.id, name: c.name })),
-  })
+  const buildMapContext = (): MapContext => {
+    const { nodes, edges } = useMapStore.getState()
+    return {
+      mapTitle,
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        title: n.data.title,
+        body: n.data.body,
+        categoryId: n.data.categoryId,
+      })),
+      edges: edges.map((e) => ({
+        source: e.source,
+        target: e.target,
+        label: typeof e.label === 'string' ? e.label : undefined,
+      })),
+      categories: categories.map((c) => ({ id: c.id, name: c.name })),
+    }
+  }
 
   const handleStop = () => {
     abortRef.current?.abort()
@@ -209,7 +249,7 @@ export function AIChatPanel() {
   const handleAction = (action: ChatAction) => {
     if (action.type === 'addNode') {
       const parent = action.sourceNodeId
-        ? nodes.find((n) => n.id === action.sourceNodeId)
+        ? useMapStore.getState().nodes.find((n) => n.id === action.sourceNodeId)
         : null
       const x = parent ? parent.position.x + 220 : 100
       const y = parent ? parent.position.y : 100
@@ -258,7 +298,7 @@ export function AIChatPanel() {
           </svg>
           <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">AIチャット</span>
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            ({nodes.length}ノード)
+            ({nodeCount}ノード)
           </span>
         </div>
         <div className="flex items-center gap-1">

@@ -1,6 +1,17 @@
 import type { Node, Edge } from '@xyflow/react'
-import Dagre from '@dagrejs/dagre'
 import type { IdeaNodeData } from '../types'
+
+type DagreModule = typeof import('@dagrejs/dagre').default
+
+// dagre は「整列」実行時にしか使わないため初回ロードから外し、実行時に一度だけ取得する
+let dagrePromise: Promise<DagreModule> | null = null
+
+function loadDagre(): Promise<DagreModule> {
+  if (!dagrePromise) {
+    dagrePromise = import('@dagrejs/dagre').then((m) => m.default)
+  }
+  return dagrePromise
+}
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
@@ -120,7 +131,8 @@ export function calcSuggestionPositions(
 function layoutGroupChildren(
   children: Node<IdeaNodeData>[],
   edges: Edge[],
-  rankdir: 'LR' | 'TB'
+  rankdir: 'LR' | 'TB',
+  Dagre: DagreModule
 ): { children: Node<IdeaNodeData>[]; width: number; height: number } {
   if (children.length === 0) return { children, width: 200, height: 150 }
 
@@ -185,7 +197,8 @@ function layoutGroupChildren(
 function prepareGroupLayouts(
   nodes: Node<IdeaNodeData>[],
   edges: Edge[],
-  rankdir: 'LR' | 'TB'
+  rankdir: 'LR' | 'TB',
+  Dagre: DagreModule
 ): { topLevel: Node<IdeaNodeData>[]; childNodes: Node<IdeaNodeData>[] } {
   const childNodes: Node<IdeaNodeData>[] = []
 
@@ -197,7 +210,7 @@ function prepareGroupLayouts(
       const children = nodes.filter((c) => c.parentId === node.id)
       if (children.length === 0) return node
 
-      const { children: laid, width, height } = layoutGroupChildren(children, edges, rankdir)
+      const { children: laid, width, height } = layoutGroupChildren(children, edges, rankdir, Dagre)
       childNodes.push(...laid)
       return { ...node, style: { ...node.style, width, height } }
     })
@@ -243,11 +256,12 @@ function applyGroupPushOut(nodes: Node<IdeaNodeData>[]): Node<IdeaNodeData>[] {
 }
 
 /** ルートノード（入力エッジなし）を中心に放射状に配置するレイアウト */
-export function applyRadialLayout(
+export async function applyRadialLayout(
   nodes: Node<IdeaNodeData>[],
   edges: Edge[]
-): Node<IdeaNodeData>[] {
-  const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, 'LR')
+): Promise<Node<IdeaNodeData>[]> {
+  const Dagre = await loadDagre()
+  const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, 'LR', Dagre)
 
   if (topLevel.length === 0) return nodes
   if (topLevel.length === 1) {
@@ -339,12 +353,13 @@ export function applyRadialLayout(
   return [...applyGroupPushOut(laid), ...childNodes]
 }
 
-export function applyDagreLayout(
+export async function applyDagreLayout(
   nodes: Node<IdeaNodeData>[],
   edges: Edge[],
   rankdir: 'LR' | 'TB' = 'LR'
-): Node<IdeaNodeData>[] {
-  const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, rankdir)
+): Promise<Node<IdeaNodeData>[]> {
+  const Dagre = await loadDagre()
+  const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, rankdir, Dagre)
 
   if (topLevel.length === 0) return nodes
 

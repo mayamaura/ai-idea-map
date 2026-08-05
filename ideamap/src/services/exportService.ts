@@ -1,4 +1,3 @@
-import { toPng, toSvg } from 'html-to-image'
 import { getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
@@ -83,6 +82,9 @@ export async function exportMapAsImage(
   }
 
   const filename = `${options.title}.${format}`
+
+  // html-to-image は画像エクスポート時にしか使わないため初回ロードから外す
+  const { toPng, toSvg } = await import('html-to-image')
 
   if (format === 'png') {
     const dataUrl = await toPng(viewportEl, imageOptions)

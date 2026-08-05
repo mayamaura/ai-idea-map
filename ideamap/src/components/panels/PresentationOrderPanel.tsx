@@ -1,5 +1,6 @@
 import { Fragment, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 
@@ -12,8 +13,23 @@ export function PresentationOrderPanel() {
     reorderPresentationNodes,
     clearPresentationNodes,
     startPresentation,
-  } = useUIStore()
-  const { nodes } = useMapStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      isPresentationOrderOpen: s.isPresentationOrderOpen,
+      setPresentationOrderOpen: s.setPresentationOrderOpen,
+      presentationNodeIds: s.presentationNodeIds,
+      removeNodeFromPresentation: s.removeNodeFromPresentation,
+      reorderPresentationNodes: s.reorderPresentationNodes,
+      clearPresentationNodes: s.clearPresentationNodes,
+      startPresentation: s.startPresentation,
+    }))
+  )
+  // 発表リストに載っているノードのタイトルだけを購読する（位置変化では再描画しない）
+  const titleById = useMapStore(
+    useShallow((s) =>
+      Object.fromEntries(presentationNodeIds.map((id) => [id, s.nodes.find((n) => n.id === id)?.data.title]))
+    )
+  )
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [insertBeforeIndex, setInsertBeforeIndex] = useState<number | null>(null)
   const dragNode = useRef<number | null>(null)
@@ -21,8 +37,7 @@ export function PresentationOrderPanel() {
 
   if (!isPresentationOrderOpen) return null
 
-  const getTitle = (id: string) =>
-    nodes.find((n) => n.id === id)?.data.title ?? '（削除済みノード）'
+  const getTitle = (id: string) => titleById[id] ?? '（削除済みノード）'
 
   const handleDragStart = (idx: number) => {
     setDragIndex(idx)

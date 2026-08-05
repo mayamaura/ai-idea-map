@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -6,11 +7,29 @@ import type { IdeaNodeData } from '../../types'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 export function NodeDetailPanel() {
-  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setSelectedNodeId } = useUIStore()
-  const { nodes, updateNodeTitle, updateNodeBody, updateNodeCategory, deleteNode } = useMapStore()
-  const { categories, getCategoryById } = useSettingsStore()
+  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setSelectedNodeId } = useUIStore(
+    useShallow((s) => ({
+      isNodeDetailOpen: s.isNodeDetailOpen,
+      nodeDetailId: s.nodeDetailId,
+      closeNodeDetail: s.closeNodeDetail,
+      setAIPanelOpen: s.setAIPanelOpen,
+      setSelectedNodeId: s.setSelectedNodeId,
+    }))
+  )
+  const { updateNodeTitle, updateNodeBody, updateNodeCategory, deleteNode } = useMapStore(
+    useShallow((s) => ({
+      updateNodeTitle: s.updateNodeTitle,
+      updateNodeBody: s.updateNodeBody,
+      updateNodeCategory: s.updateNodeCategory,
+      deleteNode: s.deleteNode,
+    }))
+  )
+  const { categories, getCategoryById } = useSettingsStore(
+    useShallow((s) => ({ categories: s.categories, getCategoryById: s.getCategoryById }))
+  )
 
-  const node = nodes.find((n) => n.id === nodeDetailId)
+  // nodes 全体ではなく対象ノードだけを購読し、他ノードのドラッグで再描画しない
+  const node = useMapStore((s) => s.nodes.find((n) => n.id === nodeDetailId))
   const nodeData = node?.data as IdeaNodeData | undefined
 
   const [titleInput, setTitleInput] = useState('')

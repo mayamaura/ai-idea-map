@@ -1121,20 +1121,44 @@
 
 ---
 
-### Phase 28: パフォーマンス最適化（約2日）
+### Phase 28: パフォーマンス最適化（約2日）✅ 完了（2026-08-05）
 
 **目標**: 初回ロード時間と、ノード数増加時の再レンダリング負荷を軽減する。
 
-> 根拠: `docs/review/performance.md` / `validation-tech.md`。バンドルは現状 811kB 単一チャンク（gzip 235kB）。
+> 根拠: `docs/review/performance.md` / `validation-tech.md`。着手時の実測は 845.81kB 単一チャンク（gzip 247.86kB）。
 
 #### タスク
-- [ ] `vite.config.ts` に `build.rollupOptions.output.manualChunks` を追加し、単一チャンクをベンダー分割（react / @xyflow/react / @anthropic-ai/sdk / エクスポート系）
-- [ ] `IdeaNode.tsx` の2つの `nodes.find()` セレクタを1つに統合し `useShallow` を適用。`NodeActionBar` の二重 `find()` も同様に解消
-- [ ] `IdeaCanvas.tsx` の `displayNodes` / `displayEdges` の全ノード・全エッジ `.map()` を見直し、dim/ハイライト状態を各ノードが自己購読する設計に変更
-- [ ] パネル群 / `Toolbar` / `Header` のストア全体購読を、必要プロパティのみのセレクタ（`useShallow`）に変更
-- [ ] `html-to-image` / `@dagrejs/dagre` を動的 import に変更し、エクスポート・整列実行時に遅延ロード
+- [x]✅ `vite.config.ts` にベンダー分割を追加（react-vendor / flow / ai）
+- [x]✅ `IdeaNode.tsx` の2つの `nodes.find()` セレクタを1つに統合し `useShallow` を適用。`NodeActionBar` の二重 `find()` も絶対座標を返す1セレクタに統合
+- [x]✅ `IdeaCanvas.tsx` の `displayNodes` / `displayEdges` を廃止し、dim/ハイライト状態を `FocusStateContext`（`src/hooks/useNodeFocus.ts`）で配って各ノード・エッジが自己判定する設計に変更
+- [x]✅ パネル群 / `Toolbar` / `Header` / `BottomNav` / `SearchBar` / `PresentationMode` のストア全体購読を、必要プロパティのみのセレクタ（`useShallow`）に変更。描画に使わない `nodes` / `edges` はハンドラ内の `useMapStore.getState()` に置換
+- [x]✅ `html-to-image` / `@dagrejs/dagre` を動的 import に変更し、エクスポート・整列実行時に遅延ロード
 
-**完了条件**: バンドルが複数チャンクに分割され初回ロードが軽くなる。ドラッグ・ノード選択時の不要な全再描画が減る。
+#### 実装上の判明事項（計画からの変更点）
+
+- **`manualChunks` は使えない**: Vite 8 は rolldown ベースになり `build.rollupOptions` / `manualChunks` のオブジェクト形式が非対応（deprecated）。`build.rolldownOptions.output.codeSplitting.groups` を使用した。
+- **`@anthropic-ai/sdk` の `tools/` 配下はチャンクに含めてはいけない**: `tools/agent-toolset/` は `node:util` の `promisify` 等をトップレベルで呼ぶ。通常は遅延チャンクに分離されブラウザで評価されないが、`ai` グループに取り込むと起動時に評価されて `(0, X.promisify) is not a function` で**アプリが起動しなくなる**（実際に発生し、`test` 関数で `sdk/tools/` を除外して解消）。
+- **フォーカス状態の Context 値をドラッグ中に変えない工夫が必要**: グループの親子関係を `nodes` から取ると毎フレーム再計算されるため、`useShallow` で比較できる文字列配列として購読している。
+
+#### 計測結果
+
+| | 初回ロードで読む JS | gzip |
+|---|---|---|
+| Phase 27 時点 | 861.68 kB（単一チャンク + node 遅延分） | 254.03 kB |
+| Phase 28 後 | 801.65 kB（index / react-vendor / flow / ai の4チャンク） | 231.63 kB |
+
+`dagre.esm` 39.43 kB・`html-to-image` 12.51 kB は整列・エクスポート実行時まで読み込まれない。Vite の 500kB 超過警告も解消。
+
+#### 動作確認（Playwright + preview ビルド）
+
+- [x]✅ アプリ起動・新規マップ作成・ノード追加（コンソールエラーなし）
+- [x]✅ フォーカスモード: 選択ノードと隣接ノードが opacity 1、その他が 0.15、接続エッジが opacity 1。選択解除で全ノード 1 に復帰
+- [x]✅ 発表モード: カレントノードが opacity 1、その他が 0.1
+- [x]✅ 接続モード: 接続元ノードに `rgb(99,102,241)` 2px のアウトライン、接続先タップでエッジ作成
+- [x]✅ 整列（dagre 左→右）: 遅延ロード後にレイアウト適用
+- [x]✅ PNG エクスポート: html-to-image の遅延ロード後にダウンロード成功
+
+**完了条件**: バンドルが複数チャンクに分割され初回ロードが軽くなる。ドラッグ・ノード選択時の不要な全再描画が減る。→ 達成
 
 ---
 

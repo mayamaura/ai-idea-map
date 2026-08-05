@@ -97,7 +97,8 @@ ideamap/
 │   ├── hooks/
 │   │   ├── useAutoSave.ts          # 自動保存フック
 │   │   ├── useGoogleAuth.ts        # Googleログイン状態管理
-│   │   └── useKeyboardShortcuts.ts # キーボードショートカット
+│   │   ├── useKeyboardShortcuts.ts # キーボードショートカット
+│   │   └── useNodeFocus.ts         # フォーカス／発表／接続モードの dim 判定 Context（Phase 28）
 │   ├── types/
 │   │   └── index.ts                # 型定義
 │   └── utils/
@@ -262,6 +263,8 @@ React Flow の主要設定:
 - `onEdgeContextMenu` → `uiStore.openContextMenu({ type: 'edge', ... })`
 - `onPaneContextMenu` → `uiStore.openContextMenu({ type: 'pane', flowPosition })`
 - `onPaneClick` → 選択解除 + コンテキストメニュー閉じる
+
+フォーカス／発表／接続モードの dim は `FocusStateContext` 経由で各ノード・エッジに配る（§16.3）。`<ReactFlow>` に渡す `nodes` / `edges` はストアの配列そのままで、加工しない。
 
 ### 5.3 IdeaNode（src/components/canvas/IdeaNode.tsx）
 
@@ -646,6 +649,7 @@ updateLastChatMessage: (content: string) => void
 - `rankdir: 'LR'`（左→右）、`ranksep: 100`、`nodesep: 60`
 - ノードサイズ: 192 × 64px
 - Toolbar の「整列」ボタン実行後にアニメーション完了コールバックで `fitView({ padding: 0.15, duration: 400 })` でフィット（Phase 21: 瞬間移動→アニメーション付きに変更）
+- **Phase 28**: dagre を動的 import に変更したため `applyDagreLayout` / `applyRadialLayout` は `Promise<Node[]>` を返す。呼び出し側（`Toolbar.runLayout`）で `await` する
 
 ### 11.4 整列アニメーション（`animateNodePositions`）（Phase 21）
 
@@ -827,7 +831,7 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 
 ---
 
-## 16. 大規模マップのパフォーマンス（Phase 24）
+## 16. 大規模マップのパフォーマンス（Phase 24 / Phase 28）
 
 ### 16.1 onlyRenderVisibleElements
 
@@ -842,6 +846,68 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 2. React Flow が全ノードを DOM に描画するのを待つ（2フレーム分の `requestAnimationFrame` を await）
 3. `exportMapAsImage(...)` を実行
 4. `finally` ブロックで `setRenderAllNodes(false)` に戻す（成功・失敗どちらでも戻す）
+
+### 16.3 フォーカス表示の Context 配布（`src/hooks/useNodeFocus.ts`）（Phase 28）
+
+フォーカスモード（選択ノードと直接接続だけを明るく表示）・発表モード・接続モードの dim / 強調は、**ノード配列に `style` を差し込まない**。
+
+**Phase 27 以前の実装と問題**: `IdeaCanvas` の `displayNodes` / `displayEdges` が `nodes.map((n) => ({ ...n, style: { ...n.style, opacity } }))` で新しいノードオブジェクトを生成していた。選択が変わるたびに全ノードが新しい参照になるため、React Flow は「全ノードが変化した」と判断して全ノードを再描画していた。
+
+**Phase 28 の設計**:
+
+| 責務 | 実装 |
+|---|---|
+| 状態の算出 | `IdeaCanvas` が `FocusState`（`selectedNodeId` / `highlightNodeIds` / `presentationNodeId` / `isPresentationMode` / `connectingFromNodeId`）を `useMemo` で1回だけ組み立てる |
+| 状態の配布 | `FocusStateContext.Provider` で配る。`<ReactFlow nodes={nodes} edges={edges}>` には**ストアの配列をそのまま**渡す |
+| 自ノードの判定 | `IdeaNode` / `GroupNode` が `useNodeFocus(id)` を呼び、自分の `opacity` と `isConnectSource` だけを受け取る |
+| 自エッジの判定 | `FloatingEdge` が `useEdgeFocusOpacity(source, target)` を呼ぶ |
+
+**dim 値**: ノードはフォーカス時 `0.15` / 発表モード時 `0.1`、エッジはフォーカス時 `0.1` / 発表モード時 `0.05`。接続元ノードは `outline: 2px solid #6366f1`。検索・カテゴリフィルタの dim（`0.2`）とは `Math.min` で合成する。
+
+**ドラッグ中に Context 値を変えないための工夫**: `highlightNodeIds` の算出にはグループの親子関係が必要だが、`nodes` を依存に入れるとドラッグの毎フレームで再計算されてしまう。そのため親子関係は「`id|parentId` を連結した**文字列配列**」として購読する。
+
+```ts
+const groupChildPairs = useMapStore(
+  useShallow((s) => s.nodes.filter((n) => n.parentId).map((n) => `${n.id}|${n.parentId}`))
+)
+```
+
+ドラッグでは配列の内容が変わらないので `useShallow` が同一と判定し、`focusState` の参照も変わらない。結果としてドラッグ中はノード・エッジの再描画が発生しない。
+
+### 16.4 Zustand セレクタ方針（Phase 28）
+
+`useMapStore()` / `useUIStore()` のようなストア全体購読は、無関係な状態変化でもコンポーネントを再描画させる。特に `mapStore.nodes` はドラッグ中に毎フレーム更新されるため影響が大きい。以下の方針で購読を絞る。
+
+| パターン | 指針 |
+|---|---|
+| 複数の値・アクションが必要 | `useShallow` でオブジェクトを返すセレクタにする（アクションは参照が安定しているため再描画を誘発しない） |
+| 描画に使わず実行時にだけ必要（AI 送信・整列・エクスポート等） | 購読せず、ハンドラ内で `useMapStore.getState()` から読む |
+| 単一ノードだけ必要 | `useMapStore((s) => s.nodes.find((n) => n.id === id))` |
+| 真偽値・件数だけ必要 | `useMapStore((s) => s.past.length > 0)` のようにプリミティブを返す |
+| パネルが閉じている間は不要 | `useMapStore((s) => (isOpen ? s.nodes : NO_NODES))` のように**モジュールレベルの固定参照**へフォールバックする（`SearchBar` / `AIChatPanel` のメンション候補） |
+
+`IdeaNode` は `color` と `categoryId` をストアから直接読むために `nodes.find()` を2回走らせていた（全ノード × 毎更新）。Phase 28 で `useShallow` による1セレクタに統合した。`NodeActionBar` の親ノード探索も、絶対座標 `{ x, y }` だけを返す1セレクタに統合している。
+
+### 16.5 バンドル分割と動的 import（Phase 28）
+
+**分割前**: 単一チャンク 845.81 kB（gzip 247.86 kB）。Vite が 500 kB 超の警告を出していた。
+
+**`vite.config.ts` の設定**: Vite 8 は rolldown ベースのため `build.rolldownOptions.output.codeSplitting.groups` を使う（`rollupOptions` は deprecated、`manualChunks` はオブジェクト形式が非対応）。
+
+| グループ | 対象 |
+|---|---|
+| `react-vendor` | `react` / `react-dom` / `scheduler` |
+| `flow` | `@xyflow/react` |
+| `ai` | `@anthropic-ai/sdk`（ただし `sdk/tools/` 配下を除く） |
+
+> **`sdk/tools/` を除外する理由**: `@anthropic-ai/sdk` の `tools/agent-toolset/` は `node:util` の `promisify` などをモジュールのトップレベルで呼ぶ。通常は動的 import 経由の遅延チャンクに分離されブラウザでは評価されないが、グループ指定で eager なベンダーチャンクに取り込むと起動時に評価されて `(0, X.promisify) is not a function` で**アプリが起動しなくなる**。
+
+**動的 import 化**:
+
+- `utils/mapLayout.ts`: `@dagrejs/dagre` をモジュールスコープの `loadDagre()`（Promise キャッシュ）で遅延ロード。`applyDagreLayout` / `applyRadialLayout` が `async` になり、`Toolbar` の整列ハンドラも `async`（共通の `runLayout()` ヘルパーに集約、失敗時はトースト表示）。
+- `services/exportService.ts`: `html-to-image` を `exportMapAsImage()` 内で `await import('html-to-image')` する。
+
+**分割後（初回ロードで読むチャンクのみ）**: `index` 289.79 / `react-vendor` 189.64 / `flow` 177.26 / `ai` 144.40 / runtime 0.56 = 801.65 kB（gzip 231.63 kB）。`dagre.esm` 39.43 kB と `html-to-image` 12.51 kB は整列・エクスポート実行時まで読み込まれない。500 kB 警告も解消。
 
 ---
 

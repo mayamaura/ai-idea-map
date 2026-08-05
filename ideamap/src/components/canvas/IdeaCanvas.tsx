@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useShallow } from 'zustand/react/shallow'
 import {
   ReactFlow,
   Background,
@@ -22,31 +23,49 @@ import { GroupNode } from './GroupNode'
 import { FloatingEdge } from './FloatingEdge'
 import { Toolbar } from '../toolbar/Toolbar'
 import { BottomNav } from '../toolbar/BottomNav'
+import { FocusStateContext, type FocusState } from '../../hooks/useNodeFocus'
 import type { IdeaNodeData } from '../../types'
 
 function NodeActionBar() {
-  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId, connectingFromNodeId, setConnectingFromNodeId } = useUIStore()
-  const { deleteNode, nodes } = useMapStore()
+  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId, connectingFromNodeId, setConnectingFromNodeId } = useUIStore(
+    useShallow((s) => ({
+      selectedNodeId: s.selectedNodeId,
+      setAIPanelOpen: s.setAIPanelOpen,
+      openNodeDetail: s.openNodeDetail,
+      setSelectedNodeId: s.setSelectedNodeId,
+      connectingFromNodeId: s.connectingFromNodeId,
+      setConnectingFromNodeId: s.setConnectingFromNodeId,
+    }))
+  )
+  const deleteNode = useMapStore((s) => s.deleteNode)
+  // mapStore の nodes を参照することでドラッグ後の位置変化にも追従する。
+  // 座標だけを useShallow で取り出し、無関係なストア更新では再描画しない
+  const absPosition = useMapStore(
+    useShallow((s) => {
+      if (!selectedNodeId) return null
+      const node = s.nodes.find((n) => n.id === selectedNodeId)
+      if (!node) return null
+      const parent = node.parentId ? s.nodes.find((n) => n.id === node.parentId) : undefined
+      return {
+        x: node.position.x + (parent?.position.x ?? 0),
+        y: node.position.y + (parent?.position.y ?? 0),
+      }
+    })
+  )
   useViewport() // ズーム・パン変化時に再レンダリングしてバーを再配置
   const { flowToScreenPosition, getNode } = useReactFlow()
 
   // 接続モード中はバナーが主役なので非表示
   if (!selectedNodeId || connectingFromNodeId) return null
-
-  // mapStore の nodes を参照することでドラッグ後の位置変化にも追従
-  const storeNode = nodes.find((n) => n.id === selectedNodeId)
-  if (!storeNode) return null
+  if (!absPosition) return null
 
   const rfNode = getNode(selectedNodeId)
   const nodeWidth = rfNode?.measured?.width ?? 150
   const nodeHeight = rfNode?.measured?.height ?? 60
 
-  const parentNode = storeNode.parentId ? nodes.find((n) => n.id === storeNode.parentId) : null
-  const absX = storeNode.position.x + (parentNode?.position.x ?? 0)
-  const absY = storeNode.position.y + (parentNode?.position.y ?? 0)
   const { x: screenX, y: screenY } = flowToScreenPosition({
-    x: absX + nodeWidth / 2,
-    y: absY + nodeHeight,
+    x: absPosition.x + nodeWidth / 2,
+    y: absPosition.y + nodeHeight,
   })
 
   // バーの推定半幅でクランプして画面端でも見切れないようにする
@@ -110,8 +129,27 @@ const edgeTypes: EdgeTypes = {
 }
 
 export function IdeaCanvas() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, connectNodes, pendingFitView, clearPendingFitView } = useMapStore()
-  const { snapToGrid, theme } = useSettingsStore()
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, connectNodes, pendingFitView, clearPendingFitView } = useMapStore(
+    useShallow((s) => ({
+      nodes: s.nodes,
+      edges: s.edges,
+      onNodesChange: s.onNodesChange,
+      onEdgesChange: s.onEdgesChange,
+      onConnect: s.onConnect,
+      addNode: s.addNode,
+      connectNodes: s.connectNodes,
+      pendingFitView: s.pendingFitView,
+      clearPendingFitView: s.clearPendingFitView,
+    }))
+  )
+  // グループの子ノードもハイライト対象にするための親子関係。ドラッグ中に配列内容が変わらないよう
+  // 文字列化して useShallow で比較し、フォーカス状態の再計算が毎フレーム走らないようにする
+  const groupChildPairs = useMapStore(
+    useShallow((s) => s.nodes.filter((n) => n.parentId).map((n) => `${n.id}|${n.parentId}`))
+  )
+  const { snapToGrid, theme } = useSettingsStore(
+    useShallow((s) => ({ snapToGrid: s.snapToGrid, theme: s.theme }))
+  )
   const {
     selectedNodeId,
     setSelectedNodeId,
@@ -126,7 +164,23 @@ export function IdeaCanvas() {
     connectingFromNodeId,
     setConnectingFromNodeId,
     addToast,
-  } = useUIStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      selectedNodeId: s.selectedNodeId,
+      setSelectedNodeId: s.setSelectedNodeId,
+      setEditingNodeId: s.setEditingNodeId,
+      openContextMenu: s.openContextMenu,
+      closeContextMenu: s.closeContextMenu,
+      setDragOverGroupId: s.setDragOverGroupId,
+      isPresentationMode: s.isPresentationMode,
+      presentationNodeIds: s.presentationNodeIds,
+      presentationCurrentIndex: s.presentationCurrentIndex,
+      renderAllNodes: s.renderAllNodes,
+      connectingFromNodeId: s.connectingFromNodeId,
+      setConnectingFromNodeId: s.setConnectingFromNodeId,
+      addToast: s.addToast,
+    }))
+  )
   const { screenToFlowPosition, fitView } = useReactFlow()
   // pane 長押し用タイマー
   const paneLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -232,48 +286,45 @@ export function IdeaCanvas() {
   )
 
   // フォーカスモード: 選択ノードとその直接接続だけを明るく表示
-  // 発表モード: カレントノードのみフル表示、他は opacity: 0.1
+  // 発表モード: カレントノードのみフル表示、他は薄く表示
   // 接続モード: 接続元ノードに強調リングを付与
-  const displayNodes = useMemo(() => {
-    if (isPresentationMode && presentationNodeIds.length > 0) {
-      const currentNodeId = presentationNodeIds[presentationCurrentIndex]
-      return nodes.map((n) =>
-        n.id === currentNodeId ? n : { ...n, style: { ...n.style, opacity: 0.1 } }
-      )
-    }
-    if (connectingFromNodeId) {
-      return nodes.map((n) =>
-        n.id === connectingFromNodeId
-          ? { ...n, style: { ...n.style, outline: '2px solid #6366f1', outlineOffset: 2 } }
-          : n
-      )
-    }
-    if (!selectedNodeId) return nodes
-    const highlightIds = new Set<string>([selectedNodeId])
+  //
+  // ノード配列に style を差し込むと選択のたび全ノードが新オブジェクトになり React Flow が
+  // 全ノードを再描画するため、状態だけを Context で配って各ノード／エッジに判定させる
+  const highlightNodeIds = useMemo(() => {
+    if (isPresentationMode || connectingFromNodeId || !selectedNodeId) return null
+    const ids = new Set<string>([selectedNodeId])
     edges.forEach((e) => {
-      if (e.source === selectedNodeId) highlightIds.add(e.target)
-      if (e.target === selectedNodeId) highlightIds.add(e.source)
+      if (e.source === selectedNodeId) ids.add(e.target)
+      if (e.target === selectedNodeId) ids.add(e.source)
     })
     // グループが選択されている場合は子ノードもハイライト
-    nodes.forEach((n) => {
-      if (n.parentId && highlightIds.has(n.parentId)) highlightIds.add(n.id)
+    groupChildPairs.forEach((pair) => {
+      const [childId, parentId] = pair.split('|')
+      if (ids.has(parentId)) ids.add(childId)
     })
-    return nodes.map((n) =>
-      highlightIds.has(n.id) ? n : { ...n, style: { ...n.style, opacity: 0.15 } }
-    )
-  }, [nodes, edges, selectedNodeId, isPresentationMode, presentationNodeIds, presentationCurrentIndex, connectingFromNodeId])
+    return ids
+  }, [edges, groupChildPairs, selectedNodeId, isPresentationMode, connectingFromNodeId])
 
-  const displayEdges = useMemo(() => {
-    if (isPresentationMode) {
-      return edges.map((e) => ({ ...e, style: { ...e.style, opacity: 0.05 } }))
-    }
-    if (!selectedNodeId) return edges
-    return edges.map((e) =>
-      e.source === selectedNodeId || e.target === selectedNodeId
-        ? e
-        : { ...e, style: { ...e.style, opacity: 0.1 } }
-    )
-  }, [edges, selectedNodeId, isPresentationMode])
+  const focusState = useMemo<FocusState>(
+    () => ({
+      selectedNodeId,
+      highlightNodeIds,
+      presentationNodeId: isPresentationMode
+        ? presentationNodeIds[presentationCurrentIndex] ?? null
+        : null,
+      isPresentationMode,
+      connectingFromNodeId,
+    }),
+    [
+      selectedNodeId,
+      highlightNodeIds,
+      isPresentationMode,
+      presentationNodeIds,
+      presentationCurrentIndex,
+      connectingFromNodeId,
+    ]
+  )
 
   // pane 長押し: 空白 500ms で pane 用コンテキストメニューを開く
   const handlePaneTouchStart = useCallback(
@@ -312,90 +363,92 @@ export function IdeaCanvas() {
     : '!border !border-gray-200 !rounded-xl !shadow-md'
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* 接続モードバナー: 接続先のノードをタップするよう促す（スマホ用） */}
-      {connectingFromNodeId && createPortal(
-        <div
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 45, pointerEvents: 'auto' }}
-          className="flex items-center justify-between px-4 py-3 bg-indigo-600 text-white shadow-lg"
-        >
-          <span className="text-sm font-medium">🔗 接続先のノードをタップ</span>
-          <button
-            onClick={() => setConnectingFromNodeId(null)}
-            className="text-sm font-medium px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+    <FocusStateContext.Provider value={focusState}>
+      <div className="flex flex-col flex-1 min-h-0">
+        {/* 接続モードバナー: 接続先のノードをタップするよう促す（スマホ用） */}
+        {connectingFromNodeId && createPortal(
+          <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 45, pointerEvents: 'auto' }}
+            className="flex items-center justify-between px-4 py-3 bg-indigo-600 text-white shadow-lg"
           >
-            キャンセル
-          </button>
-        </div>,
-        document.body
-      )}
-      <div
-        className="flex-1 relative"
-        onDoubleClick={handleDoubleClickOnPane}
-        onTouchStart={handlePaneTouchStart}
-        onTouchEnd={handlePaneTouchEnd}
-        onTouchMove={handlePaneTouchEnd}
-      >
-        <ReactFlow
-          nodes={displayNodes}
-          edges={displayEdges}
-          className={connectingFromNodeId ? 'tap-connect' : undefined}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={handleNodeClick}
-          onNodeDrag={handleNodeDrag}
-          onNodeDragStop={handleNodeDragStop}
-          onPaneClick={handlePaneClick}
-          onNodeContextMenu={handleNodeContextMenu}
-          onEdgeContextMenu={handleEdgeContextMenu}
-          onPaneContextMenu={handlePaneContextMenu}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          connectionMode={ConnectionMode.Loose}
-          deleteKeyCode={null}
-          snapToGrid={snapToGrid}
-          snapGrid={[20, 20]}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          panOnScroll
-          minZoom={0.1}
-          maxZoom={3}
-          nodesDraggable={!isPresentationMode}
-          nodesConnectable={!isPresentationMode}
-          elementsSelectable={!isPresentationMode}
-          panOnDrag={!isPresentationMode}
-          // colorMode で Controls / MiniMap / 組み込みUIをテーマに合わせる
-          colorMode={theme}
-          // 画面外ノードの DOM 描画をスキップして大規模マップのパフォーマンスを改善する。
-          // エクスポート時のみ renderAllNodes フラグで一時的に全描画に切り替える
-          onlyRenderVisibleElements={!renderAllNodes}
-        >
-          {/* ダークではドット色を暗い配色に変える（背景色は index.css の .dark .react-flow__background で対応） */}
-          <Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} gap={20} size={1} />
-          <Controls showInteractive={false} className={controlsClass} />
-          <MiniMap
-            nodeColor={(node) => (node.data as IdeaNodeData).color ?? '#e5e7eb'}
-            className={minimapClass}
-            zoomable
-            pannable
-          />
-        </ReactFlow>
-
-        {/* エンプティ状態: ノードが0件のときガイドを表示 */}
-        {isEmpty && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-            <div className="text-center select-none">
-              <div className="text-6xl mb-4 opacity-30">💡</div>
-              <p className="text-gray-400 dark:text-gray-500 text-base font-medium mb-1">マップが空です</p>
-              <p className="text-gray-300 dark:text-gray-600 text-sm">ダブルクリックしてアイデアを追加</p>
-            </div>
-          </div>
+            <span className="text-sm font-medium">🔗 接続先のノードをタップ</span>
+            <button
+              onClick={() => setConnectingFromNodeId(null)}
+              className="text-sm font-medium px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+            >
+              キャンセル
+            </button>
+          </div>,
+          document.body
         )}
+        <div
+          className="flex-1 relative"
+          onDoubleClick={handleDoubleClickOnPane}
+          onTouchStart={handlePaneTouchStart}
+          onTouchEnd={handlePaneTouchEnd}
+          onTouchMove={handlePaneTouchEnd}
+        >
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            className={connectingFromNodeId ? 'tap-connect' : undefined}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={handleNodeClick}
+            onNodeDrag={handleNodeDrag}
+            onNodeDragStop={handleNodeDragStop}
+            onPaneClick={handlePaneClick}
+            onNodeContextMenu={handleNodeContextMenu}
+            onEdgeContextMenu={handleEdgeContextMenu}
+            onPaneContextMenu={handlePaneContextMenu}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            connectionMode={ConnectionMode.Loose}
+            deleteKeyCode={null}
+            snapToGrid={snapToGrid}
+            snapGrid={[20, 20]}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            panOnScroll
+            minZoom={0.1}
+            maxZoom={3}
+            nodesDraggable={!isPresentationMode}
+            nodesConnectable={!isPresentationMode}
+            elementsSelectable={!isPresentationMode}
+            panOnDrag={!isPresentationMode}
+            // colorMode で Controls / MiniMap / 組み込みUIをテーマに合わせる
+            colorMode={theme}
+            // 画面外ノードの DOM 描画をスキップして大規模マップのパフォーマンスを改善する。
+            // エクスポート時のみ renderAllNodes フラグで一時的に全描画に切り替える
+            onlyRenderVisibleElements={!renderAllNodes}
+          >
+            {/* ダークではドット色を暗い配色に変える（背景色は index.css の .dark .react-flow__background で対応） */}
+            <Background color={theme === 'dark' ? '#374151' : '#e5e7eb'} gap={20} size={1} />
+            <Controls showInteractive={false} className={controlsClass} />
+            <MiniMap
+              nodeColor={(node) => (node.data as IdeaNodeData).color ?? '#e5e7eb'}
+              className={minimapClass}
+              zoomable
+              pannable
+            />
+          </ReactFlow>
+
+          {/* エンプティ状態: ノードが0件のときガイドを表示 */}
+          {isEmpty && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+              <div className="text-center select-none">
+                <div className="text-6xl mb-4 opacity-30">💡</div>
+                <p className="text-gray-400 dark:text-gray-500 text-base font-medium mb-1">マップが空です</p>
+                <p className="text-gray-300 dark:text-gray-600 text-sm">ダブルクリックしてアイデアを追加</p>
+              </div>
+            </div>
+          )}
+        </div>
+        {!isPresentationMode && <Toolbar />}
+        {!isPresentationMode && <BottomNav />}
+        {!isPresentationMode && <NodeActionBar />}
       </div>
-      {!isPresentationMode && <Toolbar />}
-      {!isPresentationMode && <BottomNav />}
-      {!isPresentationMode && <NodeActionBar />}
-    </div>
+    </FocusStateContext.Provider>
   )
 }

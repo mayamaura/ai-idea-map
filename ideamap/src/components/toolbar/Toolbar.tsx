@@ -1,17 +1,66 @@
 import { useState, useRef, useEffect } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition } from '../../utils/mapLayout'
 import type { IdeaNodeData } from '../../types'
-import type { Node } from '@xyflow/react'
+import type { Node, Edge } from '@xyflow/react'
 
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow()
-  const { addNode, nodes, edges, setNodesNoHistory, commitNodesWithHistory, undo, redo, past, future, deleteSelected } = useMapStore()
-  const { selectedNodeId, setSelectedNodeId, setEditingNodeId, setSearchOpen, activeCategoryFilters, toggleCategoryFilter, clearCategoryFilters, setExportPanelOpen, presentationNodeIds, setPresentationOrderOpen, startPresentation, setShortcutsModalOpen } = useUIStore()
-  const { categories, snapToGrid, setSnapToGrid } = useSettingsStore()
+  // nodes / edges はドラッグ中に毎フレーム更新されるため購読せず、ハンドラ内で getState() から読む
+  const { addNode, setNodesNoHistory, commitNodesWithHistory, undo, redo, deleteSelected } = useMapStore(
+    useShallow((s) => ({
+      addNode: s.addNode,
+      setNodesNoHistory: s.setNodesNoHistory,
+      commitNodesWithHistory: s.commitNodesWithHistory,
+      undo: s.undo,
+      redo: s.redo,
+      deleteSelected: s.deleteSelected,
+    }))
+  )
+  const canUndo = useMapStore((s) => s.past.length > 0)
+  const canRedo = useMapStore((s) => s.future.length > 0)
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    setEditingNodeId,
+    setSearchOpen,
+    activeCategoryFilters,
+    toggleCategoryFilter,
+    clearCategoryFilters,
+    setExportPanelOpen,
+    presentationNodeIds,
+    setPresentationOrderOpen,
+    startPresentation,
+    setShortcutsModalOpen,
+    addToast,
+  } = useUIStore(
+    useShallow((s) => ({
+      selectedNodeId: s.selectedNodeId,
+      setSelectedNodeId: s.setSelectedNodeId,
+      setEditingNodeId: s.setEditingNodeId,
+      setSearchOpen: s.setSearchOpen,
+      activeCategoryFilters: s.activeCategoryFilters,
+      toggleCategoryFilter: s.toggleCategoryFilter,
+      clearCategoryFilters: s.clearCategoryFilters,
+      setExportPanelOpen: s.setExportPanelOpen,
+      presentationNodeIds: s.presentationNodeIds,
+      setPresentationOrderOpen: s.setPresentationOrderOpen,
+      startPresentation: s.startPresentation,
+      setShortcutsModalOpen: s.setShortcutsModalOpen,
+      addToast: s.addToast,
+    }))
+  )
+  const { categories, snapToGrid, setSnapToGrid } = useSettingsStore(
+    useShallow((s) => ({
+      categories: s.categories,
+      snapToGrid: s.snapToGrid,
+      setSnapToGrid: s.setSnapToGrid,
+    }))
+  )
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [showPresentMenu, setShowPresentMenu] = useState(false)
@@ -56,7 +105,7 @@ export function Toolbar() {
 
   const handleAddNode = () => {
     const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
-    const pos = findFreePosition(center, nodes as Node<IdeaNodeData>[])
+    const pos = findFreePosition(center, useMapStore.getState().nodes)
     const newId = addNode('新しいアイデア', pos.x, pos.y)
     setSelectedNodeId(newId)
     setEditingNodeId(newId)
@@ -67,44 +116,37 @@ export function Toolbar() {
     setSelectedNodeId(null)
   }
 
-  const handleRadialLayout = () => {
+  /** 整列レイアウトを計算してアニメーション適用する。dagre は動的ロードのため compute は非同期 */
+  const runLayout = async (
+    compute: (nodes: Node<IdeaNodeData>[], edges: Edge[]) => Promise<Node<IdeaNodeData>[]>
+  ) => {
     if (animatingRef.current) return
-    const original = nodes as Node<IdeaNodeData>[]
-    const laid = applyRadialLayout(original, edges)
     animatingRef.current = true
-    animateNodePositions(
-      original,
-      laid,
-      (frame) => setNodesNoHistory(frame as Node<IdeaNodeData>[]),
-      () => {
-        commitNodesWithHistory(original, laid as Node<IdeaNodeData>[])
-        animatingRef.current = false
-        fitView({ padding: 0.15, duration: 400 })
-      }
-    )
     setShowLayoutMenu(false)
+    const { nodes, edges } = useMapStore.getState()
+    const original = nodes
+    try {
+      const laid = await compute(original, edges)
+      animateNodePositions(
+        original,
+        laid,
+        (frame) => setNodesNoHistory(frame),
+        () => {
+          commitNodesWithHistory(original, laid)
+          animatingRef.current = false
+          fitView({ padding: 0.15, duration: 400 })
+        }
+      )
+    } catch {
+      animatingRef.current = false
+      addToast('整列に失敗しました', 'error')
+    }
   }
 
-  const handleDagreLayout = (rankdir: 'LR' | 'TB') => {
-    if (animatingRef.current) return
-    const original = nodes as Node<IdeaNodeData>[]
-    const laid = applyDagreLayout(original, edges, rankdir)
-    animatingRef.current = true
-    animateNodePositions(
-      original,
-      laid,
-      (frame) => setNodesNoHistory(frame as Node<IdeaNodeData>[]),
-      () => {
-        commitNodesWithHistory(original, laid as Node<IdeaNodeData>[])
-        animatingRef.current = false
-        fitView({ padding: 0.15, duration: 400 })
-      }
-    )
-    setShowLayoutMenu(false)
-  }
+  const handleRadialLayout = () => runLayout((n, e) => applyRadialLayout(n, e))
 
-  const canUndo = past.length > 0
-  const canRedo = future.length > 0
+  const handleDagreLayout = (rankdir: 'LR' | 'TB') =>
+    runLayout((n, e) => applyDagreLayout(n, e, rankdir))
 
   return (
     <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-10 flex-shrink-0">

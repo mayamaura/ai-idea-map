@@ -1,19 +1,31 @@
 import { useReactFlow } from '@xyflow/react'
-import type { Node } from '@xyflow/react'
+import { useShallow } from 'zustand/react/shallow'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { findFreePosition } from '../../utils/mapLayout'
-import type { IdeaNodeData } from '../../types'
 
 export function BottomNav() {
   const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow()
-  const { nodes, addNode, undo, redo, past, future } = useMapStore()
-  const { setSettingsOpen, setShortcutsModalOpen, setSelectedNodeId, setEditingNodeId, setSearchOpen } = useUIStore()
+  // nodes はドラッグ中に毎フレーム更新されるため購読せず、追加時に getState() から読む
+  const { addNode, undo, redo } = useMapStore(
+    useShallow((s) => ({ addNode: s.addNode, undo: s.undo, redo: s.redo }))
+  )
+  const canUndo = useMapStore((s) => s.past.length > 0)
+  const canRedo = useMapStore((s) => s.future.length > 0)
+  const { setSettingsOpen, setShortcutsModalOpen, setSelectedNodeId, setEditingNodeId, setSearchOpen } = useUIStore(
+    useShallow((s) => ({
+      setSettingsOpen: s.setSettingsOpen,
+      setShortcutsModalOpen: s.setShortcutsModalOpen,
+      setSelectedNodeId: s.setSelectedNodeId,
+      setEditingNodeId: s.setEditingNodeId,
+      setSearchOpen: s.setSearchOpen,
+    }))
+  )
 
   // Toolbar と同じ実装: 画面中央のフロー座標を起点に空きスペースへ追加
   const handleAddNode = () => {
     const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
-    const pos = findFreePosition(center, nodes as Node<IdeaNodeData>[])
+    const pos = findFreePosition(center, useMapStore.getState().nodes)
     const newId = addNode('新しいアイデア', pos.x, pos.y)
     setSelectedNodeId(newId)
     setEditingNodeId(newId)
@@ -34,7 +46,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => undo()}
-        disabled={past.length === 0}
+        disabled={!canUndo}
         className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 disabled:opacity-40 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -44,7 +56,7 @@ export function BottomNav() {
       </button>
       <button
         onClick={() => redo()}
-        disabled={future.length === 0}
+        disabled={!canRedo}
         className="flex flex-col items-center gap-0.5 p-2 text-gray-500 dark:text-gray-400 disabled:opacity-40 flex-shrink-0"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

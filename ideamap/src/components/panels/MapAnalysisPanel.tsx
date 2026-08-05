@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -21,10 +22,38 @@ export function MapAnalysisPanel() {
     setClusterSuggestions,
     addToast,
     setSettingsOpen,
-  } = useUIStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      isAnalysisPanelOpen: s.isAnalysisPanelOpen,
+      setAnalysisPanelOpen: s.setAnalysisPanelOpen,
+      isAnalysisLoading: s.isAnalysisLoading,
+      setAnalysisLoading: s.setAnalysisLoading,
+      mapAnalysis: s.mapAnalysis,
+      setMapAnalysis: s.setMapAnalysis,
+      connectionSuggestions: s.connectionSuggestions,
+      setConnectionSuggestions: s.setConnectionSuggestions,
+      clusterSuggestions: s.clusterSuggestions,
+      setClusterSuggestions: s.setClusterSuggestions,
+      addToast: s.addToast,
+      setSettingsOpen: s.setSettingsOpen,
+    }))
+  )
 
-  const { nodes, edges, addSuggestedEdge, applyClusterCategory } = useMapStore()
-  const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore()
+  // nodes / edges は解析実行時にしか使わないため購読せず getState() から読む
+  const { addSuggestedEdge, applyClusterCategory } = useMapStore(
+    useShallow((s) => ({
+      addSuggestedEdge: s.addSuggestedEdge,
+      applyClusterCategory: s.applyClusterCategory,
+    }))
+  )
+  const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore(
+    useShallow((s) => ({
+      apiKey: s.apiKey,
+      aiModel: s.aiModel,
+      categories: s.categories,
+      getCategoryById: s.getCategoryById,
+    }))
+  )
 
   const [activeTab, setActiveTab] = useState<TabKey>('analysis')
   const [dismissedConnections, setDismissedConnections] = useState<Set<string>>(new Set())
@@ -39,6 +68,7 @@ export function MapAnalysisPanel() {
     setAnalysisLoading(true)
     setMapAnalysis(null)
     setRawErrorResponse(null)
+    const { nodes, edges } = useMapStore.getState()
     try {
       const result = await analyzeMap({
         apiKey,
@@ -54,7 +84,7 @@ export function MapAnalysisPanel() {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [apiKey, aiModel, nodes, edges, categories, setAnalysisLoading, setMapAnalysis, addToast])
+  }, [apiKey, aiModel, categories, setAnalysisLoading, setMapAnalysis, addToast])
 
   const handleFindConnections = useCallback(async () => {
     if (!apiKey) {
@@ -65,6 +95,7 @@ export function MapAnalysisPanel() {
     setConnectionSuggestions([])
     setDismissedConnections(new Set())
     setRawErrorResponse(null)
+    const { nodes, edges } = useMapStore.getState()
     try {
       const result = await suggestConnections({
         apiKey,
@@ -80,7 +111,7 @@ export function MapAnalysisPanel() {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [apiKey, aiModel, nodes, edges, setAnalysisLoading, setConnectionSuggestions, addToast])
+  }, [apiKey, aiModel, setAnalysisLoading, setConnectionSuggestions, addToast])
 
   const handleSuggestClusters = useCallback(async () => {
     if (!apiKey) {
@@ -91,6 +122,7 @@ export function MapAnalysisPanel() {
     setClusterSuggestions([])
     setAppliedClusters(new Set())
     setRawErrorResponse(null)
+    const { nodes } = useMapStore.getState()
     try {
       const result = await suggestClusters({
         apiKey,
@@ -106,7 +138,7 @@ export function MapAnalysisPanel() {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [apiKey, aiModel, nodes, categories, setAnalysisLoading, setClusterSuggestions, addToast])
+  }, [apiKey, aiModel, categories, setAnalysisLoading, setClusterSuggestions, addToast])
 
   const handleApproveConnection = useCallback(
     (suggestion: ConnectionSuggestion) => {

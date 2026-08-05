@@ -1,8 +1,10 @@
 import { memo, useRef, useEffect, useCallback } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useNodeFocus } from '../../hooks/useNodeFocus'
 import type { IdeaNodeData } from '../../types'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
@@ -23,26 +25,44 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const editText = useRef(nodeData.title)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { updateNodeTitle } = useMapStore()
+  const updateNodeTitle = useMapStore((s) => s.updateNodeTitle)
   const {
     setSelectedNodeId,
     openContextMenu,
     openNodeDetail,
     searchQuery,
     activeCategoryFilters,
-    presentationNodeIds,
     editingNodeId,
     setEditingNodeId,
-  } = useUIStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      setSelectedNodeId: s.setSelectedNodeId,
+      openContextMenu: s.openContextMenu,
+      openNodeDetail: s.openNodeDetail,
+      searchQuery: s.searchQuery,
+      activeCategoryFilters: s.activeCategoryFilters,
+      editingNodeId: s.editingNodeId,
+      setEditingNodeId: s.setEditingNodeId,
+    }))
+  )
+  const presentationIndex = useUIStore((s) => s.presentationNodeIds.indexOf(id))
   const nodeShape = useSettingsStore((s) => s.nodeShape)
   const getCategoryById = useSettingsStore((s) => s.getCategoryById)
 
   // React Flow の data prop は外部ストア更新に追従しないことがあるため、
-  // color と categoryId はストアから直接読む（applyClusterCategory 等の即時反映のため）
-  const storeColor = useMapStore((s) => s.nodes.find((n) => n.id === id)?.data.color)
-  const storeCategoryId = useMapStore((s) => s.nodes.find((n) => n.id === id)?.data.categoryId)
+  // color と categoryId はストアから直接読む（applyClusterCategory 等の即時反映のため）。
+  // 全ノードが毎更新で find() を走らせるため、2つのセレクタを1つに統合している
+  const { storeColor, storeCategoryId } = useMapStore(
+    useShallow((s) => {
+      const node = s.nodes.find((n) => n.id === id)
+      return { storeColor: node?.data.color, storeCategoryId: node?.data.categoryId }
+    })
+  )
   const nodeColor = storeColor ?? nodeData.color
   const nodeCategoryId = storeCategoryId !== undefined ? storeCategoryId : nodeData.categoryId
+
+  // フォーカス／発表／接続モードの dim は自ノードぶんだけを Context から判定する
+  const { opacity: focusOpacity, isConnectSource } = useNodeFocus(id)
 
   const isEditing = editingNodeId === id
 
@@ -132,14 +152,19 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const width = widthClass(nodeData.title)
   const category = nodeCategoryId ? getCategoryById(nodeCategoryId) : undefined
   const showCategoryLabel = selected && category && category.id !== 'cat-none'
-  const presentationIndex = presentationNodeIds.indexOf(id)
   const isInPresentation = presentationIndex !== -1
+
+  // 検索・フィルターの dim とフォーカスの dim は同じ要素にかかるため濃い方を採用する
+  const opacity = Math.min(isDimmed ? 0.2 : 1, focusOpacity)
 
   return (
     <div
-      className={`relative group animate-node-enter transition-opacity duration-200 ${
-        isDimmed ? 'opacity-20' : isHighlighted ? 'opacity-100' : ''
-      }`}
+      className="relative group animate-node-enter transition-opacity duration-200"
+      style={{
+        opacity,
+        outline: isConnectSource ? '2px solid #6366f1' : undefined,
+        outlineOffset: isConnectSource ? 2 : undefined,
+      }}
       onDoubleClick={handleDoubleClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}

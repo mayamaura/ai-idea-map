@@ -1,13 +1,20 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { renderMarkdownSimple } from '../../utils/markdown'
 import type { IdeaNodeData } from '../../types'
 
 export function NodePanel() {
-  const { selectedNodeId, setSelectedNodeId, openNodeDetail, setAIPanelOpen } = useUIStore()
-  const { nodes } = useMapStore()
-
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+  const { selectedNodeId, setSelectedNodeId, openNodeDetail, setAIPanelOpen } = useUIStore(
+    useShallow((s) => ({
+      selectedNodeId: s.selectedNodeId,
+      setSelectedNodeId: s.setSelectedNodeId,
+      openNodeDetail: s.openNodeDetail,
+      setAIPanelOpen: s.setAIPanelOpen,
+    }))
+  )
+  // nodes 全体ではなく選択ノードだけを購読し、他ノードのドラッグで再描画しない
+  const selectedNode = useMapStore((s) => s.nodes.find((n) => n.id === selectedNodeId))
   const nodeData = selectedNode?.data as IdeaNodeData | undefined
 
   if (!selectedNode || !nodeData) return null

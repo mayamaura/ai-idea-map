@@ -2,6 +2,7 @@ import { memo, useState, useRef, useCallback, useEffect } from 'react'
 import { NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useNodeFocus } from '../../hooks/useNodeFocus'
 import type { IdeaNodeData } from '../../types'
 
 function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
@@ -9,8 +10,10 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(nodeData.title)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { updateNodeTitle } = useMapStore()
+  const updateNodeTitle = useMapStore((s) => s.updateNodeTitle)
   const dragOverGroupId = useUIStore((s) => s.dragOverGroupId)
+  // フォーカス／発表／接続モードの dim は自ノードぶんだけを Context から判定する
+  const { opacity, isConnectSource } = useNodeFocus(id)
 
   useEffect(() => {
     setEditText(nodeData.title)
@@ -49,8 +52,11 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>
         borderRadius: 12,
         position: 'relative',
         boxSizing: 'border-box',
-        transition: 'border-color 0.15s, background-color 0.15s, border-style 0.1s',
+        transition: 'border-color 0.15s, background-color 0.15s, border-style 0.1s, opacity 0.2s',
         boxShadow: isDropTarget ? '0 0 0 3px rgba(59, 130, 246, 0.25)' : undefined,
+        opacity,
+        outline: isConnectSource ? '2px solid #6366f1' : undefined,
+        outlineOffset: isConnectSource ? 2 : undefined,
       }}
     >
       <NodeResizer

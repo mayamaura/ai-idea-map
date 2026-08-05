@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
@@ -29,8 +30,26 @@ export function Header({
   onGoogleSignIn,
   onGoogleSignOut,
 }: HeaderProps) {
-  const { mapTitle, setMapTitle, saveStatus, currentFileId, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore()
-  const { theme, setTheme } = useSettingsStore()
+  // AI ストリーミング中の chatMessages 更新などで再描画されないよう、必要な値だけを購読する
+  const { mapTitle, setMapTitle, saveStatus, currentFileId, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
+    useShallow((s) => ({
+      mapTitle: s.mapTitle,
+      setMapTitle: s.setMapTitle,
+      saveStatus: s.saveStatus,
+      currentFileId: s.currentFileId,
+      lastSavedAt: s.lastSavedAt,
+      requestSave: s.requestSave,
+      setSettingsOpen: s.setSettingsOpen,
+      setMapListOpen: s.setMapListOpen,
+      setAnalysisPanelOpen: s.setAnalysisPanelOpen,
+      setChatPanelOpen: s.setChatPanelOpen,
+      setFileDashboardOpen: s.setFileDashboardOpen,
+      openConfirmDialog: s.openConfirmDialog,
+    }))
+  )
+  const { theme, setTheme } = useSettingsStore(
+    useShallow((s) => ({ theme: s.theme, setTheme: s.setTheme }))
+  )
   const isOnline = useOnlineStatus()
 
   // 「接続済み」ドロップダウンメニュー

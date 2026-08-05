@@ -1,5 +1,6 @@
 import { useInternalNode, BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, getStraightPath, Position, type EdgeProps } from '@xyflow/react'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useEdgeFocusOpacity } from '../../hooks/useNodeFocus'
 
 type BezierArgs = {
   sourceX: number
@@ -63,6 +64,7 @@ export function FloatingEdge({ id, source, target, markerEnd, markerStart, style
   const targetNode = useInternalNode(target)
   // フックは条件分岐より前に呼ぶ必要があるため early return の前に置く
   const edgeStyle = useSettingsStore((s) => s.edgeStyle)
+  const focusOpacity = useEdgeFocusOpacity(source, target)
 
   // useInternalNode の返り値を直接渡せないため、計算をインラインで行う
   if (!sourceNode || !targetNode) return null
@@ -89,6 +91,7 @@ export function FloatingEdge({ id, source, target, markerEnd, markerStart, style
         style={{
           strokeWidth: selected ? 2 : 1.5,
           stroke: selected ? '#6366f1' : '#94a3b8',
+          opacity: focusOpacity,
           ...style,
         }}
       />

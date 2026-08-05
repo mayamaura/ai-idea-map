@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
@@ -19,10 +20,36 @@ export function AISuggestionPanel() {
     setAILoading,
     addToast,
     setSettingsOpen,
-  } = useUIStore()
-  const { nodes, edges, addNode, onConnect } = useMapStore()
+  } = useUIStore(
+    useShallow((s) => ({
+      isAIPanelOpen: s.isAIPanelOpen,
+      setAIPanelOpen: s.setAIPanelOpen,
+      selectedNodeId: s.selectedNodeId,
+      aiSuggestions: s.aiSuggestions,
+      setAISuggestions: s.setAISuggestions,
+      isAILoading: s.isAILoading,
+      setAILoading: s.setAILoading,
+      addToast: s.addToast,
+      setSettingsOpen: s.setSettingsOpen,
+    }))
+  )
+  // nodes 全体はドラッグ中に毎フレーム更新されるため購読せず、必要なときに getState() から読む
+  // （edges はノードのドラッグでは変化しないため描画に使う分を購読して問題ない）
+  const { edges, addNode, onConnect } = useMapStore(
+    useShallow((s) => ({ edges: s.edges, addNode: s.addNode, onConnect: s.onConnect }))
+  )
+  const selectedNode = useMapStore((s) => s.nodes.find((n) => n.id === selectedNodeId))
   const { apiKey, aiModel, suggestionCount, setSuggestionCount, categories, getCategoryById } =
-    useSettingsStore()
+    useSettingsStore(
+      useShallow((s) => ({
+        apiKey: s.apiKey,
+        aiModel: s.aiModel,
+        suggestionCount: s.suggestionCount,
+        setSuggestionCount: s.setSuggestionCount,
+        categories: s.categories,
+        getCategoryById: s.getCategoryById,
+      }))
+    )
   const { fitView } = useReactFlow()
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -31,8 +58,6 @@ export function AISuggestionPanel() {
   const [addMode, setAddMode] = useState<'child' | 'sibling'>('child')
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId)
 
   // 選択ノードの親ノード ID 一覧（兄弟モードの有効判定と追加処理に使用）
   const parentNodeIds = edges
@@ -44,6 +69,7 @@ export function AISuggestionPanel() {
   const buildBaseRequest = useCallback(() => {
     if (!selectedNode) return null
 
+    const { nodes } = useMapStore.getState()
     const connectedNodeIdSet = new Set<string>()
     edges.forEach((e) => {
       if (e.source === selectedNode.id) connectedNodeIdSet.add(e.target)
@@ -85,7 +111,6 @@ export function AISuggestionPanel() {
   }, [
     selectedNode,
     edges,
-    nodes,
     parentNodeIds,
     apiKey,
     aiModel,
@@ -116,7 +141,9 @@ export function AISuggestionPanel() {
       const req = buildBaseRequest()
       if (!req) return
       const suggestions = await generateSuggestions(req, ctrl.signal)
-      const existingTitles = new Set(nodes.map((n) => n.data.title.trim().toLowerCase()))
+      const existingTitles = new Set(
+        useMapStore.getState().nodes.map((n) => n.data.title.trim().toLowerCase()),
+      )
       const newSuggestions = suggestions.filter(
         (s) => !existingTitles.has(s.title.trim().toLowerCase()),
       )
@@ -137,7 +164,7 @@ export function AISuggestionPanel() {
       setAILoading(false)
       abortRef.current = null
     }
-  }, [selectedNode, apiKey, nodes, buildBaseRequest, setAILoading, setAISuggestions])
+  }, [selectedNode, apiKey, buildBaseRequest, setAILoading, setAISuggestions])
 
   /** 指定インデックスの提案だけを再生成する */
   const handleRegenerate = useCallback(
@@ -171,6 +198,7 @@ export function AISuggestionPanel() {
     if (selectedSuggestions.length === 0) return
 
     // 位置計算の基準ノード：兄弟モードは最初の親、子モードは選択ノード
+    const { nodes } = useMapStore.getState()
     const anchorId = addMode === 'sibling' && parentNodeIds.length > 0 ? parentNodeIds[0] : null
     const anchorNode =
       anchorId ? (nodes.find((n) => n.id === anchorId) ?? selectedNode) : selectedNode
@@ -226,7 +254,6 @@ export function AISuggestionPanel() {
     selectedNode,
     aiSuggestions,
     selected,
-    nodes,
     addMode,
     parentNodeIds,
     addNode,
