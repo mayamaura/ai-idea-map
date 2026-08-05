@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { clearStoredApiKey } from '../../utils/encryption'
 

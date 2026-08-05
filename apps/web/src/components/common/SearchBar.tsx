@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useReactFlow } from '@xyflow/react'
 import { useShallow } from 'zustand/react/shallow'
 import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import type { IdeaNodeData } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
 

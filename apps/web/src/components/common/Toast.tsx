@@ -1,4 +1,4 @@
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 
 export function ToastContainer() {
   const { toasts, removeToast } = useUIStore()

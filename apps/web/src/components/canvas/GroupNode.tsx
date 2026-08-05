@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from 'react'
 import { NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
 import type { IdeaNodeData } from '@ideamap/core'
 

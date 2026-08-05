@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError } from '../../services/claudeService'

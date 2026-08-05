@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useUIStore, type InputDialogState } from '../../stores/uiStore'
+import { useUIStore, type InputDialogState } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 // 入力値をマウント単位で持つことで、ダイアログを開くたびに initialValue から始まる

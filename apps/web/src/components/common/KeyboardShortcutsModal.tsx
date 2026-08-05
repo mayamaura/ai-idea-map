@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 interface ShortcutRow {

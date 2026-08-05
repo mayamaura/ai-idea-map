@@ -1,7 +1,7 @@
 import { Fragment, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 
 export function PresentationOrderPanel() {

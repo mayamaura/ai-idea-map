@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useSettingsStore, DEFAULT_CATEGORIES } from '../../stores/settingsStore'
 import type { AIModel } from '@ideamap/core'
 

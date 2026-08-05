@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatMessage } from '@ideamap/core'
-import { saveDriveFileId, loadDriveFileId } from '../services/storageService'
+import { getPlatform } from '@ideamap/platform'
+import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatMessage } from '../types'
+
+/** 開いている Drive ファイルIDの永続化キー（リロード後も同じファイルへ保存を継続するため） */
+const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
 
 export interface Toast {
   id: string
@@ -123,6 +126,11 @@ interface UIState {
   setLastSavedAt: (iso: string) => void
   setMapTitle: (title: string) => void
   setCurrentFileId: (id: string | null) => void
+  /**
+   * 永続化した currentFileId を復元する。StorageAdapter が非同期のため
+   * ストア生成時には読めない。各アプリの main.tsx が最初のレンダー前に await する。
+   */
+  restoreCurrentFileId: () => Promise<void>
   setCurrentMapId: (id: string | null) => void
   addToast: (message: string, type: Toast['type'], action?: Toast['action']) => void
   removeToast: (id: string) => void
@@ -186,8 +194,8 @@ export const useUIStore = create<UIState>((set) => ({
   lastSavedAt: null,
   hasActiveMap: false,
   mapTitle: '新しいマップ',
-  // リロード後も同じファイルへ保存を継続できるよう localStorage から復元
-  currentFileId: loadDriveFileId(),
+  // 復元は非同期の restoreCurrentFileId() が担う（main.tsx が初回レンダー前に呼ぶ）
+  currentFileId: null,
   currentMapId: null,
   toasts: [],
   contextMenu: null,
@@ -235,9 +243,15 @@ export const useUIStore = create<UIState>((set) => ({
   requestSave: () => set((state) => ({ saveRequestId: state.saveRequestId + 1 })),
   setLastSavedAt: (iso) => set({ lastSavedAt: iso }),
   setMapTitle: (title) => set({ mapTitle: title }),
-  // fileId は localStorage と常に一致させる（更新を1アクションに集約し同期漏れを防ぐ）
+  // fileId は永続化領域と常に一致させる（更新を1アクションに集約し同期漏れを防ぐ）。
+  // 書き込みは待たずに state を更新する（旧実装の localStorage 直書きと同じ同期性を保つため）
   setCurrentFileId: (id) => {
-    saveDriveFileId(id)
+    const { storage } = getPlatform()
+    void (id ? storage.setItem(DRIVE_FILE_ID_KEY, id) : storage.removeItem(DRIVE_FILE_ID_KEY))
+    set({ currentFileId: id })
+  },
+  restoreCurrentFileId: async () => {
+    const id = await getPlatform().storage.getItem(DRIVE_FILE_ID_KEY)
     set({ currentFileId: id })
   },
   setCurrentMapId: (id) => set({ currentMapId: id }),

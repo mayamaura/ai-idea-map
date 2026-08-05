@@ -16,7 +16,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { IdeaNode } from './IdeaNode'
 import { GroupNode } from './GroupNode'

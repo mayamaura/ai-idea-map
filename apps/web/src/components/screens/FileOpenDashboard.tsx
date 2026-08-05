@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 import { listMaps, loadMap, deleteMap, saveMap } from '../../services/googleDriveService'
 import { loadRecentMaps, saveRecentMap, loadMapLocally } from '../../services/storageService'

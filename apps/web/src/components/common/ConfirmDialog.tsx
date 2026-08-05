@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 export function ConfirmDialog() {

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { clearDriveCache } from '../services/googleDriveService'
-import { useUIStore } from '../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 
 // drive.file のみでファイル保存、userinfo.email で接続アカウントを表示
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email'

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useMapStore } from '../stores/mapStore'
-import { useUIStore } from '../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 
 export function useKeyboardShortcuts() {
   useEffect(() => {

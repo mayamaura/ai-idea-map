@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 import { listMaps, loadMap, deleteMap } from '../../services/googleDriveService'
 import type { DriveFile } from '../../services/googleDriveService'

@@ -1,5 +1,5 @@
 import type { SystemAdapter } from '@ideamap/platform'
-import { useUIStore } from '../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 
 /**
  * Web版のクリップボード・外部URL・終了前確認。

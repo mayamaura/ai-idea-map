@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import type { IdeaNodeData, MapFile } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
 import {

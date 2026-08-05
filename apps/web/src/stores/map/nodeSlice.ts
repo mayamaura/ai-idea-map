@@ -9,9 +9,9 @@ import {
   isOutsideParent,
   syncGroupMeasured,
   DEFAULT_NODE_SIZE,
+  useUIStore,
   type IdeaNodeData,
 } from '@ideamap/core'
-import { useUIStore } from '../uiStore'
 import { pushPast, snapshot } from './history'
 import { DEFAULT_NODE_COLOR, initialNodes, makeEdge } from './constants'
 import type { IdeaNode, MapSliceCreator, NodeSlice } from './types'

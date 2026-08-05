@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useUIStore, type ContextMenuType } from '../../stores/uiStore'
+import { useUIStore, type ContextMenuType } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 

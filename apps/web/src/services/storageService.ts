@@ -1,7 +1,6 @@
 import type { MapFile } from '@ideamap/core'
 
 const CURRENT_MAP_KEY = 'ideamap-current-map'
-const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
 
 export function saveMapLocally(data: MapFile): void {
   try {
@@ -17,24 +16,6 @@ export function loadMapLocally(): MapFile | null {
     // 壊れたデータや旧フォーマットを「再開」候補に出さないための最低限の検証
     if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) return null
     return data
-  } catch {
-    return null
-  }
-}
-
-export function saveDriveFileId(fileId: string | null): void {
-  try {
-    if (fileId) {
-      localStorage.setItem(DRIVE_FILE_ID_KEY, fileId)
-    } else {
-      localStorage.removeItem(DRIVE_FILE_ID_KEY)
-    }
-  } catch {}
-}
-
-export function loadDriveFileId(): string | null {
-  try {
-    return localStorage.getItem(DRIVE_FILE_ID_KEY)
   } catch {
     return null
   }

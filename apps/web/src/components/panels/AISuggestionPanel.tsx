@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateSuggestions, toFriendlyAIError } from '../../services/claudeService'

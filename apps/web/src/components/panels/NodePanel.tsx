@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useMapStore } from '../../stores/mapStore'
 import { renderMarkdownSimple } from '../../utils/markdown'
 import type { IdeaNodeData } from '@ideamap/core'

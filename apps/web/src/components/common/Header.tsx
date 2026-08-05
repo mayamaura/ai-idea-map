@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 import type { SaveStatus } from '@ideamap/core'
