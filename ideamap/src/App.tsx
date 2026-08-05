@@ -15,6 +15,7 @@ import { PresentationMode } from './components/screens/PresentationMode'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
+import { InputDialog } from './components/common/InputDialog'
 import { WelcomeModal } from './components/common/WelcomeModal'
 import { MasterPasswordModal } from './components/common/MasterPasswordModal'
 import { SearchBar } from './components/common/SearchBar'
@@ -125,6 +126,7 @@ function AppInner() {
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />
+      <InputDialog />
       <MasterPasswordModal />
       <SearchBar />
       <KeyboardShortcutsModal />

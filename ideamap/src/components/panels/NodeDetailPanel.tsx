@@ -3,17 +3,19 @@ import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { IdeaNodeData } from '../../types'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 export function NodeDetailPanel() {
-  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setSelectedNodeId } = useUIStore(
+  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setSelectedNodeId, openConfirmDialog } = useUIStore(
     useShallow((s) => ({
       isNodeDetailOpen: s.isNodeDetailOpen,
       nodeDetailId: s.nodeDetailId,
       closeNodeDetail: s.closeNodeDetail,
       setAIPanelOpen: s.setAIPanelOpen,
       setSelectedNodeId: s.setSelectedNodeId,
+      openConfirmDialog: s.openConfirmDialog,
     }))
   )
   const { updateNodeTitle, updateNodeBody, updateNodeCategory, deleteNode } = useMapStore(
@@ -37,6 +39,9 @@ export function NodeDetailPanel() {
   const [isPreview, setIsPreview] = useState(true)
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  // 破棄して閉じるとき、入力欄の DOM 削除に伴う blur で保存が走るのを防ぐ
+  const skipBlurCommit = useRef(false)
 
   useEffect(() => {
     if (nodeData) {
@@ -47,12 +52,20 @@ export function NodeDetailPanel() {
 
   useEffect(() => {
     if (isNodeDetailOpen && titleRef.current) {
+      skipBlurCommit.current = false
       titleRef.current.focus()
       titleRef.current.select()
     }
   }, [isNodeDetailOpen])
 
-  // blur が走らない閉じ方（背景クリック・Esc・Ctrl+Enter）に対応するため閉じ処理を集約
+  useFocusTrap(panelRef, isNodeDetailOpen)
+
+  // 未コミットの編集があるか（blur 済みの変更はストアに反映されるため差分にならない）
+  const isDirty =
+    Boolean(nodeData) &&
+    (titleInput !== (nodeData?.title ?? '') || bodyInput !== (nodeData?.body ?? ''))
+
+  // blur が走らない閉じ方（Ctrl+Enter・×ボタン）に対応するため閉じ処理を集約
   const commitAndClose = useCallback(() => {
     if (nodeDetailId) {
       if (titleInput.trim()) updateNodeTitle(nodeDetailId, titleInput.trim())
@@ -61,26 +74,58 @@ export function NodeDetailPanel() {
     closeNodeDetail()
   }, [nodeDetailId, titleInput, bodyInput, updateNodeTitle, updateNodeBody, closeNodeDetail])
 
+  const discardAndClose = useCallback(() => {
+    skipBlurCommit.current = true
+    closeNodeDetail()
+  }, [closeNodeDetail])
+
+  // Esc・背景クリックは「閉じる」操作として破棄で統一する（IdeaNode のインライン編集と同じ）。
+  // ただし未コミットの編集がある場合だけ取り違えを防ぐ確認を挟む
+  const requestClose = useCallback(() => {
+    if (!isDirty) {
+      discardAndClose()
+      return
+    }
+    // 確認ダイアログへフォーカスが移る際の blur で保存されるのを先回りして止める。
+    // 「保存して閉じる」を選んだ場合は commitAndClose が明示的に書き込むため保存は失われない
+    skipBlurCommit.current = true
+    openConfirmDialog({
+      title: '編集内容を破棄しますか？',
+      message: '入力中の変更はまだ保存されていません。破棄して閉じますか？',
+      confirmLabel: '破棄して閉じる',
+      danger: true,
+      onConfirm: closeNodeDetail,
+      onCancel: () => {
+        skipBlurCommit.current = false
+      },
+      secondaryAction: { label: '保存して閉じる', onClick: commitAndClose },
+    })
+  }, [isDirty, discardAndClose, commitAndClose, closeNodeDetail, openConfirmDialog])
+
   // Esc と本文 Ctrl+Enter のキー処理
   useEffect(() => {
     if (!isNodeDetailOpen) return
     const onKey = (e: KeyboardEvent) => {
+      // 破棄確認ダイアログ表示中の Esc はダイアログ側に任せる
+      if (useUIStore.getState().confirmDialog) return
       if (e.key === 'Escape') {
         e.preventDefault()
-        commitAndClose()
+        requestClose()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isNodeDetailOpen, commitAndClose])
+  }, [isNodeDetailOpen, requestClose])
 
   const handleTitleBlur = useCallback(() => {
+    if (skipBlurCommit.current) return
     if (nodeDetailId && titleInput.trim()) {
       updateNodeTitle(nodeDetailId, titleInput.trim())
     }
   }, [nodeDetailId, titleInput, updateNodeTitle])
 
   const handleBodyBlur = useCallback(() => {
+    if (skipBlurCommit.current) return
     if (nodeDetailId) {
       updateNodeBody(nodeDetailId, bodyInput)
     }
@@ -129,11 +174,17 @@ export function NodeDetailPanel() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4"
-      onClick={commitAndClose}
+      // click ではなく mousedown で閉じる。click まで待つと先に入力欄の blur が走り、
+      // 破棄を選ぶ前に変更が保存されてしまうため
+      onMouseDown={requestClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="node-detail-title"
         className="bg-white dark:bg-gray-800 w-full sm:max-w-lg max-h-[90vh] h-full sm:h-auto sm:rounded-2xl shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
@@ -141,7 +192,7 @@ export function NodeDetailPanel() {
             {nodeData.createdBy === 'ai' && (
               <span className="w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">✦</span>
             )}
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">ノード詳細</h2>
+            <h2 id="node-detail-title" className="text-sm font-semibold text-gray-800 dark:text-gray-100">ノード詳細</h2>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -153,6 +204,8 @@ export function NodeDetailPanel() {
             </button>
             <button
               onClick={commitAndClose}
+              title="保存して閉じる"
+              aria-label="保存して閉じる"
               className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

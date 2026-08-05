@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useUIStore } from '../../stores/uiStore'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 interface ShortcutRow {
   keys: string[]
@@ -33,6 +34,8 @@ const SHORTCUTS: { section: string; rows: ShortcutRow[] }[] = [
     section: '表示・検索',
     rows: [
       { keys: ['Ctrl', 'F'], description: '検索バーをトグル' },
+      { keys: ['Ctrl', 'Shift', 'C'], description: 'AIチャットパネルをトグル' },
+      { keys: ['Ctrl', 'P'], description: '発表モードを開始（発表リストが必要）' },
       { keys: ['Ctrl', '/'], description: 'この操作ガイドを表示' },
     ],
   },
@@ -80,6 +83,9 @@ function Key({ children }: { children: string }) {
 
 export function KeyboardShortcutsModal() {
   const { isShortcutsModalOpen, setShortcutsModalOpen } = useUIStore()
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useFocusTrap(dialogRef, isShortcutsModalOpen)
 
   useEffect(() => {
     if (!isShortcutsModalOpen) return
@@ -94,9 +100,15 @@ export function KeyboardShortcutsModal() {
 
   const content = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcuts-modal-title"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">操作ガイド</h2>
+          <h2 id="shortcuts-modal-title" className="text-lg font-semibold text-gray-800 dark:text-gray-100">操作ガイド</h2>
           <button
             onClick={() => setShortcutsModalOpen(false)}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"

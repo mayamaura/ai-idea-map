@@ -27,7 +27,7 @@ import { FocusStateContext, type FocusState } from '../../hooks/useNodeFocus'
 import type { IdeaNodeData } from '../../types'
 
 function NodeActionBar() {
-  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId, connectingFromNodeId, setConnectingFromNodeId } = useUIStore(
+  const { selectedNodeId, setAIPanelOpen, openNodeDetail, setSelectedNodeId, connectingFromNodeId, setConnectingFromNodeId, openConfirmDialog } = useUIStore(
     useShallow((s) => ({
       selectedNodeId: s.selectedNodeId,
       setAIPanelOpen: s.setAIPanelOpen,
@@ -35,9 +35,31 @@ function NodeActionBar() {
       setSelectedNodeId: s.setSelectedNodeId,
       connectingFromNodeId: s.connectingFromNodeId,
       setConnectingFromNodeId: s.setConnectingFromNodeId,
+      openConfirmDialog: s.openConfirmDialog,
     }))
   )
   const deleteNode = useMapStore((s) => s.deleteNode)
+
+  // 接続線のあるノードは削除の影響が大きいため、右クリックメニューと同じ確認を挟む
+  const handleDelete = useCallback(() => {
+    if (!selectedNodeId) return
+    const removeNode = () => {
+      deleteNode(selectedNodeId)
+      setSelectedNodeId(null)
+    }
+    if (useMapStore.getState().hasConnectedEdges(selectedNodeId)) {
+      openConfirmDialog({
+        title: 'ノードを削除しますか？',
+        message:
+          'このノードには接続された線があります。削除すると、つながっている線もすべて削除されます。',
+        confirmLabel: '削除する',
+        danger: true,
+        onConfirm: removeNode,
+      })
+    } else {
+      removeNode()
+    }
+  }, [selectedNodeId, deleteNode, setSelectedNodeId, openConfirmDialog])
   // mapStore の nodes を参照することでドラッグ後の位置変化にも追従する。
   // 座標だけを useShallow で取り出し、無関係なストア更新では再描画しない
   const absPosition = useMapStore(
@@ -105,9 +127,10 @@ function NodeActionBar() {
       </button>
       <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
       <button
-        onClick={() => { deleteNode(selectedNodeId); setSelectedNodeId(null) }}
+        onClick={handleDelete}
         className="px-3 py-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
         title="削除"
+        aria-label="ノードを削除"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -236,11 +259,14 @@ export function IdeaCanvas() {
   const handleNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault()
+      // 接続モード中は接続先の選択が目的。スマホの長押しはブラウザの contextmenu も発火させるため、
+      // ここを塞がないとタップ操作の裏でメニューが開いてしまう
+      if (connectingFromNodeId) return
       setSelectedNodeId(node.id)
       const menuType = node.type === 'groupNode' ? 'group' : 'node'
       openContextMenu({ type: menuType, x: e.clientX, y: e.clientY, targetId: node.id })
     },
-    [openContextMenu, setSelectedNodeId]
+    [openContextMenu, setSelectedNodeId, connectingFromNodeId]
   )
 
   const handleEdgeContextMenu = useCallback(

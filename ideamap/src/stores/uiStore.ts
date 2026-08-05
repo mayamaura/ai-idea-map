@@ -37,6 +37,19 @@ export interface ConfirmDialogState {
   }
 }
 
+/** 1行テキスト入力ダイアログ（window.prompt の代替） */
+export interface InputDialogState {
+  title: string
+  message?: string
+  initialValue?: string
+  placeholder?: string
+  confirmLabel?: string
+  /** 空文字での確定を許可するか（ラベル削除など）。false のときは空だと確定ボタンを無効化する */
+  allowEmpty?: boolean
+  onSubmit: (value: string) => void
+  onCancel?: () => void
+}
+
 interface UIState {
   selectedNodeId: string | null
   /** インライン編集中のノードID（null = 編集なし） */
@@ -63,6 +76,7 @@ interface UIState {
   toasts: Toast[]
   contextMenu: ContextMenuState | null
   confirmDialog: ConfirmDialogState | null
+  inputDialog: InputDialogState | null
   // 検索 & カテゴリフィルター
   isSearchOpen: boolean
   searchQuery: string
@@ -116,6 +130,8 @@ interface UIState {
   closeContextMenu: () => void
   openConfirmDialog: (dialog: ConfirmDialogState) => void
   closeConfirmDialog: () => void
+  openInputDialog: (dialog: InputDialogState) => void
+  closeInputDialog: () => void
   // 検索 & カテゴリフィルター
   setSearchOpen: (open: boolean) => void
   setSearchQuery: (query: string) => void
@@ -176,6 +192,7 @@ export const useUIStore = create<UIState>((set) => ({
   toasts: [],
   contextMenu: null,
   confirmDialog: null,
+  inputDialog: null,
   isSearchOpen: false,
   searchQuery: '',
   activeCategoryFilters: [],
@@ -239,6 +256,8 @@ export const useUIStore = create<UIState>((set) => ({
   closeContextMenu: () => set({ contextMenu: null }),
   openConfirmDialog: (dialog) => set({ confirmDialog: dialog }),
   closeConfirmDialog: () => set({ confirmDialog: null }),
+  openInputDialog: (dialog) => set({ inputDialog: dialog }),
+  closeInputDialog: () => set({ inputDialog: null }),
   setSearchOpen: (open) => set({ isSearchOpen: open, ...(open ? {} : { searchQuery: '' }) }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   toggleCategoryFilter: (categoryId) =>

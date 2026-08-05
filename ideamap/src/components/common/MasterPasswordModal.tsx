@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { clearStoredApiKey } from '../../utils/encryption'
 
 interface InnerProps {
@@ -166,6 +167,9 @@ export function MasterPasswordModal() {
   const isSetupMode = apiKeyLock !== 'locked' && needsMasterPasswordSetup && !masterPasswordPromptDismissed
   const isVisible = isUnlockMode || isSetupMode
 
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef, isVisible)
+
   const handleForgotPassword = () => {
     clearStoredApiKey()
     useSettingsStore.setState({ apiKeyLock: 'none', masterPasswordPromptDismissed: false })
@@ -177,6 +181,10 @@ export function MasterPasswordModal() {
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 animate-fade-in">
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isUnlockMode ? 'マスターパスワードの入力' : 'マスターパスワードの設定'}
         className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden animate-dialog"
         onClick={(e) => e.stopPropagation()}
       >

@@ -34,6 +34,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
     activeCategoryFilters,
     editingNodeId,
     setEditingNodeId,
+    connectingFromNodeId,
   } = useUIStore(
     useShallow((s) => ({
       setSelectedNodeId: s.setSelectedNodeId,
@@ -43,6 +44,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       activeCategoryFilters: s.activeCategoryFilters,
       editingNodeId: s.editingNodeId,
       setEditingNodeId: s.setEditingNodeId,
+      connectingFromNodeId: s.connectingFromNodeId,
     }))
   )
   const presentationIndex = useUIStore((s) => s.presentationNodeIds.indexOf(id))
@@ -128,6 +130,9 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     // マルチタッチ（ピンチ等）中は長押し判定しない
     if (e.touches.length !== 1) return
+    // 接続モード中のタップは接続確定が目的。長押しタイマーを張るとタップ後に
+    // コンテキストメニューが二重で開くため、タイマー自体を作らない
+    if (connectingFromNodeId) return
     const touch = e.touches[0]
     // イベントはコールバック終了後に使えないため座標をローカル変数に取り込む
     const x = touch.clientX
@@ -137,7 +142,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       openContextMenu({ type: 'node', x, y, targetId: id })
       navigator.vibrate?.(10)
     }, 500)
-  }, [id, setSelectedNodeId, openContextMenu])
+  }, [id, setSelectedNodeId, openContextMenu, connectingFromNodeId])
 
   const handleTouchEnd = useCallback(() => {
     if (longPressTimer.current) {

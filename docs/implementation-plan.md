@@ -1204,23 +1204,53 @@
 
 ---
 
-### Phase 30: UX 改善バッチ（約2日）
+### Phase 30: UX 改善バッチ（約2日）✅ 完了（2026-08-05）
 
 **目標**: 日常操作の摩擦と一貫性の欠如を解消する。
 
 > 根拠: `docs/review/ux.md` / `validation-ux.md`。UX高-7（selectedNodeId 残存）は検証で誤検知と判明したため除外済み。
 
 #### タスク
-- [ ] `AISuggestionPanel.tsx` にダークモード対応（`dark:` クラス）を追加（他パネルと統一）
-- [ ] `NodeDetailPanel.tsx` の Esc / 背景クリックの挙動を統一（現状「保存して閉じる」→「破棄して閉じる」、または変更がある場合のみ軽量確認）。IdeaNode インライン編集（Esc=破棄）と整合させる
-- [ ] `NodeActionBar` の削除に確認を追加（接続線がある場合のみ。右クリックメニューと同じ `ConfirmDialog` パターン）
-- [ ] AIチャット履歴クリアに確認ダイアログを追加
-- [ ] 接続モード中のロングプレス二重発火を防ぐガードを `IdeaNode.handleTouchStart` に追加（`connectingFromNodeId` があればタイマーを張らない）
-- [ ] エッジ／グループのラベル編集の `window.prompt`（`ContextMenu.tsx` 2箇所）を `InputDialog`（`ConfirmDialog` 同型）に置換
-- [ ] アクセシビリティ: `ConfirmDialog` に `role="dialog"` / `aria-modal`、チャットに `aria-live`、コンテキストメニューに `role="menu"` / `menuitem`、モーダルのフォーカストラップを追加
-- [ ] グループ削除ダイアログの文言バグ修正（`ContextMenu.tsx`）、操作ガイドに `Ctrl+Shift+C` を追記
+- [x]✅ `AISuggestionPanel.tsx` にダークモード対応（`dark:` クラス）を追加（他パネルと統一）
+- [x]✅ `NodeDetailPanel.tsx` の Esc / 背景クリックの挙動を統一（「破棄して閉じる」。未コミットの変更があるときだけ3択確認）。IdeaNode インライン編集（Esc=破棄）と整合させる
+- [x]✅ `NodeActionBar` の削除に確認を追加（接続線がある場合のみ。右クリックメニューと同じ `ConfirmDialog` パターン）
+- [x]✅ AIチャット履歴クリアに確認ダイアログを追加
+- [x]✅ 接続モード中のロングプレス二重発火を防ぐガードを `IdeaNode.handleTouchStart` に追加（`connectingFromNodeId` があればタイマーを張らない）＋ `IdeaCanvas.handleNodeContextMenu` にも同じガード（下記「判明事項」参照）
+- [x]✅ エッジ／グループのラベル編集の `window.prompt`（`ContextMenu.tsx` 2箇所）を `InputDialog`（`ConfirmDialog` 同型）に置換
+- [x]✅ アクセシビリティ: `ConfirmDialog` に `role="dialog"` / `aria-modal`、チャットに `aria-live`、コンテキストメニューに `role="menu"` / `menuitem`、モーダルのフォーカストラップを追加
+- [x]✅ グループ削除ダイアログの文言バグ修正（`ContextMenu.tsx`）、操作ガイドに `Ctrl+Shift+C` を追記
+- [x]✅ 追加対応: `SettingsPanel` / `MapListPanel` のダークモード対応（レビューは AISuggestionPanel だけを未対応としていたが、実機確認でこの2つも `dark:` クラスが0件と判明。完了条件「全パネルで一貫」を満たすため同時に対応）
 
-**完了条件**: ダークモードが全パネルで一貫し、削除・履歴クリアの誤操作が確認で防がれ、Esc の挙動が統一される。
+#### 実装上の判明事項（計画からの変更点）
+
+- **接続モード中の長押しメニューは `contextmenu` 経路が本命**: React Flow のノードはドラッグ用に d3-drag が `touchstart` を `stopImmediatePropagation()` するため、`IdeaNode` の `onTouchStart` はタッチ環境では発火しない（Chromium のタッチエミュレーションで確認）。実機で長押しメニューが開くのはブラウザが発火する `contextmenu` → `IdeaCanvas.handleNodeContextMenu` 経由。計画どおりのガードに加えて、こちらにも `connectingFromNodeId` ガードを入れて初めて意図した挙動になる。
+- **NodeDetailPanel の破棄は blur との競合を先回りする必要がある**: 確認ダイアログへフォーカスが移る際の `blur` で先に保存されてしまうため、①ダイアログを開く**前**に `skipBlurCommit` を立てる、②背景クリックは `onClick` ではなく `onMouseDown` で受ける、の2点が必須だった（最初の実装では「破棄」を選んでも保存されていた）。
+- **ConfirmDialog にフォーカストラップを入れると Enter が二重発火する**: 確定ボタンにフォーカスがある状態で `Enter` を押すと、ボタンの click と `window` の keydown ハンドラが両方走る。keydown 側で `target.tagName !== 'BUTTON'` を条件にして解消。
+- **モーダルが重なるとフォーカストラップ同士が競合する**: 詳細パネルの上に確認ダイアログが出るケース。DOM 上で最後にある `[role="dialog"]` を最前面とみなし、それ以外のトラップは Tab 処理を降りる方式にした。
+- **カテゴリ色を背景に敷く要素はダーク対応しない**: カテゴリ行・カテゴリチップは明るいパステル背景が固定なので、文字色を反転させると読めなくなる。トグルのつまみも暗色トラックとの対比のため白のまま。
+- **グループ削除ダイアログは文言修正のみ**: `validation-ux.md` の裁定どおり、2択ボタンを増やさず「子ノードを残したい場合は『グループを解除』を使ってください」と案内する文言に変更した（同じメニュー内に解除項目があるため）。
+
+#### 検証結果
+
+- `npm run build`（tsc + vite）通過。lint の指摘件数は変更前と同一（既存の 14 errors / 3 warnings のみ、新規増加なし）
+- Playwright（preview ビルド）で PC 22項目・スマホ6項目・AIチャット6項目を自動確認、コンソールエラーなし
+
+#### 動作確認（Playwright + preview ビルド・2026-08-05）
+
+- [x]✅ ダーク: AISuggestionPanel / SettingsPanel / MapListPanel の背景・文字・入力欄がダーク配色になる（`rgb(31,41,55)`）
+- [x]✅ NodeActionBar の🗑（接続線あり）で確認ダイアログが出る。キャンセルでノードが残る
+- [x]✅ ConfirmDialog: `role="dialog"` / `aria-labelledby`、初期フォーカス＝確定ボタン、Tab がダイアログ内に留まる
+- [x]✅ NodeDetailPanel: タイトル編集中に Esc → 破棄確認が出る →「破棄して閉じる」で元のタイトルのまま
+- [x]✅ エッジ「ラベルを編集」→ InputDialog（入力欄に初期フォーカス）→ Enter でラベル反映
+- [x]✅ グループ「ラベルを編集」→ InputDialog → 保存でグループ名反映
+- [x]✅ グループ削除ダイアログの文言が「選択してください」を含まない新文言になっている
+- [x]✅ コンテキストメニューに `role="menu"` / `role="menuitem"`（10項目）
+- [x]✅ 操作ガイドに「AIチャットパネルをトグル（Ctrl+Shift+C）」が載っている
+- [x]✅ スマホ（420×860・タッチ）: 接続モードのタップでエッジ作成、その後メニューが開かない
+- [x]✅ スマホ: 通常時は長押し（contextmenu）でメニューが開く／接続モード中は開かない
+- [x]✅ AIチャット: `role="log"` / `aria-live="polite"`、履歴クリアで確認ダイアログ → キャンセルで残る・実行で空状態
+
+**完了条件**: ダークモードが全パネルで一貫し、削除・履歴クリアの誤操作が確認で防がれ、Esc の挙動が統一される。→ 達成
 
 ---
 
@@ -1231,7 +1261,8 @@
 > 根拠: `docs/review/ux.md` の動作確認チェックリスト（Phase14:15項目・Phase18:9項目・Phase25:11項目・Phase26:12項目）。
 
 #### タスク
-- [ ] Phase 25 / 26 のスマホ実機確認（チェックリスト）。**最優先**: 接続モード中ロングプレス二重発火（Phase 30 で対策後に確認）
+- [ ] Phase 25 / 26 のスマホ実機確認（チェックリスト）。**最優先**: 接続モード中ロングプレス二重発火（Phase 30 で対策済み。エミュレータでは解消を確認したが、実機の長押し挙動＝ブラウザの `contextmenu` 発火タイミングは端末依存のため要確認）
+- [ ] 実機確認の追加観点（Phase 30 の検証で判明）: ノード長押し → メニューが**開いたまま指を離せるか**。エミュレータでは長押し後の touchend でブラウザが click を合成し、コンテキストメニューのオーバーレイがそれを拾って即座に閉じる可能性がある。実機で再現するなら `ContextMenu` のオーバーレイ側でメニュー表示直後の click を無視する対策を入れる
 - [ ] Phase 14（AIチャット）のアクション実行（addNode / connectNodes / updateNode）・ストリーミング・エラー時挙動を確認
 - [ ] Phase 18（UX小改善）の複製・整列ガイド・テンプレート・絵文字付与を確認
 - [ ] 確認済み項目を `[x]✅` に更新し、Phase 14/18/25/26 の見出しを `✅ 完了（YYYY-MM-DD）` に更新
@@ -1481,7 +1512,7 @@ npm run dev
 | Phase 27 | セキュリティ & 確定バグ修正 | 2日 |
 | Phase 28 | パフォーマンス最適化 | 2日 |
 | Phase 29 | リファクタリング & 技術的負債返済 | 2日 |
-| Phase 30 | UX 改善バッチ | 2日 |
+| Phase 30 | UX 改善バッチ | 2日 ✅ |
 | Phase 31 | 「確認中」フェーズの動作確認 & 確定 | 2日 |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |

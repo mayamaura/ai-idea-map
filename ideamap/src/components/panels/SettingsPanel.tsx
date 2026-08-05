@@ -58,13 +58,13 @@ function DriveSyncSection({ accessToken }: DriveSyncSectionProps) {
 
   return (
     <section>
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">マスターパスワード（ローカル暗号化 & Drive同期）</h3>
-      <p className="text-xs text-gray-400 mb-3">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">マスターパスワード（ローカル暗号化 & Drive同期）</h3>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
         マスターパスワードでAPIキーを暗号化してブラウザに保存し、Driveへの同期にも使用します。別デバイスで同じパスワードを入力して読み込めます。パスワードはDriveに保存されません。
       </p>
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1.5">マスターパスワード</label>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">マスターパスワード</label>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <input
@@ -73,13 +73,13 @@ function DriveSyncSection({ accessToken }: DriveSyncSectionProps) {
                 onChange={(e) => setPasswordInput(e.target.value)}
                 disabled={!isEditing}
                 placeholder="パスワードを設定..."
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-400"
+                className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500"
               />
               {isEditing && (
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                   {showPassword
                     ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
@@ -98,7 +98,7 @@ function DriveSyncSection({ accessToken }: DriveSyncSectionProps) {
             ) : (
               <button
                 onClick={() => { setPasswordInput(''); setIsEditing(true) }}
-                className="px-3 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 変更
               </button>
@@ -107,7 +107,7 @@ function DriveSyncSection({ accessToken }: DriveSyncSectionProps) {
         </div>
 
         {!syncPassword && (
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+          <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-2">
             マスターパスワードを設定するとAPIキーを安全に保存し、Driveへの同期もできます
           </p>
         )}
@@ -127,7 +127,7 @@ function DriveSyncSection({ accessToken }: DriveSyncSectionProps) {
           <button
             onClick={() => void handleLoadFromDrive()}
             disabled={!syncPassword || !accessToken || isLoading}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs border border-primary-300 text-primary-600 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs border border-primary-300 dark:border-primary-600 text-primary-600 dark:text-primary-400 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {isLoading
               ? <div className="w-3.5 h-3.5 border border-primary-400 border-t-transparent rounded-full animate-spin" />
@@ -192,22 +192,22 @@ function CategoryManager() {
         {categories.map((cat) => {
           if (editingId === cat.id) {
             return (
-              <div key={cat.id} className="border border-primary-300 rounded-lg p-2 space-y-2 bg-primary-50">
+              <div key={cat.id} className="border border-primary-300 dark:border-primary-600 rounded-lg p-2 space-y-2 bg-primary-50 dark:bg-primary-900/30">
                 <div className="flex gap-2">
                   {/* アイコン選択 */}
                   <div className="relative">
                     <button
-                      className="w-8 h-8 border border-gray-200 rounded-lg flex items-center justify-center text-base hover:bg-gray-100"
+                      className="w-8 h-8 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center justify-center text-base hover:bg-gray-100 dark:hover:bg-gray-700"
                       onClick={() => {}}
                     >
                       {editIcon}
                     </button>
-                    <div className="absolute top-9 left-0 bg-white border border-gray-200 rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1 z-10 w-44">
+                    <div className="absolute top-9 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1 z-10 w-44">
                       {PRESET_ICONS.map((icon) => (
                         <button
                           key={icon}
                           onClick={() => setEditIcon(icon)}
-                          className={`w-6 h-6 flex items-center justify-center rounded text-sm hover:bg-gray-100 ${editIcon === icon ? 'bg-primary-100' : ''}`}
+                          className={`w-6 h-6 flex items-center justify-center rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${editIcon === icon ? 'bg-primary-100 dark:bg-primary-900/40' : ''}`}
                         >
                           {icon}
                         </button>
@@ -218,7 +218,7 @@ function CategoryManager() {
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-primary-500"
+                    className="flex-1 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 outline-none focus:border-primary-500 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
                     placeholder="カテゴリ名"
                   />
                 </div>
@@ -227,7 +227,7 @@ function CategoryManager() {
                     <button
                       key={c}
                       onClick={() => setEditColor(c)}
-                      className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${editColor === c ? 'border-primary-500 scale-110' : 'border-gray-300'}`}
+                      className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${editColor === c ? 'border-primary-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`}
                       style={{ backgroundColor: c }}
                     />
                   ))}
@@ -241,7 +241,7 @@ function CategoryManager() {
                   </button>
                   <button
                     onClick={() => setEditingId(null)}
-                    className="flex-1 py-1 border border-gray-200 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+                    className="flex-1 py-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     キャンセル
                   </button>
@@ -253,10 +253,11 @@ function CategoryManager() {
           return (
             <div
               key={cat.id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors"
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-500 transition-colors"
               style={{ backgroundColor: cat.color }}
             >
               <span className="text-sm leading-none">{cat.icon}</span>
+              {/* 背景はカテゴリ色（明るいパステル）固定のため、文字色はダークでも暗いままにする */}
               <span className="flex-1 text-sm text-gray-800">{cat.name}</span>
               <button
                 onClick={() => startEdit(cat.id)}
@@ -285,12 +286,12 @@ function CategoryManager() {
 
       {/* 新規追加フォーム */}
       {isAdding ? (
-        <div className="border border-primary-300 rounded-lg p-2 space-y-2 bg-primary-50">
+        <div className="border border-primary-300 dark:border-primary-600 rounded-lg p-2 space-y-2 bg-primary-50 dark:bg-primary-900/30">
           <div className="flex gap-2">
             <select
               value={newIcon}
               onChange={(e) => setNewIcon(e.target.value)}
-              className="w-14 text-sm border border-gray-200 rounded-lg px-1 py-1 outline-none focus:border-primary-500 bg-white"
+              className="w-14 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-1 outline-none focus:border-primary-500 bg-white dark:bg-gray-700 dark:text-gray-100"
             >
               {PRESET_ICONS.map((icon) => (
                 <option key={icon} value={icon}>{icon}</option>
@@ -301,7 +302,7 @@ function CategoryManager() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
-              className="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-primary-500"
+              className="flex-1 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 outline-none focus:border-primary-500 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
               placeholder="カテゴリ名"
               autoFocus
             />
@@ -311,7 +312,7 @@ function CategoryManager() {
               <button
                 key={c}
                 onClick={() => setNewColor(c)}
-                className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${newColor === c ? 'border-primary-500 scale-110' : 'border-gray-300'}`}
+                className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${newColor === c ? 'border-primary-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`}
                 style={{ backgroundColor: c }}
               />
             ))}
@@ -326,7 +327,7 @@ function CategoryManager() {
             </button>
             <button
               onClick={() => setIsAdding(false)}
-              className="flex-1 py-1 border border-gray-200 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+              className="flex-1 py-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               キャンセル
             </button>
@@ -335,7 +336,7 @@ function CategoryManager() {
       ) : (
         <button
           onClick={() => setIsAdding(true)}
-          className="w-full py-1.5 border border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-primary-400 hover:text-primary-600 transition-colors"
+          className="w-full py-1.5 border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-sm rounded-lg hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
         >
           ＋ カテゴリを追加
         </button>
@@ -386,13 +387,13 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         {/* ヘッダー */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-800">設定</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">設定</h2>
           <button
             onClick={() => setSettingsOpen(false)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -403,15 +404,15 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
         <div className="px-6 py-5 space-y-6">
           {/* Claude API キー */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Claude API</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Claude API</h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">APIキー</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">APIキー</label>
                 {apiKeyLock === 'locked' ? (
                   // ロック中: 入力欄の代わりに解錠ボタンを表示
                   <button
                     onClick={handleShowUnlockModal}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-700 text-sm rounded-lg hover:bg-amber-100 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-sm rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -427,13 +428,13 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
                         onChange={(e) => setKeyInput(e.target.value)}
                         disabled={!isEditingKey}
                         placeholder="sk-ant-..."
-                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-400"
+                        className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500"
                       />
                       {isEditingKey && (
                         <button
                           type="button"
                           onClick={() => setShowKey(!showKey)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200"
                         >
                           {showKey
                             ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
@@ -452,27 +453,27 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
                     ) : (
                       <button
                         onClick={handleKeyEdit}
-                        className="px-3 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"
+                        className="px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
                         変更
                       </button>
                     )}
                   </div>
                 )}
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
                   キーはこのブラウザにのみ保存されます。サーバーには送信しません。
                 </p>
                 <div className="mt-1.5 space-y-1">
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
                     ⚠️ <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="underline">Anthropic Console</a> で利用上限（使用上限）を設定することを推奨します。
                   </p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
                     🔑 このアプリ専用のAPIキーを発行して使うことを推奨します。
                   </p>
                 </div>
                 {!apiKey && apiKeyLock !== 'locked' && (
-                  <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-xs text-amber-700">
+                  <div className="mt-2 p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
                       ⚠️ APIキーが未設定です。AI拡張機能を使うには
                       <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer"
                         className="underline ml-0.5">Anthropic Console</a>
@@ -483,11 +484,11 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">使用モデル</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">使用モデル</label>
                 <select
                   value={aiModel}
                   onChange={(e) => setAiModel(e.target.value as AIModel)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-primary-500"
+                  className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 dark:bg-gray-700 dark:text-gray-100"
                 >
                   <option value="claude-sonnet-5">Claude Sonnet 5（高品質）</option>
                   <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5（高速・低コスト）</option>
@@ -495,8 +496,8 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">
-                  AI提案数: <span className="font-medium text-gray-700">{suggestionCount}個</span>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                  AI提案数: <span className="font-medium text-gray-700 dark:text-gray-200">{suggestionCount}個</span>
                 </label>
                 <input
                   type="range"
@@ -506,7 +507,7 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
                   onChange={(e) => setSuggestionCount(Number(e.target.value))}
                   className="w-full accent-primary-600"
                 />
-                <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                   <span>3</span><span>7</span>
                 </div>
               </div>
@@ -518,8 +519,8 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
 
           {/* カテゴリ管理 */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">カテゴリ管理</h3>
-            <p className="text-xs text-gray-400 mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">カテゴリ管理</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
               ノードをカテゴリで分類できます。デフォルトカテゴリは削除できません。
             </p>
             <CategoryManager />
@@ -527,8 +528,8 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
 
           {/* 外観 */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">外観</h3>
-            <label className="block text-xs text-gray-500 mb-1.5">エッジの形状</label>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">外観</h3>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">エッジの形状</label>
             <div className="flex gap-2">
               {([
                 { value: 'bezier', label: '曲線' },
@@ -541,7 +542,7 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
                   className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
                     edgeStyle === opt.value
                       ? 'bg-primary-600 text-white border-primary-600'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
                 >
                   {opt.label}
@@ -552,25 +553,26 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
 
           {/* 保存設定 */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">保存</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">保存</h3>
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm text-gray-600">自動保存</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300">自動保存</span>
               <button
                 role="switch"
                 aria-checked={autoSave}
                 onClick={() => setAutoSave(!autoSave)}
-                className={`relative w-10 h-6 rounded-full transition-colors ${autoSave ? 'bg-primary-600' : 'bg-gray-200'}`}
+                className={`relative w-10 h-6 rounded-full transition-colors ${autoSave ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600'}`}
               >
+                {/* つまみはトラック（暗色）との対比を保つためダークでも白のままにする */}
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autoSave ? 'translate-x-4' : ''}`} />
               </button>
             </label>
-            <p className="text-xs text-gray-400 mt-1.5">
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
               Googleドライブにサインイン中は3秒後に自動保存します。未サインイン時はローカルストレージに保存します。
             </p>
           </section>
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100">
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={() => setSettingsOpen(false)}
             className="w-full py-2.5 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"

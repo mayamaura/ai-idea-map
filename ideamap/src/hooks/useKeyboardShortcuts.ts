@@ -80,6 +80,7 @@ export function useKeyboardShortcuts() {
         ui.isMapListOpen ||
         ui.isExportPanelOpen ||
         ui.confirmDialog ||
+        ui.inputDialog ||
         ui.contextMenu ||
         ui.isSearchOpen
       ) {

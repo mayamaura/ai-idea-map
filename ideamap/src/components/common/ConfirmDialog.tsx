@@ -1,8 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useUIStore } from '../../stores/uiStore'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 export function ConfirmDialog() {
   const { confirmDialog, closeConfirmDialog } = useUIStore()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+
+  useFocusTrap(dialogRef, Boolean(confirmDialog), confirmButtonRef)
 
   useEffect(() => {
     if (!confirmDialog) return
@@ -11,7 +16,8 @@ export function ConfirmDialog() {
         confirmDialog.onCancel?.()
         closeConfirmDialog()
       }
-      if (e.key === 'Enter') {
+      // ボタンにフォーカスがある場合はボタン自身の click が走るため、ここでは処理しない（二重実行の防止）
+      if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName !== 'BUTTON') {
         confirmDialog.onConfirm()
         closeConfirmDialog()
       }
@@ -46,11 +52,20 @@ export function ConfirmDialog() {
       onClick={handleCancel}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-message"
         className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-5 animate-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-300 leading-relaxed">{message}</p>
+        <h3 id="confirm-dialog-title" className="text-base font-semibold text-gray-800 dark:text-gray-100">
+          {title}
+        </h3>
+        <p id="confirm-dialog-message" className="mt-2 text-sm text-gray-500 dark:text-gray-300 leading-relaxed">
+          {message}
+        </p>
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={handleCancel}
@@ -67,6 +82,7 @@ export function ConfirmDialog() {
             </button>
           )}
           <button
+            ref={confirmButtonRef}
             onClick={handleConfirm}
             className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
               danger ? 'bg-red-500 hover:bg-red-600' : 'bg-primary-600 hover:bg-primary-700'

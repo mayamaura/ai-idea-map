@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore, type ContextMenuType } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 
@@ -13,6 +13,7 @@ function MenuItem({
   danger,
   shortcut,
   disabled,
+  expanded,
 }: {
   icon: string
   label: string
@@ -20,9 +21,14 @@ function MenuItem({
   danger?: boolean
   shortcut?: string
   disabled?: boolean
+  /** サブメニューを開閉する項目の場合の開閉状態 */
+  expanded?: boolean
 }) {
   return (
     <button
+      role="menuitem"
+      aria-haspopup={expanded === undefined ? undefined : true}
+      aria-expanded={expanded}
       onClick={onClick}
       disabled={disabled}
       className={`w-full flex items-center gap-2.5 px-3 py-3 sm:py-1.5 text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
@@ -39,7 +45,14 @@ function MenuItem({
 }
 
 function Divider() {
-  return <div className="my-1 h-px bg-gray-100 dark:bg-gray-700" />
+  return <div role="separator" className="my-1 h-px bg-gray-100 dark:bg-gray-700" />
+}
+
+const MENU_ARIA_LABELS: Record<ContextMenuType, string> = {
+  node: 'ノードの操作メニュー',
+  edge: '接続線の操作メニュー',
+  group: 'グループの操作メニュー',
+  pane: 'キャンバスの操作メニュー',
 }
 
 export function ContextMenu() {
@@ -51,6 +64,7 @@ export function ContextMenu() {
     setAIPanelOpen,
     openNodeDetail,
     openConfirmDialog,
+    openInputDialog,
     selectedNodeId,
     presentationNodeIds,
     addNodeToPresentation,
@@ -168,8 +182,13 @@ export function ContextMenu() {
     if (!targetId) return
     const edge = edges.find((e) => e.id === targetId)
     const current = typeof edge?.label === 'string' ? edge.label : ''
-    const next = window.prompt('線のラベルを入力してください', current)
-    if (next !== null) updateEdgeLabel(targetId, next.trim())
+    openInputDialog({
+      title: '線のラベルを編集',
+      message: '空のまま保存するとラベルを削除します。',
+      initialValue: current,
+      placeholder: '例: 原因 / 手段',
+      onSubmit: (value) => updateEdgeLabel(targetId, value),
+    })
     closeContextMenu()
   }
 
@@ -185,10 +204,23 @@ export function ContextMenu() {
     if (!targetId) return
     openConfirmDialog({
       title: 'グループを削除しますか？',
-      message: 'グループと子ノードをすべて削除するか、グループ枠のみ解除して子ノードを残すか選択してください。',
+      message: 'このグループと、中の子ノードをすべて削除します。子ノードを残したい場合は「グループを解除」を使ってください。',
       confirmLabel: 'グループと子を削除',
       danger: true,
       onConfirm: () => deleteGroupWithChildren(targetId),
+    })
+    closeContextMenu()
+  }
+
+  const handleEditGroupLabel = () => {
+    if (!targetId) return
+    const groupNode = nodes.find((n) => n.id === targetId)
+    const current = (groupNode?.data as { title?: string })?.title ?? ''
+    openInputDialog({
+      title: 'グループ名を編集',
+      initialValue: current,
+      placeholder: 'グループ',
+      onSubmit: (value) => updateNodeTitle(targetId, value || 'グループ'),
     })
     closeContextMenu()
   }
@@ -205,6 +237,8 @@ export function ContextMenu() {
       {/* モバイル: 下部シート / PC: 絶対配置（実寸クランプ済み） */}
       <div
         ref={menuRef}
+        role="menu"
+        aria-label={MENU_ARIA_LABELS[type]}
         className={
           isMobile
             ? 'fixed bottom-0 left-0 right-0 w-full rounded-t-2xl bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg py-2 animate-context-menu'
@@ -275,14 +309,21 @@ export function ContextMenu() {
               />
             )}
             {/* カテゴリ選択 */}
-            <MenuItem icon="🏷️" label="カテゴリを変更" onClick={() => setShowCategories((v) => !v)} />
+            <MenuItem
+              icon="🏷️"
+              label="カテゴリを変更"
+              expanded={showCategories}
+              onClick={() => setShowCategories((v) => !v)}
+            />
             {showCategories && (
-              <div className="px-2 py-1.5 space-y-0.5 max-h-52 overflow-y-auto">
+              <div role="group" aria-label="カテゴリ一覧" className="px-2 py-1.5 space-y-0.5 max-h-52 overflow-y-auto">
                 {categories.map((cat) => {
                   const isActive = targetNode?.data.categoryId === cat.id
                   return (
                     <button
                       key={cat.id}
+                      role="menuitemradio"
+                      aria-checked={isActive}
                       onClick={run(() => {
                         if (targetId) updateNodeCategory(targetId, cat.id, cat.color)
                       })}
@@ -368,18 +409,7 @@ export function ContextMenu() {
 
         {type === 'group' && (
           <>
-            <MenuItem
-              icon="✏️"
-              label="ラベルを編集"
-              onClick={() => {
-                if (!targetId) return
-                const groupNode = nodes.find((n) => n.id === targetId)
-                const current = (groupNode?.data as { title?: string })?.title ?? ''
-                const next = window.prompt('グループ名を入力してください', current)
-                if (next !== null) updateNodeTitle(targetId, next.trim() || 'グループ')
-                closeContextMenu()
-              }}
-            />
+            <MenuItem icon="✏️" label="ラベルを編集" onClick={handleEditGroupLabel} />
             <Divider />
             <MenuItem
               icon="📤"

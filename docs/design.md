@@ -83,6 +83,7 @@ ideamap/
 │   │       ├── Modal.tsx
 │   │       ├── Toast.tsx
 │   │       ├── ConfirmDialog.tsx
+│   │       ├── InputDialog.tsx         # 1行テキスト入力ダイアログ（window.prompt の代替）（Phase 30）
 │   │       ├── SearchBar.tsx           # 検索バー（Phase 8）
 │   │       ├── ApiKeyRequired.tsx      # APIキー未設定時の空状態（AI系3パネル共通）（Phase 29）
 │   │       └── LoadingSpinner.tsx
@@ -107,6 +108,7 @@ ideamap/
 │   │   ├── useAutoSave.ts          # 自動保存フック
 │   │   ├── useGoogleAuth.ts        # Googleログイン状態管理
 │   │   ├── useKeyboardShortcuts.ts # キーボードショートカット
+│   │   ├── useFocusTrap.ts         # モーダル内に Tab フォーカスを閉じ込める（Phase 30）
 │   │   └── useNodeFocus.ts         # フォーカス／発表／接続モードの dim 判定 Context（Phase 28）
 │   ├── types/
 │   │   └── index.ts                # 型定義
@@ -199,6 +201,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `toasts` | `Toast[]` | トースト通知リスト（4秒後自動削除） |
 | `contextMenu` | `ContextMenuState \| null` | 右クリックメニューの表示状態 |
 | `confirmDialog` | `ConfirmDialogState \| null` | 確認ダイアログの表示状態 |
+| `inputDialog` | `InputDialogState \| null` | 1行入力ダイアログの表示状態（`window.prompt` の代替）（Phase 30） |
 | `isSearchOpen` | `boolean` | 検索バーの開閉（Phase 8） |
 | `searchQuery` | `string` | 検索クエリ（IdeaNodeが参照してdim/highlight） |
 | `activeCategoryFilters` | `string[]` | フィルター中のカテゴリID（空=全表示、OR条件） |
@@ -342,6 +345,10 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 **整列セクション（Phase 21）**: ノードメニューで `alignableCount >= 2`（`selected && !parentId && type !== 'groupNode'` の件数）のとき Divider 付きで追加。⬅ 左揃え / ⬆ 上揃え / ↔ 左右中央 / ↕ 上下中央。`alignableCount >= 3` のとき追加で ⇿ 横に等間隔 / ⇳ 縦に等間隔。各項目は `run()` ヘルパー経由でアクション実行後 `closeContextMenu()`。
 
+**ラベル編集（Phase 30）**: エッジの「ラベルを編集」・グループの「ラベルを編集」は `window.prompt` をやめ、`uiStore.openInputDialog()`（§5.6.1）を経由する。グループ名は空入力時に `'グループ'` へフォールバック、エッジラベルは空入力＝ラベル削除。
+
+**アクセシビリティ（Phase 30）**: メニュー本体に `role="menu"` とメニュー種別ごとの `aria-label`、各項目に `role="menuitem"`、Divider に `role="separator"` を付与。カテゴリ一覧は `role="group"` ＋ 各項目 `role="menuitemradio"` / `aria-checked`、「カテゴリを変更」項目には `aria-haspopup` / `aria-expanded` を付ける。
+
 ### 5.5 WelcomeModal（src/components/common/WelcomeModal.tsx）
 
 初回起動時のみ表示。`localStorage.getItem('ideamap-welcomed')` がなければ表示し、閉じ時にセット。  
@@ -353,13 +360,50 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 `uiStore.isShortcutsModalOpen` で制御。`createPortal` で `<body>` に描画。  
 `Ctrl+/` ショートカットのほか、Toolbar の ❓ ボタン（デスクトップ）・BottomNav の「ヘルプ」ボタン（モバイル）から開ける（Phase 22 G）。  
 **見出し**: 「操作ガイド」（Phase 22 G で「キーボードショートカット」から変更）。  
-**内容**: キーボードショートカット（基本操作・ノード編集・表示検索・検索バー内・ダイアログ）＋マウス・タッチ操作セクション。
+**内容**: キーボードショートカット（基本操作・ノード編集・表示検索・検索バー内・ダイアログ）＋マウス・タッチ操作セクション。  
+「表示・検索」セクションには実装済みの `Ctrl+Shift+C`（AIチャット）と `Ctrl+P`（発表モード）も記載する（Phase 30 で追記）。
 
 ### 5.6 ConfirmDialog（src/components/common/ConfirmDialog.tsx）
 
-接続線があるノード削除時のみ表示。  
-- `Enter` → 確認、`Escape` → キャンセル（ショートカット有効）
+取り消しにコストがある操作の前に表示する共通ダイアログ。呼び出し元は `uiStore.openConfirmDialog()`。
+
+**表示する操作（Phase 30 時点）**
+
+| 操作 | 条件 | 呼び出し元 |
+|---|---|---|
+| ノード削除（右クリックメニュー） | 接続線があるときのみ | `ContextMenu.handleDeleteNode` |
+| ノード削除（NodeActionBar の 🗑） | 接続線があるときのみ（Phase 30） | `IdeaCanvas.NodeActionBar.handleDelete` |
+| グループと子ノードの削除 | 常に | `ContextMenu.handleDeleteGroupChoice` |
+| AIチャットの履歴クリア | 常に（Phase 30） | `AIChatPanel.handleClearHistory` |
+| ノード詳細の編集破棄 | 未コミットの変更があるときのみ（Phase 30） | `NodeDetailPanel.requestClose` |
+| 共有URLインポート・保存衝突 | — | `App` / `useAutoSave` |
+
+- `Enter` → 確認、`Escape` → キャンセル（ショートカット有効）。ただしボタンにフォーカスがある状態の `Enter` はボタン自身の click に任せ、二重実行を防ぐ（Phase 30）
 - `confirmDialog` 表示中はキャンバス操作ショートカット全体を抑制
+- `role="dialog"` / `aria-modal` / `aria-labelledby` を付与し、`useFocusTrap` で確定ボタンへ初期フォーカス＋Tab をダイアログ内に閉じ込める（Phase 30）
+
+### 5.6.1 InputDialog（src/components/common/InputDialog.tsx）（Phase 30）
+
+`window.prompt` の代替となる1行入力ダイアログ。`uiStore.openInputDialog()` で開く。エッジのラベル編集・グループ名の編集で使用（`window.prompt` はスマホでフォーカスやスタイルが破綻するため置換）。
+
+| `InputDialogState` | 型 | 説明 |
+|---|---|---|
+| `title` / `message` | `string` | 見出しと補足文 |
+| `initialValue` / `placeholder` | `string` | 入力欄の初期値とプレースホルダ |
+| `confirmLabel` | `string` | 確定ボタンのラベル（既定 `'保存'`） |
+| `allowEmpty` | `boolean` | 空文字での確定可否（既定 `true`。エッジラベルは空＝削除） |
+| `onSubmit` / `onCancel` | `(value: string) => void` / `() => void` | 確定時（trim 済みの値）・キャンセル時 |
+
+- 入力状態は内部の `DialogContent` にマウント単位で持たせ、開くたびに `initialValue` から始まる（`MasterPasswordModal` と同じ方式）
+- `Enter` で確定、`Escape` / 背景クリック / キャンセルで中断。`useFocusTrap` で入力欄に初期フォーカス
+- `inputDialog` 表示中はキャンバス操作ショートカットを抑制（`useKeyboardShortcuts`）
+
+### 5.6.2 useFocusTrap（src/hooks/useFocusTrap.ts）（Phase 30）
+
+モーダル内に Tab フォーカスを閉じ込め、閉じたときに開く前の要素へフォーカスを戻す共通フック。`useFocusTrap(containerRef, active, initialFocusRef?)`。
+
+- 適用先: `ConfirmDialog`（初期フォーカス＝確定ボタン）/ `InputDialog`（＝入力欄）/ `NodeDetailPanel` / `KeyboardShortcutsModal` / `MasterPasswordModal`
+- モーダルが重なった場合（詳細パネルの上に確認ダイアログ等）は、DOM 上で最後にある `[role="dialog"]` を最前面とみなし、そこだけがトラップを効かせる
 
 ### 5.7 ApiKeyRequired（src/components/common/ApiKeyRequired.tsx）（Phase 29）
 
@@ -371,6 +415,22 @@ APIキー未設定時に AI系パネル（AISuggestionPanel / MapAnalysisPanel /
 | `className` | `string` | 配置差分の吸収用。既定は `'flex-1 p-6'`、AISuggestionPanel のみ `'px-5 py-10'` |
 
 ボタン配色は `primary-600` に統一（旧 AIChatPanel の `blue-500` から変更）。
+
+### 5.8 NodeDetailPanel の閉じ方（Phase 30）
+
+入力欄の `blur` で保存する仕組みは維持したうえで、閉じる操作の意味を IdeaNode のインライン編集（Esc=破棄）と揃えた。
+
+| 操作 | 挙動 |
+|---|---|
+| `Esc` / 背景クリック | 未コミットの変更がなければそのまま閉じる。あれば「編集内容を破棄しますか？」を表示（3択: キャンセル / 保存して閉じる / 破棄して閉じる） |
+| ✕ ボタン | 保存して閉じる（`title` / `aria-label` に明示） |
+| `Ctrl+Enter`（本文） | 保存して閉じる |
+
+実装上の要点:
+
+- 未コミット判定は `titleInput !== node.data.title || bodyInput !== (node.data.body ?? '')`。blur 済みの変更はストアへ反映され差分にならないため、確認が出るのは「入力途中で閉じたとき」だけになる。
+- 破棄経路では `skipBlurCommit` ref を立てて `handleTitleBlur` / `handleBodyBlur` を無効化する。**確認ダイアログを開く前に立てる**のが重要で、ダイアログへフォーカスが移る際の `blur` で先に保存されてしまうのを防ぐ。キャンセル時は false に戻す。
+- 背景クリックは `onClick` ではなく `onMouseDown` で受ける。`click` まで待つと先に `blur` が走り、破棄を選ぶ前に保存されてしまうため。
 
 ---
 
@@ -881,6 +941,20 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 - **Background ドット色**: `<Background color={theme === 'dark' ? '#374151' : '#e5e7eb'}>` でテーマに合わせてドット色を出し分ける。背景そのものは `index.css` の `.dark .react-flow__background` が担当。
 - **配色基準**: Header.tsx / ContextMenu.tsx の既存パターン（`bg-white dark:bg-gray-800`、ボタン `text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700` 等）に全コンポーネントを統一。
 
+### Phase 30 による取りこぼしの解消
+
+Phase 24 の「全面化」後も `dark:` クラスが1つもないコンポーネントが残っていたため、Phase 30 で解消した。
+
+| コンポーネント | 対応内容 |
+|---|---|
+| `AISuggestionPanel` | パネル全体（ヘッダー・提案カード・入力欄・フッター）にダーク配色を追加 |
+| `SettingsPanel` | 同上。入力欄・セレクトには `dark:bg-gray-700 dark:text-gray-100` を明示 |
+| `MapListPanel` | 同上 |
+
+**インライン `backgroundColor` を持つ要素は対象外**とする。カテゴリ行・カテゴリチップ・ノード本体はユーザーが選んだ明るいパステル色を背景に敷くため、文字色をダークで反転させると読めなくなる（`SettingsPanel` のカテゴリ一覧、`AISuggestionPanel` のカテゴリチップ、`IdeaNode` / `GroupNode`）。トグルのつまみのように暗色トラックとの対比で成立している要素も同様に白のまま残す。
+
+`Toast` は彩度の高い背景色＋白文字で元からテーマ非依存のため変更不要。
+
 ---
 
 ## 16. 大規模マップのパフォーマンス（Phase 24 / Phase 28）
@@ -1049,6 +1123,17 @@ const groupChildPairs = useMapStore(
 - `IdeaNode.tsx`: `handleTouchStart(e: React.TouchEvent)` で `e.touches.length === 1` のみ処理。座標を先にローカル変数に取り込んで 500ms タイマーを張る。発火時に `openContextMenu({ type: 'node', x, y, targetId: id })` → `navigator.vibrate?.(10)`。
 - `IdeaCanvas.tsx`: 外側ラッパ div に `onTouchStart/End/Move` を追加。対象が `.react-flow__pane` 上かつ `.react-flow__node` でない場合のみ 500ms タイマーで `openContextMenu({ type: 'pane', x, y, flowPosition })` → `navigator.vibrate?.(10)`。`touchmove/touchend` でタイマー解除（パン・スクロールと競合させない）。`preventDefault` は呼ばない（React Flow のパン/ピンチを保護）。
 - `ContextMenu.tsx` の node メニューに「🔗 接続を作成」を追加 → `setConnectingFromNodeId(targetId)` で接続モード開始。
+
+#### 接続モード中のメニュー抑止（Phase 30）
+
+接続モード中の長押し／タップは「接続先の選択」が目的なので、コンテキストメニューを開く経路を2つとも塞ぐ。
+
+| 経路 | 対策 |
+|---|---|
+| `IdeaNode.handleTouchStart` の 500ms タイマー | 先頭で `if (connectingFromNodeId) return`（タイマー自体を張らない） |
+| ブラウザが長押しで発火する `contextmenu`（`IdeaCanvas.handleNodeContextMenu`） | `preventDefault()` の直後に `if (connectingFromNodeId) return` |
+
+> **検証で判明**: React Flow のノードはドラッグ用に d3-drag が `touchstart` を `stopImmediatePropagation()` するため、`IdeaNode` の `onTouchStart` はタッチ環境では実質発火しない（Chromium のタッチエミュレーションで確認）。実機で長押しメニューが開くのはブラウザの `contextmenu` 経由。したがって実効的なガードは後者だが、将来ドラッグ設定が変わった場合に備えて前者も残している。
 
 ---
 

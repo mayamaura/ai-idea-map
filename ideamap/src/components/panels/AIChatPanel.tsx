@@ -45,6 +45,7 @@ export function AIChatPanel() {
     addToast,
     mapTitle,
     setSettingsOpen,
+    openConfirmDialog,
   } = useUIStore(
     useShallow((s) => ({
       isChatPanelOpen: s.isChatPanelOpen,
@@ -59,6 +60,7 @@ export function AIChatPanel() {
       addToast: s.addToast,
       mapTitle: s.mapTitle,
       setSettingsOpen: s.setSettingsOpen,
+      openConfirmDialog: s.openConfirmDialog,
     }))
   )
   // nodes / edges 全体はドラッグ中に毎フレーム更新されるため購読しない。
@@ -175,6 +177,19 @@ export function AIChatPanel() {
   const handleStop = () => {
     abortRef.current?.abort()
     setChatLoading(false)
+    // 送信されなかったメンションを持ち越さない
+    setMentionedNodeIds([])
+  }
+
+  // 会話は元に戻せないため、誤タップ対策に確認を挟む
+  const handleClearHistory = () => {
+    openConfirmDialog({
+      title: '会話履歴をクリアしますか？',
+      message: `${chatMessages.length}件のメッセージがすべて削除されます。この操作は元に戻せません。`,
+      confirmLabel: 'クリアする',
+      danger: true,
+      onConfirm: clearChatHistory,
+    })
   }
 
   const handleSend = async (text?: string) => {
@@ -305,7 +320,7 @@ export function AIChatPanel() {
         <div className="flex items-center gap-1">
           {chatMessages.length > 0 && (
             <button
-              onClick={clearChatHistory}
+              onClick={handleClearHistory}
               className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
               title="会話履歴をクリア"
             >
@@ -357,7 +372,14 @@ export function AIChatPanel() {
           )}
 
           {/* メッセージ一覧 */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div
+            className="flex-1 overflow-y-auto p-3 space-y-3"
+            role="log"
+            aria-live="polite"
+            // ストリーミング中のトークン差し替えを読み上げ続けないよう、追加された要素だけを対象にする
+            aria-relevant="additions"
+            aria-label="AIチャットの会話"
+          >
             {chatMessages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 dark:text-gray-500 py-8">
                 <svg
