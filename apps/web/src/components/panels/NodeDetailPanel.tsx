@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '@ideamap/core'
-import { useMapStore } from '../../stores/mapStore'
+import { useUIStore, useMapStore, type IdeaNodeData } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
-import type { IdeaNodeData } from '@ideamap/core'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 export function NodeDetailPanel() {

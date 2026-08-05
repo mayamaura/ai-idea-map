@@ -1,9 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from 'react'
 import { NodeResizer, type NodeProps, type Node } from '@xyflow/react'
-import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '@ideamap/core'
+import { useMapStore, useUIStore, type IdeaNodeData } from '@ideamap/core'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
-import type { IdeaNodeData } from '@ideamap/core'
 
 function GroupNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
   const nodeData = data as IdeaNodeData

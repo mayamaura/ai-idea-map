@@ -1,14 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuidv4 } from 'uuid'
-import { useUIStore } from '@ideamap/core'
-import { useMapStore } from '../../stores/mapStore'
+import { useUIStore, useMapStore, type ChatMessage, type ChatAction, type MapContext, type IdeaNodeData } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { chatWithMap, toFriendlyAIError } from '../../services/claudeService'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
-import type { ChatMessage, ChatAction, MapContext } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
-import type { IdeaNodeData } from '@ideamap/core'
 
 // メンション候補を購読しないときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
 const NO_MENTION_CANDIDATES: Node<IdeaNodeData>[] = []

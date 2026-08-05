@@ -1,14 +1,11 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useUIStore } from '@ideamap/core'
-import { useMapStore } from '../../stores/mapStore'
+import { useUIStore, useMapStore, calcSuggestionPositions, type AISuggestion } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateSuggestions, toFriendlyAIError } from '../../services/claudeService'
 import Anthropic from '@anthropic-ai/sdk'
-import { calcSuggestionPositions } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
-import type { AISuggestion } from '@ideamap/core'
 
 export function AISuggestionPanel() {
   const {

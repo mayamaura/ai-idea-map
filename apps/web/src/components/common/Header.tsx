@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '@ideamap/core'
+import { useUIStore, type SaveStatus } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
-import type { SaveStatus } from '@ideamap/core'
 
 const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
   saved: { text: '保存済み', color: 'text-green-500' },

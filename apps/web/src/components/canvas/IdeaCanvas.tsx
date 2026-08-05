@@ -15,8 +15,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '@ideamap/core'
+import { useMapStore, useUIStore, type IdeaNodeData } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { IdeaNode } from './IdeaNode'
 import { GroupNode } from './GroupNode'
@@ -24,7 +23,6 @@ import { FloatingEdge } from './FloatingEdge'
 import { Toolbar } from '../toolbar/Toolbar'
 import { BottomNav } from '../toolbar/BottomNav'
 import { FocusStateContext, type FocusState } from '../../hooks/useNodeFocus'
-import type { IdeaNodeData } from '@ideamap/core'
 
 /** 実寸を測るまでのフォールバック値 */
 const BAR_HALF_WIDTH_ESTIMATE = 120

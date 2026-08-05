@@ -1,11 +1,9 @@
 import { memo, useRef, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflow/react'
-import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '@ideamap/core'
+import { useMapStore, useUIStore, type IdeaNodeData } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
-import type { IdeaNodeData } from '@ideamap/core'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 function shapeClass(shape: string): string {

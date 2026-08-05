@@ -2,10 +2,8 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useReactFlow } from '@xyflow/react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore } from '@ideamap/core'
-import { useMapStore } from '../../stores/mapStore'
+import { useUIStore, useMapStore, type IdeaNodeData } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
-import type { IdeaNodeData } from '@ideamap/core'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 export function PresentationMode() {

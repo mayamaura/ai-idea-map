@@ -6,7 +6,7 @@ import type {
   NodeChange,
   EdgeChange,
 } from '@xyflow/react'
-import type { IdeaNodeData, SerializedNode, SerializedEdge } from '@ideamap/core'
+import type { IdeaNodeData, SerializedNode, SerializedEdge } from '../../types'
 
 export type IdeaNode = Node<IdeaNodeData>
 

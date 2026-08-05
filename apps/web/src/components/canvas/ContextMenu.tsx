@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useUIStore, type ContextMenuType } from '@ideamap/core'
-import { useMapStore } from '../../stores/mapStore'
+import { useUIStore, useMapStore, type ContextMenuType } from '@ideamap/core'
 import { useSettingsStore } from '../../stores/settingsStore'
 
 const MENU_WIDTH = 216

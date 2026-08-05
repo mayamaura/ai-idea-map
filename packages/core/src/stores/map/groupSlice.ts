@@ -1,11 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
-import { useUIStore } from '@ideamap/core'
+import { useUIStore } from '../uiStore'
 import {
   clampInsideParent,
   computePushOut,
   expandGroupIds,
   DEFAULT_NODE_SIZE,
-} from '@ideamap/core'
+} from '../../layout/groupGeometry'
 import { pushPast, snapshot } from './history'
 import { GROUP_NODE_COLOR } from './constants'
 import type { GroupSlice, IdeaNode, MapSliceCreator } from './types'

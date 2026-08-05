@@ -3,15 +3,15 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   computePushOut,
   expandGroupIds,
-  findFreePosition,
   findOverlappingGroup,
   getGroupSize,
   isOutsideParent,
   syncGroupMeasured,
   DEFAULT_NODE_SIZE,
-  useUIStore,
-  type IdeaNodeData,
-} from '@ideamap/core'
+} from '../../layout/groupGeometry'
+import { findFreePosition } from '../../layout/mapLayout'
+import type { IdeaNodeData } from '../../types'
+import { useUIStore } from '../uiStore'
 import { pushPast, snapshot } from './history'
 import { DEFAULT_NODE_COLOR, initialNodes, makeEdge } from './constants'
 import type { IdeaNode, MapSliceCreator, NodeSlice } from './types'

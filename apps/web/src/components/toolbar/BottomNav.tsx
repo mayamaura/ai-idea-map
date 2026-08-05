@@ -1,8 +1,6 @@
 import { useReactFlow } from '@xyflow/react'
 import { useShallow } from 'zustand/react/shallow'
-import { useMapStore } from '../../stores/mapStore'
-import { useUIStore } from '@ideamap/core'
-import { findFreePosition } from '@ideamap/core'
+import { useMapStore, useUIStore, findFreePosition } from '@ideamap/core'
 
 export function BottomNav() {
   const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow()

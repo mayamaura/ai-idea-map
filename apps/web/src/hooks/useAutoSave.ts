@@ -1,11 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { useMapStore } from '../stores/mapStore'
-import { useUIStore } from '@ideamap/core'
+import { useMapStore, useUIStore, type MapFile } from '@ideamap/core'
 import { useSettingsStore } from '../stores/settingsStore'
 import { saveMap, fetchMapAppProperties, loadMap } from '../services/googleDriveService'
 import { saveMapLocally } from '../services/storageService'
-import type { MapFile } from '@ideamap/core'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */

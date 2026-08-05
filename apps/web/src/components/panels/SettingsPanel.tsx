@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useUIStore } from '@ideamap/core'
+import { useUIStore, type AIModel } from '@ideamap/core'
 import { useSettingsStore, DEFAULT_CATEGORIES } from '../../stores/settingsStore'
-import type { AIModel } from '@ideamap/core'
 
 interface DriveSyncSectionProps {
   accessToken: string | null
