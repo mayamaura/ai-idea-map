@@ -47,6 +47,9 @@ importers:
       '@dagrejs/dagre':
         specifier: 3.0.0
         version: 3.0.0
+      '@ideamap/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       '@xyflow/react':
         specifier: 12.10.2
         version: 12.10.2(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
