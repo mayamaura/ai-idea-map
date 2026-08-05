@@ -1409,22 +1409,40 @@
 
 ---
 
-### Phase 32: LLMプロバイダ抽象化（Claude のみ）（約2日）
+### Phase 32: LLMプロバイダ抽象化（Claude のみ）（約2日）✅ 完了（2026-08-05）
 
 **目標**: 既存 Web 版の挙動を一切変えずに、`claudeService.ts` を `LLMProvider` インタフェースの背後に隠す。Ollama 対応の下地を作る。
 
 > 参照: `docs/desktop/llm-abstraction.md` §2〜3・§7（Step 1-2）。モノレポ移行前なので配置は `ideamap/src/services/llm/`。Phase 33 で `packages/core/src/llm/` へ `git mv` する。
 
 #### タスク
-- [ ] `src/services/llm/types.ts` に `LLMProvider` / `LLMRequest` / `LLMError`（`kind: 'auth' | 'rateLimit' | 'connection' | 'notFound' | 'parse' | 'aborted' | 'unknown'`）/ `ProviderCapabilities` / `ModelInfo` を定義
-- [ ] `src/services/llm/jsonUtils.ts` に既存の `sanitizeJsonString` / `safeParseJson` / `AIParseError` を移設
-- [ ] `src/services/llm/claudeProvider.ts` に `ClaudeProvider` を実装（`complete` / `completeJson` / `stream` / `listModels` / `capabilities`）。`Anthropic.APIError` → `LLMError` の変換をここに閉じ込める
-- [ ] `claudeService.ts` の5関数（`generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` / `chatWithMap`）を、**関数シグネチャを変えずに** `ClaudeProvider` へ委譲するだけの実装に変更
-- [ ] `toFriendlyAIError` を `LLMError.kind` ベースの実装に置き換え（表示文言は現状と1文字も変えない）
-- [ ] `analyzeMap` / `suggestConnections` / `suggestClusters` に欠けていた `AbortSignal` 対応を追加（既存の実装漏れの解消）
-- [ ] `docs/design.md` の「9. Claude API連携設計」を LLMProvider 構成に更新
+- [x]✅ `src/services/llm/types.ts` に `LLMProvider` / `LLMRequest` / `LLMError`（`kind: 'auth' | 'rateLimit' | 'connection' | 'notFound' | 'parse' | 'aborted' | 'unknown'`）/ `ProviderCapabilities` / `ModelInfo` を定義
+- [x]✅ `src/services/llm/jsonUtils.ts` に既存の `sanitizeJsonString` / `safeParseJson` / `AIParseError` を移設
+- [x]✅ `src/services/llm/claudeProvider.ts` に `ClaudeProvider` を実装（`complete` / `completeJson` / `stream` / `listModels` / `capabilities`）。`Anthropic.APIError` → `LLMError` の変換をここに閉じ込める
+- [x]✅ `claudeService.ts` の5関数（`generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` / `chatWithMap`）を、**関数シグネチャを変えずに** `ClaudeProvider` へ委譲するだけの実装に変更
+- [x]✅ `toFriendlyAIError` を `LLMError.kind` ベースの実装に置き換え（表示文言は現状と1文字も変えない）
+- [x]✅ `analyzeMap` / `suggestConnections` / `suggestClusters` に欠けていた `AbortSignal` 対応を追加（既存の実装漏れの解消）
+- [x]✅ `docs/design.md` の「9. Claude API連携設計」を LLMProvider 構成に更新
 
 **完了条件**: `src/components/panels/*.tsx` に差分が無いこと（`git diff` で確認）。`npm run build` が通る。AI提案・チャット・分析・接続提案・クラスタ提案の5機能が変更前と同じ入出力になる。401 / 429 / 529 / ネットワークエラーの4パターンで従来と同一の日本語メッセージが出る。
+
+#### 動作確認（新旧サービスのA/B比較・Playwright + Vite dev・fetch モック・2026-08-05）
+
+旧 `claudeService.ts`（`git show HEAD:` で取得）と新実装を**同一プロセス・同一モックレスポンス**に対して並走させ、①送信リクエストボディ ②UIが参照する値（戻り値・`toFriendlyAIError` の文字列・`instanceof AIParseError`・`rawResponse`・`AISuggestionPanel` のキャンセル判定式）を比較した。検証用ファイルは確認後に削除済み。
+
+- [x]✅ 全23シナリオで**送信リクエストボディが完全一致**（`model` / `max_tokens` / `thinking` / `system` / `messages` すべて）。リトライ回数も一致（429・529・ネットワークは SDK 既定で3回）
+- [x]✅ `generateSuggestions`: 正常 / JSONブロックなし / 壊れたJSON / `suggestions` 非配列 の4パターンで戻り値・エラー文言が一致
+- [x]✅ `analyzeMap` / `suggestConnections` / `suggestClusters`: 正常・件数不足の早期 `[]`・壊れたJSON（`AIParseError` が `rawResponse` 付きで伝播）が一致
+- [x]✅ `chatWithMap`: ストリーミング（SSEモック）で `onText` の累積テキスト列・最終 `content`・`actions` パースが一致。中断時も部分テキスト返却が一致
+- [x]✅ **401 / 429 / 529 / ネットワークエラーの4パターンで日本語メッセージが完全一致**（+ 400 のような他ステータスで `e.message` がそのまま出ることも一致）
+- [x]✅ 唯一の差分は**中断時の例外オブジェクトそのもの**（旧: `APIUserAbortError`「Request was aborted.」／新: `LLMError(kind='aborted')`「キャンセルされました」）。ただし `AISuggestionPanel` のキャンセル判定式は新旧とも `true` になり**エラー表示に到達しない**ため、ユーザーから見える差分はゼロ
+- [x]✅ `git status` で `src/components/panels/*.tsx` に差分なし（変更は `claudeService.ts` と新規 `src/services/llm/` のみ）
+- [x]✅ `npm run build` 通過。`npm run lint` は新規3ファイル・`claudeService.ts` とも指摘ゼロ（既存14件のエラーは Phase 31 以前からの別ファイル由来）
+
+#### 積み残し（Phase 35 Step 6 で対応）
+- `MapAnalysisPanel` のキャンセルUI追加（サービス層は `signal` 対応済み・UI未接続）。Phase 32 の完了条件が「パネルに差分なし」のため見送った
+- `claudeService.ts` の移行用アダプタ（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）の削除。エラー表示を `LLMError.kind` ベースへ統一するタイミングで不要になる
+- 対応モデル一覧の二重管理解消（`ClaudeProvider.listModels()` と `SettingsPanel.tsx` の `<option>`）
 
 ---
 
@@ -1630,6 +1648,8 @@ npm run dev
 | Phase 29 | リファクタリング & 技術的負債返済 | 2日 |
 | Phase 30 | UX 改善バッチ | 2日 ✅ |
 | Phase 31 | 「確認中」フェーズの動作確認 & 確定 | 2日 🔨（実機確認のみ残） |
+| Phase 32 | LLMプロバイダ抽象化（Claude のみ） | 2日 ✅ |
+| Phase 33〜38 | デスクトップ版（モノレポ移行〜配布・任意のDrive連携） | 約23日 |
 | **Phase 1-4 合計** | | **約8日** |
 | **Phase 5-11 合計** | | **約20日** |
 | **Phase 12-15 合計** | | **約11日** |
@@ -1637,7 +1657,8 @@ npm run dev
 | **Phase 19-24 合計（UX改善）** | | **約15日** |
 | **Phase 25-26 合計（スマホ対応）** | | **約5日** |
 | **Phase 27-31 合計（品質改善）** | | **約10日** |
-| **全体合計** | | **約72日** |
+| **Phase 32-38 合計（デスクトップ版）** | | **約25日** |
+| **全体合計** | | **約97日** |
 
 ---
 

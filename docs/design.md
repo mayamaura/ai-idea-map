@@ -100,7 +100,11 @@ ideamap/
 │   │   ├── settingsStore.ts        # 設定状態（APIキー・テーマ・自動保存）
 │   │   └── uiStore.ts              # UI状態（パネル開閉・コンテキストメニュー等）
 │   ├── services/
-│   │   ├── claudeService.ts        # Claude API呼び出し（generateSuggestions / analyzeMap / suggestConnections / suggestClusters）
+│   │   ├── claudeService.ts        # AI機能5関数（generateSuggestions / analyzeMap / suggestConnections / suggestClusters / chatWithMap）。プロンプト構築のみを持ち、API呼び出しは LLMProvider へ委譲（Phase 32）
+│   │   ├── llm/                    # LLMプロバイダ抽象化（Phase 32。Phase 33 で packages/core/src/llm/ へ移動）
+│   │   │   ├── types.ts            # LLMProvider / LLMRequest / LLMError / ProviderCapabilities / ModelInfo
+│   │   │   ├── jsonUtils.ts        # sanitizeJsonString / safeParseJson / AIParseError（プロバイダ非依存）
+│   │   │   └── claudeProvider.ts   # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
 │   │   ├── googleDriveService.ts   # Google Drive API操作
 │   │   ├── storageService.ts       # localStorageのラッパー
 │   │   └── exportService.ts        # エクスポート/インポート/共有URLロジック（Phase 9）
@@ -611,22 +615,52 @@ Redo: future の先頭を復元 → 現在状態を past 末尾に追加 → fut
 
 ---
 
-## 9. Claude API連携設計（src/services/claudeService.ts）
+## 9. AI連携設計（src/services/claudeService.ts + src/services/llm/）
+
+### 9.0 LLMProvider 抽象化（Phase 32）
+
+Phase 35 のローカルLLM（Ollama）対応に備え、**「APIを呼ぶ部分」と「エラー分類」だけ**を `LLMProvider` の背後に隠した。プロンプト構築とJSON抽出はプロバイダ非依存なので `claudeService.ts` / `llm/jsonUtils.ts` 側に残る。
+
+```
+claudeService.ts   … プロンプト構築・戻り値整形（5関数のシグネチャは Phase 31 以前と同一）
+  └─ llm/claudeProvider.ts … Anthropic SDK 呼び出し・例外→LLMError 変換（SDK依存はこのファイルのみ）
+       ├─ llm/types.ts     … LLMProvider / LLMRequest / LLMError / ProviderCapabilities / ModelInfo
+       └─ llm/jsonUtils.ts … sanitizeJsonString / safeParseJson / AIParseError
+```
+
+**`LLMProvider` の4メソッド**
+
+| メソッド | 用途 | Claude 実装 |
+|---|---|---|
+| `complete(req, signal?)` | 非ストリーミング補完 | `messages.create` |
+| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答から最初の `{...}` を正規表現抽出し `safeParseJson`。`schema` は無視（`structuredOutput: 'prompt-only'`） |
+| `stream(req, onText, signal?)` | ストリーミング補完 | `messages.stream` + `.on('text')`。`onText` には**累積テキスト**を渡す |
+| `listModels()` | モデル一覧 | 固定リスト（`supportsModelListing: false`） |
+
+**設計判断（`docs/desktop/llm-abstraction.md` からの意図的な差分）**
+
+- **中断時の `stream()` は throw せず、それまでの累積テキストを返す。** 呼び出し側（`chatWithMap`）は戻り値の後に `signal?.aborted` を見て分岐する。設計書の §3.3 は「`LLMError('aborted')` を catch する」例だったが、`ClaudeProvider` のコード例（累積テキストを return）の方に合わせた。
+- **`LLMError` の `kind === 'aborted'` のときだけ `name` を `'AbortError'` にする。** `AISuggestionPanel` が `name === 'AbortError'` でキャンセルを判定しているため。
+- **`capabilities.maxContextTokens` はモデル別**（Sonnet 5 = 1M / Haiku 4.5 = 200K）。設計書の固定値 200K は Haiku 基準だったため実値に合わせた。
+- **`toFriendlyAIError` は kind を見るが文言は上書きしない**（`e.message` をそのまま返す）。同じ `connection` でも Claude と Ollama で案内文が変わるため、文言の単一の置き場所を Provider 側にした。
+- **`claudeService.ts` に移行用アダプタ（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）を置いた。** Provider は解析失敗を一律 `LLMError('parse')` で返すが、Phase 31 以前と表示文言・例外型を1文字も変えないため機能別の従来例外へ戻す。エラー表示を統一する際（Phase 35 Step 6）に削除する。
 
 ### 9.1 ブラウザからの直接呼び出し
 
 `dangerouslyAllowBrowser: true` で Anthropic SDK をブラウザから直接使用。APIキーはユーザー管理（サーバー経由なし）。
 
-クライアント生成は `createClient(apiKey)` に集約する（Phase 29。以前は5関数それぞれで `new Anthropic()` していた）。
+クライアント生成は `ClaudeProvider.client()` に集約する（Phase 29 の `createClient(apiKey)` を Phase 32 で Provider 内へ移設）。
 
-**`thinking: { type: 'disabled' }` を全リクエストに付ける理由（Phase 29）**: Claude Sonnet 5 は `thinking` を省略すると adaptive thinking が既定で有効になる（Sonnet 4.6 までは無効が既定）。本アプリの呼び出しは `max_tokens` 2048〜4096 の短いJSON／チャット応答が中心で、枠を思考トークンに取られると出力が途中で切れてパースに失敗する。品質より応答の確実性と体感速度を優先し、明示的に無効化している。
+**`thinking: { type: 'disabled' }` を全リクエストに付ける理由（Phase 29）**: Claude Sonnet 5 は `thinking` を省略すると adaptive thinking が既定で有効になる（Sonnet 4.6 までは無効が既定）。本アプリの呼び出しは `max_tokens` 2048〜4096 の短いJSON／チャット応答が中心で、枠を思考トークンに取られると出力が途中で切れてパースに失敗する。品質より応答の確実性と体感速度を優先し、明示的に無効化している。Phase 32 以降は `ClaudeProvider` が全リクエストに付与する。
 
 ### 9.1.1 対応モデル
 
-| モデルID | 表示名 | 位置づけ |
-|---|---|---|
-| `claude-sonnet-5` | Claude Sonnet 5（高品質） | 既定。Phase 29 で `claude-sonnet-4-6` から更新 |
-| `claude-haiku-4-5-20251001` | Claude Haiku 4.5（高速・低コスト） | コスト重視時の選択肢 |
+| モデルID | 表示名 | コンテキスト長 | 位置づけ |
+|---|---|---|---|
+| `claude-sonnet-5` | Claude Sonnet 5（高品質） | 1M | 既定。Phase 29 で `claude-sonnet-4-6` から更新 |
+| `claude-haiku-4-5-20251001` | Claude Haiku 4.5（高速・低コスト） | 200K | コスト重視時の選択肢 |
+
+一覧は `ClaudeProvider.listModels()`（`CLAUDE_MODELS` 定数）と `SettingsPanel.tsx` の `<option>` に二重で存在する。Phase 35 で設定UIを `listModels()` 由来に一本化する。
 
 ### 9.2 プロンプト設計
 
@@ -639,22 +673,25 @@ Redo: future の先頭を復元 → 現在状態を past 末尾に追加 → fut
 
 ### 9.3 レスポンス解析
 
-JSON部分をregexで抽出（Claudeの前置き説明文への耐性）:
+`ClaudeProvider.completeJson()` がJSON部分をregexで抽出する（Claudeの前置き説明文への耐性）:
 ```typescript
-const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-const parsed = JSON.parse(jsonMatch[0]) as { suggestions: AISuggestion[] }
-return parsed.suggestions.slice(0, req.count)
+const jsonMatch = text.match(/\{[\s\S]*\}/)
+return safeParseJson<T>(jsonMatch[0])
 ```
 
-### 9.4 各関数の仕様（Phase 23）
+`safeParseJson` は素の `JSON.parse` に失敗したら `sanitizeJsonString`（文字列値内の未エスケープ制御文字を修正）で再試行し、それでも失敗したら `AIParseError`（`rawResponse` 付き）を投げる。`MapAnalysisPanel` はこの `rawResponse` を「AIの生レスポンスをコピー」に使う。
+
+### 9.4 各関数の仕様（Phase 23 / Phase 32）
 
 | 関数 | max_tokens | 備考 |
 |---|---|---|
 | `generateSuggestions(req, signal?)` | 2048 | signal で途中キャンセル可 |
-| `analyzeMap` | 2048 | |
-| `suggestConnections` | 2048 | |
-| `suggestClusters` | 2048 | |
+| `analyzeMap(req, signal?)` | 2048 | Phase 32 で `signal` 追加（UI未接続） |
+| `suggestConnections(req, signal?)` | 2048 | Phase 32 で `signal` 追加（UI未接続） |
+| `suggestClusters(req, signal?)` | 4096 | Phase 32 で `signal` 追加（UI未接続） |
 | `chatWithMap(req, onText?, signal?)` | 2048 | ストリーミング + system パラメータ化 |
+
+分析系3関数の `signal` は Phase 32 でサービス層まで通したが、`MapAnalysisPanel` にキャンセルUIは未追加（Phase 32 の完了条件が「パネルに差分なし」のため）。UI追加は Phase 35 Step 6 で行う。
 
 ### 9.5 chatWithMap のストリーミング設計（Phase 23）
 
@@ -667,27 +704,30 @@ export async function chatWithMap(
 ```
 
 - `systemContext`（マップコンテキスト文字列）を **`system` パラメータ**で渡す。`messages` は会話履歴をそのままマップ（最初のユーザーメッセージへの埋め込みなし）。
-- `client.messages.stream({ model, max_tokens: 2048, system, messages }, { signal })` で逐次受信。
-- `onText` コールバックには `/```actions[\s\S]*$/` を除去した累積テキストを都度渡す（actions ブロックの途中表示防止）。
-- Abort 時（`APIUserAbortError` または `signal.aborted`）: それまでの累積テキスト（actions 除去済み）を `content` として返す。`actions: []`。throw しない。
+- `ClaudeProvider.stream()` が `client.messages.stream({ model, max_tokens: 2048, thinking, system, messages }, { signal })` で逐次受信する。
+- `onText` コールバックには `/```actions[\s\S]*$/` を除去した累積テキストを都度渡す（actions ブロックの途中表示防止）。除去は provider の外側（`chatWithMap`）で行うプロバイダ非依存のロジック。
+- Abort 時（`APIUserAbortError` または `signal.aborted`）: provider がそれまでの累積テキストを return し、`chatWithMap` が `signal?.aborted` を見て「actions 除去済みテキスト + `actions: []`」を返す。throw しない。
 - 完了後: `/```actions\n([\s\S]*?)\n```/` で actions をパースして返す。
 
-### 9.6 toFriendlyAIError（Phase 23）
+### 9.6 エラー分類と toFriendlyAIError（Phase 23 / Phase 32 で LLMError ベースに移行）
+
+`ClaudeProvider.toLLMError()` が Anthropic SDK の例外を `LLMError` に変換する（判定順は `APIUserAbortError` → `APIConnectionError` → `APIError`。後者2つは `APIError` のサブクラスのため先に検査）:
+
+| 条件 | `kind` | メッセージ |
+|---|---|---|
+| `APIUserAbortError` / `name === 'AbortError'` | `aborted` | 「キャンセルされました」（`name` は `'AbortError'`） |
+| `APIConnectionError` | `connection` | 「ネットワークエラーです。接続を確認してください」 |
+| `APIError` status 401 | `auth` | 「APIキーが無効です。設定画面で確認してください」 |
+| status 429 | `rateLimit` | 「レート制限に達しました。1分ほど待ってから再試行してください」 |
+| status 529 | `unknown` | 「Claude APIが混雑しています。しばらく待ってから再試行してください」 |
+| 他の `APIError` | `unknown` | `e.message` |
+| それ以外 | `unknown` | `e instanceof Error ? e.message : 'エラーが発生しました'` |
 
 ```typescript
 export function toFriendlyAIError(e: unknown): string
 ```
 
-エラー種別の優先判定順（`APIConnectionError` は `APIError` のサブクラスのため先に検査）:
-
-| 条件 | メッセージ |
-|---|---|
-| `e instanceof Anthropic.APIConnectionError` | 「ネットワークエラーです。接続を確認してください」 |
-| `e instanceof Anthropic.APIError` / status 401 | 「APIキーが無効です。設定画面で確認してください」 |
-| status 429 | 「レート制限に達しました。1分ほど待ってから再試行してください」 |
-| status 529 | 「Claude APIが混雑しています。しばらく待ってから再試行してください」 |
-| 他の `APIError` | `e.message` |
-| fallback | `e instanceof Error ? e.message : 'エラーが発生しました'` |
+`LLMError` なら `kind === 'aborted'` のときだけ「キャンセルされました」、それ以外は `e.message` をそのまま返す。`LLMError` 以外（`AIParseError`・アダプタが戻した `Error`）は従来どおり `e.message`。**表示文言は Phase 31 以前と完全に同一**（Phase 32 で old/new を同一モックに対してA/B比較して確認済み）。
 
 ### 9.7 updateLastChatMessage（uiStore — Phase 23）
 

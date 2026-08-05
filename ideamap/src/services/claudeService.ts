@@ -1,81 +1,33 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '../types'
+import { ClaudeProvider } from './llm/claudeProvider'
+import { LLMError } from './llm/types'
+import { AIParseError } from './llm/jsonUtils'
 
-/** ブラウザのみで動作するSPAのため dangerouslyAllowBrowser が必須。生成箇所を1つに集約する */
-function createClient(apiKey: string): Anthropic {
-  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
-}
+// 生レスポンスのコピー導線（MapAnalysisPanel）が型判定に使うため再エクスポートする
+export { AIParseError }
 
 /**
- * Claude Sonnet 5 は thinking を省略すると adaptive thinking が既定で有効になる
- * （Sonnet 4.6 までは無効が既定）。本アプリの呼び出しは短いJSON／チャット応答が中心で、
- * max_tokens の枠を思考トークンに取られると出力が途中で切れるため明示的に無効化する。
+ * Phase 32 の移行用アダプタ。
+ * Provider は解析失敗を一律 `LLMError('parse')` で返すが、UI側の文言と例外型を
+ * Phase 31 以前と1文字も変えないため、機能ごとの従来例外へ戻してから投げ直す。
+ * エラー表示を LLMError ベースへ統一する際（Phase 35 Step 6）にこの2関数ごと削除する。
  */
-const THINKING_DISABLED = { type: 'disabled' } as const
-
-// AIが出力するJSONの文字列値内に含まれる未エスケープ制御文字を修正する
-function sanitizeJsonString(raw: string): string {
-  let result = ''
-  let inString = false
-  let escaped = false
-
-  for (let i = 0; i < raw.length; i++) {
-    const char = raw[i]
-
-    if (escaped) {
-      result += char
-      escaped = false
-      continue
-    }
-
-    if (char === '\\' && inString) {
-      result += char
-      escaped = true
-      continue
-    }
-
-    if (char === '"') {
-      inString = !inString
-      result += char
-      continue
-    }
-
-    if (inString) {
-      if (char === '\n') result += '\\n'
-      else if (char === '\r') result += '\\r'
-      else if (char === '\t') result += '\\t'
-      else result += char
-    } else {
-      result += char
-    }
+function toLegacySuggestionParseError(e: unknown): unknown {
+  if (!(e instanceof LLMError) || e.kind !== 'parse') return e
+  if (e.cause instanceof AIParseError) {
+    return new Error(
+      `AIの応答形式が不正でした。もう一度お試しください。\n詳細: ${e.cause.message}`,
+      { cause: e.cause },
+    )
   }
-
-  return result
+  return new Error('AIからの応答を解析できませんでした。もう一度お試しください。')
 }
 
-export class AIParseError extends Error {
-  readonly rawResponse: string
-  constructor(message: string, rawResponse: string, cause?: unknown) {
-    super(message, { cause })
-    this.name = 'AIParseError'
-    this.rawResponse = rawResponse
-  }
-}
-
-function safeParseJson<T>(raw: string): T {
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    try {
-      return JSON.parse(sanitizeJsonString(raw)) as T
-    } catch (e) {
-      throw new AIParseError(
-        `JSONの解析に失敗しました: ${e instanceof Error ? e.message : String(e)}`,
-        raw,
-        e,
-      )
-    }
-  }
+function toLegacyAnalysisParseError(e: unknown): unknown {
+  if (!(e instanceof LLMError) || e.kind !== 'parse') return e
+  // safeParseJson の AIParseError をそのまま伝播させる（rawResponse をUIがコピーできる）
+  if (e.cause instanceof AIParseError) return e.cause
+  return new Error('AIからの応答を解析できませんでした')
 }
 
 interface SuggestionRequest {
@@ -101,7 +53,7 @@ interface SuggestionRequest {
 }
 
 export async function generateSuggestions(req: SuggestionRequest, signal?: AbortSignal): Promise<AISuggestion[]> {
-  const client = createClient(req.apiKey)
+  const provider = new ClaudeProvider(req.apiKey, req.model)
 
   const bodySection = req.selectedNodeBody
     ? `\n【選択ノードの詳細メモ】\n${req.selectedNodeBody}`
@@ -165,27 +117,15 @@ ${categoryList}
 }
 title は短く端的に。詳細・補足・具体例は body に記述してください。body が不要なら省略できます。`
 
-  const message = await client.messages.create({
-    model: req.model,
-    max_tokens: 2048,
-    thinking: THINKING_DISABLED,
-    messages: [{ role: 'user', content: prompt }],
-  }, { signal })
-
-  const content = message.content[0]
-  if (content.type !== 'text') throw new Error('予期しないレスポンス形式です')
-
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした。もう一度お試しください。')
-
   let parsed: { suggestions: AISuggestion[] }
   try {
-    parsed = safeParseJson<{ suggestions: AISuggestion[] }>(jsonMatch[0])
-  } catch (e) {
-    throw new Error(
-      `AIの応答形式が不正でした。もう一度お試しください。\n詳細: ${e instanceof Error ? e.message : String(e)}`,
-      { cause: e },
+    parsed = await provider.completeJson<{ suggestions: AISuggestion[] }>(
+      { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
+      undefined,
+      signal,
     )
+  } catch (e) {
+    throw toLegacySuggestionParseError(e)
   }
   if (!Array.isArray(parsed.suggestions)) throw new Error('AIからの応答形式が正しくありません')
 
@@ -200,8 +140,8 @@ interface AnalyzeMapRequest {
   categories: Category[]
 }
 
-export async function analyzeMap(req: AnalyzeMapRequest): Promise<MapAnalysis> {
-  const client = createClient(req.apiKey)
+export async function analyzeMap(req: AnalyzeMapRequest, signal?: AbortSignal): Promise<MapAnalysis> {
+  const provider = new ClaudeProvider(req.apiKey, req.model)
 
   const nodeList = req.nodes
     .map((n) => {
@@ -239,21 +179,15 @@ ${edgeList || '（接続なし）'}
   "importantNodeTitles": ["タイトル1", "タイトル2"]
 }`
 
-  const message = await client.messages.create({
-    model: req.model,
-    max_tokens: 2048,
-    thinking: THINKING_DISABLED,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const content = message.content[0]
-  if (content.type !== 'text') throw new Error('予期しないレスポンス形式です')
-
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした')
-
-  const parsed = safeParseJson<MapAnalysis>(jsonMatch[0])
-  return parsed
+  try {
+    return await provider.completeJson<MapAnalysis>(
+      { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
+      undefined,
+      signal,
+    )
+  } catch (e) {
+    throw toLegacyAnalysisParseError(e)
+  }
 }
 
 interface SuggestConnectionsRequest {
@@ -263,8 +197,8 @@ interface SuggestConnectionsRequest {
   existingEdges: { source: string; target: string }[]
 }
 
-export async function suggestConnections(req: SuggestConnectionsRequest): Promise<ConnectionSuggestion[]> {
-  const client = createClient(req.apiKey)
+export async function suggestConnections(req: SuggestConnectionsRequest, signal?: AbortSignal): Promise<ConnectionSuggestion[]> {
+  const provider = new ClaudeProvider(req.apiKey, req.model)
 
   if (req.nodes.length < 2) return []
 
@@ -295,20 +229,16 @@ ${req.existingEdges.map((e) => `${e.source} → ${e.target}`).join('\n') || '（
   ]
 }`
 
-  const message = await client.messages.create({
-    model: req.model,
-    max_tokens: 2048,
-    thinking: THINKING_DISABLED,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const content = message.content[0]
-  if (content.type !== 'text') throw new Error('予期しないレスポンス形式です')
-
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした')
-
-  const parsed = safeParseJson<{ suggestions: ConnectionSuggestion[] }>(jsonMatch[0])
+  let parsed: { suggestions: ConnectionSuggestion[] }
+  try {
+    parsed = await provider.completeJson<{ suggestions: ConnectionSuggestion[] }>(
+      { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
+      undefined,
+      signal,
+    )
+  } catch (e) {
+    throw toLegacyAnalysisParseError(e)
+  }
   if (!Array.isArray(parsed.suggestions)) return []
 
   return parsed.suggestions.filter(
@@ -327,8 +257,8 @@ interface SuggestClustersRequest {
   categories: Category[]
 }
 
-export async function suggestClusters(req: SuggestClustersRequest): Promise<ClusterSuggestion[]> {
-  const client = createClient(req.apiKey)
+export async function suggestClusters(req: SuggestClustersRequest, signal?: AbortSignal): Promise<ClusterSuggestion[]> {
+  const provider = new ClaudeProvider(req.apiKey, req.model)
 
   if (req.nodes.length < 3) return []
 
@@ -359,20 +289,16 @@ JSON形式のみで回答してください（説明文不要）:
   ]
 }`
 
-  const message = await client.messages.create({
-    model: req.model,
-    max_tokens: 4096,
-    thinking: THINKING_DISABLED,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const content = message.content[0]
-  if (content.type !== 'text') throw new Error('予期しないレスポンス形式です')
-
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('AIからの応答を解析できませんでした')
-
-  const parsed = safeParseJson<{ clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }>(jsonMatch[0])
+  let parsed: { clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }
+  try {
+    parsed = await provider.completeJson<{ clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }>(
+      { messages: [{ role: 'user', content: prompt }], maxTokens: 4096 },
+      undefined,
+      signal,
+    )
+  } catch (e) {
+    throw toLegacyAnalysisParseError(e)
+  }
   if (!Array.isArray(parsed.clusters)) return []
 
   return parsed.clusters.map((c) => ({
@@ -386,7 +312,7 @@ export async function chatWithMap(
   onText?: (partialText: string) => void,
   signal?: AbortSignal,
 ): Promise<{ content: string; actions: ChatAction[] }> {
-  const client = createClient(req.apiKey)
+  const provider = new ClaudeProvider(req.apiKey, req.model)
 
   const prioritizedNodeIds = new Set(req.mentionedNodeIds ?? [])
   const orderedNodes = [
@@ -438,39 +364,18 @@ ${edgeList}${mentionedBlock}
     content: m.content,
   }))
 
-  let accumulated = ''
+  const accumulated = await provider.stream(
+    { system: systemContext, messages: apiMessages, maxTokens: 2048 },
+    (partial) => {
+      // actions ブロックの途中露出を防ぐため除去してから渡す
+      if (onText) onText(partial.replace(/```actions[\s\S]*$/, ''))
+    },
+    signal,
+  )
 
-  try {
-    const stream = client.messages.stream(
-      {
-        model: req.model,
-        max_tokens: 2048,
-        thinking: THINKING_DISABLED,
-        system: systemContext,
-        messages: apiMessages,
-      },
-      { signal },
-    )
-
-    stream.on('text', (delta) => {
-      accumulated += delta
-      if (onText) {
-        // actions ブロックの途中露出を防ぐため除去してから渡す
-        onText(accumulated.replace(/```actions[\s\S]*$/, ''))
-      }
-    })
-
-    await stream.finalMessage()
-  } catch (e) {
-    // Abort 時はそれまでの累積テキストを返す（エラーとして扱わない）
-    if (
-      e instanceof Anthropic.APIUserAbortError ||
-      (signal?.aborted)
-    ) {
-      const content = accumulated.replace(/```actions[\s\S]*$/, '').trim()
-      return { content, actions: [] }
-    }
-    throw e
+  // Abort 時はそれまでの累積テキストを返す（エラーとして扱わない）
+  if (signal?.aborted) {
+    return { content: accumulated.replace(/```actions[\s\S]*$/, '').trim(), actions: [] }
   }
 
   const actionsMatch = accumulated.match(/```actions\n([\s\S]*?)\n```/)
@@ -489,15 +394,10 @@ ${edgeList}${mentionedBlock}
 }
 
 export function toFriendlyAIError(e: unknown): string {
-  // APIConnectionError は APIError のサブクラスの場合があるため先に判定する
-  if (e instanceof Anthropic.APIConnectionError) {
-    return 'ネットワークエラーです。接続を確認してください'
-  }
-  if (e instanceof Anthropic.APIError) {
-    if (e.status === 401) return 'APIキーが無効です。設定画面で確認してください'
-    if (e.status === 429) return 'レート制限に達しました。1分ほど待ってから再試行してください'
-    if (e.status === 529) return 'Claude APIが混雑しています。しばらく待ってから再試行してください'
-    return e.message
+  if (e instanceof LLMError) {
+    // kind ごとの日本語文言は Provider が設定する（同じ kind でも Claude と Ollama で案内が変わるため）。
+    // キャンセルは呼び出し側が握り潰す前提だが、保険として無害な文言を返す。
+    return e.kind === 'aborted' ? 'キャンセルされました' : e.message
   }
   return e instanceof Error ? e.message : 'エラーが発生しました'
 }

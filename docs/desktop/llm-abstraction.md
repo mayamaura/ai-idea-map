@@ -872,6 +872,19 @@ Ollamaはデフォルトでは `OLLAMA_ORIGINS` に `http://localhost` 等の限
 
 「既存 Web 版の挙動を1ミリも変えない」ことを最優先に、小さいステップに分割する。各ステップは独立してコミットし、完了条件を満たしたら次へ進む。
 
+> **Step 1-2 は Phase 32 で実施済み（2026-08-05）。** 実装時に本書の記述から意図的に変えた点が4つあります。**以下が優先されます。**
+>
+> | 本書の記述 | 実装（Phase 32） | 理由 |
+> |---|---|---|
+> | §3.3 のサービス層例は `stream()` が `LLMError('aborted')` を throw する前提 | **throw せず累積テキストを return**（§3.1 の `ClaudeProvider` コード例どおり）。呼び出し側は戻り値の後に `signal?.aborted` を見て分岐する | 本書内で §3.1 と §3.3 が矛盾していた。既存 `chatWithMap` の「中断は例外ではない」挙動に近い §3.1 を採用 |
+> | §2.4 `LLMError` の `name` は `'LLMError'` 固定 | `kind === 'aborted'` のときだけ `name = 'AbortError'` | `AISuggestionPanel` が `name === 'AbortError'` でキャンセルを判定しているため。ここを変えるとキャンセル時にエラー表示が出てしまう |
+> | §3.1 `maxContextTokens: 200_000` 固定 | **モデル別**（`claude-sonnet-5` = 1M / `claude-haiku-4-5-20251001` = 200K） | 200K は Haiku 基準。誤った値が Phase 35 の設定UIに波及するのを防ぐ |
+> | §7 Step 2「`toFriendlyAIError` を `LLMError.kind` を見て日本語文言を返す実装に置き換え」 | kind は見るが**文言は上書きせず `e.message` を返す**（`aborted` のみ例外） | 同じ `connection` でも Claude と Ollama で案内文が変わる。文言の置き場所を Provider 側に一本化した |
+>
+> あわせて、Phase 32 の完了条件「パネルに差分なし」を守るため次の2点を持ち越しています（Phase 35 Step 6 で解消）。
+> - **Step 2 の「3機能でキャンセルボタンが機能すること」は未達**。`analyzeMap`/`suggestConnections`/`suggestClusters` はサービス層まで `signal` を通したが、`MapAnalysisPanel` のキャンセルUIは未追加。
+> - `claudeService.ts` に**移行用アダプタ**（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）を置き、`LLMError('parse')` を機能別の従来例外（`AIParseError` を含む）へ戻している。エラー表示を統一する際に削除する。
+
 ### Step 1: `LLMProvider` 型と `ClaudeProvider` を追加し、内部実装だけを差し替える
 
 - `src/services/llm/types.ts`・`jsonUtils.ts`・`claudeProvider.ts` を新規作成。

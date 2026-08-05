@@ -59,6 +59,10 @@
 
 `platform-integration.md` §3.8 の設計は**破棄せず、Phase 38 の設計として有効**です。着手時にそこから読み始めてください。
 
+### 3.1-B `LLMProvider` 実装時の4つの変更（Phase 32 実施済み・2026-08-05）
+
+`llm-abstraction.md` の記述から意図的に変えた点が4つあります（中断時の `stream()` の返し方、`LLMError.name`、`maxContextTokens`、`toFriendlyAIError` の文言の置き場所）。**同ファイル §7 冒頭の表が優先されます。** そちらに理由とあわせて記載しています。
+
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 
 `platform-integration.md` §3.2 は「`import.meta.env` や `'__TAURI__' in window` 判定でエントリポイントを分ける」と書いていますが、これは `architecture.md` §3.5 で**明示的に却下された案C**です。
@@ -99,7 +103,7 @@ graph LR
 
 | Phase | 内容 | 目安 | 主参照 | 完了時に得られるもの |
 |---|---|---|---|---|
-| 32 | LLMプロバイダ抽象化（Claude のみ、既存構成のまま） | 2日 | llm-abstraction §2〜3, §7 Step1-2 | Web版の挙動は不変。AbortSignal の実装漏れ解消とエラー分類の統一という副産物 |
+| 32 ✅ | LLMプロバイダ抽象化（Claude のみ、既存構成のまま） | 2日 | llm-abstraction §2〜3, §7 Step1-2 | Web版の挙動は不変。AbortSignal の実装漏れ解消とエラー分類の統一という副産物 |
 | 33 | モノレポ移行（`packages/*` + `apps/web`） | 5日 | architecture §4〜5 Step0-7 | Web版が従来通り動き、コアが共通パッケージに分離された状態 |
 | 34 | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる |
 | 35 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成** |
