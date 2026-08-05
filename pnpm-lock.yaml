@@ -53,6 +53,9 @@ importers:
       '@ideamap/platform':
         specifier: workspace:*
         version: link:../../packages/platform
+      '@ideamap/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@xyflow/react':
         specifier: 12.10.2
         version: 12.10.2(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -149,6 +152,49 @@ importers:
         version: 5.0.13(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
 
   packages/platform: {}
+
+  packages/ui:
+    dependencies:
+      '@ideamap/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ideamap/platform':
+        specifier: workspace:*
+        version: link:../platform
+      '@xyflow/react':
+        specifier: 12.10.2
+        version: 12.10.2(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      dompurify:
+        specifier: 3.4.11
+        version: 3.4.11
+      html-to-image:
+        specifier: 1.11.13
+        version: 1.11.13
+      react:
+        specifier: 19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: 19.2.6
+        version: 19.2.6(react@19.2.6)
+      uuid:
+        specifier: 14.0.0
+        version: 14.0.0
+      zustand:
+        specifier: 5.0.13
+        version: 5.0.13(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.15
+        version: 19.2.15
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.15)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: 8.1.0
+        version: 8.1.0(@types/node@24.12.4)(jiti@1.21.7)
 
 packages:
 

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    // CSS の副作用 import（@xyflow/react/dist/style.css）の型を得るため
+    "types": ["vite/client"]
+  },
+  // packages/core と同じ理由で composite なプロジェクト参照は張らない（packages/core/tsconfig.json 参照）
+  "include": ["src"]
+}

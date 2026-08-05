@@ -1,30 +1,32 @@
 import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
-import { Header } from './components/common/Header'
-import { IdeaCanvas } from './components/canvas/IdeaCanvas'
-import { NodePanel } from './components/panels/NodePanel'
-import { SettingsPanel } from './components/panels/SettingsPanel'
-import { AISuggestionPanel } from './components/panels/AISuggestionPanel'
 import { MapListPanel } from './components/panels/MapListPanel'
-import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ExportImportPanel } from './components/panels/ExportImportPanel'
-import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
-import { AIChatPanel } from './components/panels/AIChatPanel'
 import { FileOpenDashboard } from './components/screens/FileOpenDashboard'
-import { PresentationMode } from './components/screens/PresentationMode'
-import { ToastContainer } from './components/common/Toast'
-import { ContextMenu } from './components/canvas/ContextMenu'
-import { ConfirmDialog } from './components/common/ConfirmDialog'
-import { InputDialog } from './components/common/InputDialog'
-import { WelcomeModal } from './components/common/WelcomeModal'
-import { MasterPasswordModal } from './components/common/MasterPasswordModal'
-import { SearchBar } from './components/common/SearchBar'
-import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal'
-import { PresentationOrderPanel } from './components/panels/PresentationOrderPanel'
+import {
+  AIChatPanel,
+  AISuggestionPanel,
+  ConfirmDialog,
+  ContextMenu,
+  Header,
+  IdeaCanvas,
+  InputDialog,
+  KeyboardShortcutsModal,
+  MapAnalysisPanel,
+  MasterPasswordModal,
+  NodeDetailPanel,
+  NodePanel,
+  PresentationMode,
+  PresentationOrderPanel,
+  SearchBar,
+  SettingsPanel,
+  ToastContainer,
+  WelcomeModal,
+  useKeyboardShortcuts,
+} from '@ideamap/ui'
 import { useSettingsStore, useUIStore, useMapStore } from '@ideamap/core'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { useAutoSave } from './hooks/useAutoSave'
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { parseMapFromUrl, clearMapFromUrl } from './services/exportService'
 
 const WELCOME_KEY = 'ideamap-welcomed'

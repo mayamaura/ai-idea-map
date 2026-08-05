@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, type AISuggestion } from '@ideamap/core'
-import Anthropic from '@anthropic-ai/sdk'
+import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, isAbortError, type AISuggestion } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 
 export function AISuggestionPanel() {
@@ -148,10 +147,7 @@ export function AISuggestionPanel() {
       setUserInstruction('')
     } catch (e) {
       // キャンセル時はエラー表示しない
-      if (
-        e instanceof Anthropic.APIUserAbortError ||
-        (e as { name?: string })?.name === 'AbortError'
-      ) {
+      if (isAbortError(e)) {
         // nothing
       } else {
         setError(toFriendlyAIError(e))

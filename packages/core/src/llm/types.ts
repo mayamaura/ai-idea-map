@@ -118,3 +118,14 @@ export interface LLMProvider {
   /** 利用可能なモデル一覧。Ollama は /api/tags 由来の動的一覧、Claude は固定リスト */
   listModels(): Promise<ModelInfo[]>
 }
+
+/**
+ * ユーザーによるキャンセルかどうかを判定する。
+ *
+ * `LLMError('aborted')` は `name` を DOM 標準の 'AbortError' に揃えているため、
+ * プロバイダ由来の中断も `AbortController` 由来の中断も同じ条件で拾える。
+ * UI 側が SDK の例外クラス（Anthropic.APIUserAbortError）を知らずに済むようにするための入口。
+ */
+export function isAbortError(e: unknown): boolean {
+  return (e as { name?: string } | null)?.name === 'AbortError'
+}

@@ -4,7 +4,7 @@ import { setPlatform } from '@ideamap/platform'
 import { useUIStore, setAppSettingsSync } from '@ideamap/core'
 import { webPlatform } from './platform'
 import { saveAppSettings, loadAppSettings } from './services/googleDriveService'
-import './index.css'
+import '@ideamap/ui/styles.css'
 import App from './App.tsx'
 
 // ストアやコンポーネントが getPlatform() を呼ぶ前に注入する
