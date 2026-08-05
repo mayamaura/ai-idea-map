@@ -1,0 +1,16 @@
+{
+  "name": "@ideamap/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "3.0.0",
+    "@ideamap/platform": "workspace:*",
+    "@xyflow/react": "12.10.2",
+    "uuid": "14.0.0",
+    "zustand": "5.0.13"
+  }
+}

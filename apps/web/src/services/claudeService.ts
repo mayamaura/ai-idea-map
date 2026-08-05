@@ -1,4 +1,4 @@
-import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '../types'
+import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '@ideamap/core'
 import { ClaudeProvider } from './llm/claudeProvider'
 import { LLMError } from './llm/types'
 import { AIParseError } from './llm/jsonUtils'

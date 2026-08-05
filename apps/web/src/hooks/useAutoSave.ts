@@ -5,7 +5,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { saveMap, fetchMapAppProperties, loadMap } from '../services/googleDriveService'
 import { saveMapLocally } from '../services/storageService'
-import type { MapFile } from '../types'
+import type { MapFile } from '@ideamap/core'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */

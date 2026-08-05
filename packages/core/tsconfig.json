@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "lib": ["ES2023", "DOM"]
+  },
+  // パッケージはビルド成果物を持たず TypeScript ソースを直接参照する方式のため、
+  // composite なプロジェクト参照は張らない（@ideamap/platform は node_modules の
+  // ワークスペースリンク経由で解決され、そのままこのプログラムの一部として型検査される）
+  "include": ["src"]
+}

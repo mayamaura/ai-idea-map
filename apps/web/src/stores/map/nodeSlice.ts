@@ -1,6 +1,6 @@
 import { applyNodeChanges, type Edge, type NodeChange } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 import { useUIStore } from '../uiStore'
 import { findFreePosition } from '../../utils/mapLayout'
 import {

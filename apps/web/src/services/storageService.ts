@@ -1,4 +1,4 @@
-import type { MapFile } from '../types'
+import type { MapFile } from '@ideamap/core'
 
 const CURRENT_MAP_KEY = 'ideamap-current-map'
 const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
-import type { IdeaNodeData, MapFile } from '../../types'
+import type { IdeaNodeData, MapFile } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
 import {
   exportMapAsImage,

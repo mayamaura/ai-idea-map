@@ -6,7 +6,7 @@ import {
   fetchMapAppProperties,
 } from '../services/googleDriveService'
 import { saveMapLocally, loadRecentMaps } from '../services/storageService'
-import type { MapFile } from '../types'
+import type { MapFile } from '@ideamap/core'
 
 /**
  * Web版のファイル入出力。マップの主保存先は Google Drive で、

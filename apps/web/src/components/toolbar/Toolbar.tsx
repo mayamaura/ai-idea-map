@@ -5,7 +5,7 @@ import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition } from '../../utils/mapLayout'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 import type { Node, Edge } from '@xyflow/react'
 
 export function Toolbar() {

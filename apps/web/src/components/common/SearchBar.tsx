@@ -4,7 +4,7 @@ import { useReactFlow } from '@xyflow/react'
 import { useShallow } from 'zustand/react/shallow'
 import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
 
 // 検索バーが閉じているときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）

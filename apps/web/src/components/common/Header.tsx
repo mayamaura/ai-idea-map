@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
-import type { SaveStatus } from '../../types'
+import type { SaveStatus } from '@ideamap/core'
 
 const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
   saved: { text: '保存済み', color: 'text-green-500' },

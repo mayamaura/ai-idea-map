@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '../types'
+import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '@ideamap/core'
 import {
   encryptWithPassword,
   decryptWithPassword,

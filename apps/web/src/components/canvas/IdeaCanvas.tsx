@@ -24,7 +24,7 @@ import { FloatingEdge } from './FloatingEdge'
 import { Toolbar } from '../toolbar/Toolbar'
 import { BottomNav } from '../toolbar/BottomNav'
 import { FocusStateContext, type FocusState } from '../../hooks/useNodeFocus'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 
 /** 実寸を測るまでのフォールバック値 */
 const BAR_HALF_WIDTH_ESTIMATE = 120

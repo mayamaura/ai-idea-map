@@ -2,7 +2,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { renderMarkdownSimple } from '../../utils/markdown'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 
 export function NodePanel() {
   const { selectedNodeId, setSelectedNodeId, openNodeDetail, setAIPanelOpen } = useUIStore(

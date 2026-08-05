@@ -1,7 +1,7 @@
 import { getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
-import type { IdeaNodeData, MapFile, SerializedNode, SerializedEdge } from '../types'
+import type { IdeaNodeData, MapFile, SerializedNode, SerializedEdge } from '@ideamap/core'
 
 const EXPORT_WIDTH = 1920
 const EXPORT_HEIGHT = 1080

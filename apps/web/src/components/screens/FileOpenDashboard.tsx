@@ -6,7 +6,7 @@ import { useMapStore } from '../../stores/mapStore'
 import { listMaps, loadMap, deleteMap, saveMap } from '../../services/googleDriveService'
 import { loadRecentMaps, saveRecentMap, loadMapLocally } from '../../services/storageService'
 import type { DriveFile } from '../../services/googleDriveService'
-import type { MapFile } from '../../types'
+import type { MapFile } from '@ideamap/core'
 
 interface FileOpenDashboardProps {
   accessToken: string | null

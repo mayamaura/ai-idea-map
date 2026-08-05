@@ -8,7 +8,7 @@ import { generateSuggestions, toFriendlyAIError } from '../../services/claudeSer
 import Anthropic from '@anthropic-ai/sdk'
 import { calcSuggestionPositions } from '../../utils/mapLayout'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
-import type { AISuggestion } from '../../types'
+import type { AISuggestion } from '@ideamap/core'
 
 export function AISuggestionPanel() {
   const {

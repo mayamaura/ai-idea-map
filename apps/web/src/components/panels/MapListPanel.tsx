@@ -3,7 +3,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useMapStore } from '../../stores/mapStore'
 import { listMaps, loadMap, deleteMap } from '../../services/googleDriveService'
 import type { DriveFile } from '../../services/googleDriveService'
-import type { MapFile } from '../../types'
+import type { MapFile } from '@ideamap/core'
 
 interface MapListPanelProps {
   accessToken: string | null

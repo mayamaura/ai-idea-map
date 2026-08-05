@@ -6,9 +6,9 @@ import { useMapStore } from '../../stores/mapStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { chatWithMap, toFriendlyAIError } from '../../services/claudeService'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
-import type { ChatMessage, ChatAction, MapContext } from '../../types'
+import type { ChatMessage, ChatAction, MapContext } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 
 // メンション候補を購読しないときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
 const NO_MENTION_CANDIDATES: Node<IdeaNodeData>[] = []

@@ -5,7 +5,7 @@ import { useMapStore } from '../../stores/mapStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
-import type { IdeaNodeData } from '../../types'
+import type { IdeaNodeData } from '@ideamap/core'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 function shapeClass(shape: string): string {

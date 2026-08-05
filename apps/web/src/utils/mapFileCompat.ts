@@ -1,4 +1,4 @@
-import type { SerializedNode, SerializedEdge } from '../types'
+import type { SerializedNode, SerializedEdge } from '@ideamap/core'
 
 /**
  * 旧バージョンのマップファイルを読み込むための互換処理を集約する。
