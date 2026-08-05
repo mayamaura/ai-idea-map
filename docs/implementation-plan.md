@@ -1191,6 +1191,181 @@
 
 ---
 
+## 1-B. デスクトップアプリ版（Phase 32〜38）
+
+ここから先は **デスクトップアプリ版（Tauri v2）の開発と、Web版とのコア共通化**のフェーズです。
+
+**着手前に必ず [docs/desktop/README.md](desktop/README.md) を読んでください。** フレームワーク選定の根拠・モノレポ構成・Adapter 設計・Ollama 連携の詳細設計はすべて `docs/desktop/` 配下にあり、本節はそのタスク分解のみを扱います。ドキュメント間で結論が食い違う箇所は `docs/desktop/README.md` §3 の裁定が優先されます。
+
+**目的**: ローカルLLM（Ollama）を使えるようにすること。ブラウザからは CORS 制約で `http://localhost:11434` に安定アクセスできないため、Tauri の Rust プロセス経由でアクセスする。
+
+**前提**: Phase 31 の完了。モノレポ移行（Phase 33）は「移行前後で挙動が変わっていないこと」を判定条件にするため、`🔨 実装済み（確認中）` のフェーズが残っていると不具合の切り分けができなくなる。
+
+| Phase | 内容 | 目安 | 主参照 |
+|---|---|---|---|
+| 32 | LLMプロバイダ抽象化（Claude のみ） | 2日 | [llm-abstraction.md](desktop/llm-abstraction.md) |
+| 33 | モノレポ移行 | 5日 | [architecture.md](desktop/architecture.md) |
+| 34 | Tauri デスクトップ版の骨格 | 5日 | [platform-integration.md](desktop/platform-integration.md) |
+| 35 | **Ollama 統合（主目的の達成）** | 4日 | [llm-abstraction.md](desktop/llm-abstraction.md) |
+| 36 | ビルド・配布・自動更新 | 3日 | [platform-integration.md](desktop/platform-integration.md) |
+| 37 | デスクトップ固有UX | 3日 | [platform-integration.md](desktop/platform-integration.md) |
+| 38 | （任意）デスクトップ版 Google Drive 連携 | 3日 | [platform-integration.md](desktop/platform-integration.md) §3.8 |
+
+---
+
+### Phase 32: LLMプロバイダ抽象化（Claude のみ）（約2日）
+
+**目標**: 既存 Web 版の挙動を一切変えずに、`claudeService.ts` を `LLMProvider` インタフェースの背後に隠す。Ollama 対応の下地を作る。
+
+> 参照: `docs/desktop/llm-abstraction.md` §2〜3・§7（Step 1-2）。モノレポ移行前なので配置は `ideamap/src/services/llm/`。Phase 33 で `packages/core/src/llm/` へ `git mv` する。
+
+#### タスク
+- [ ] `src/services/llm/types.ts` に `LLMProvider` / `LLMRequest` / `LLMError`（`kind: 'auth' | 'rateLimit' | 'connection' | 'notFound' | 'parse' | 'aborted' | 'unknown'`）/ `ProviderCapabilities` / `ModelInfo` を定義
+- [ ] `src/services/llm/jsonUtils.ts` に既存の `sanitizeJsonString` / `safeParseJson` / `AIParseError` を移設
+- [ ] `src/services/llm/claudeProvider.ts` に `ClaudeProvider` を実装（`complete` / `completeJson` / `stream` / `listModels` / `capabilities`）。`Anthropic.APIError` → `LLMError` の変換をここに閉じ込める
+- [ ] `claudeService.ts` の5関数（`generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` / `chatWithMap`）を、**関数シグネチャを変えずに** `ClaudeProvider` へ委譲するだけの実装に変更
+- [ ] `toFriendlyAIError` を `LLMError.kind` ベースの実装に置き換え（表示文言は現状と1文字も変えない）
+- [ ] `analyzeMap` / `suggestConnections` / `suggestClusters` に欠けていた `AbortSignal` 対応を追加（既存の実装漏れの解消）
+- [ ] `docs/design.md` の「9. Claude API連携設計」を LLMProvider 構成に更新
+
+**完了条件**: `src/components/panels/*.tsx` に差分が無いこと（`git diff` で確認）。`npm run build` が通る。AI提案・チャット・分析・接続提案・クラスタ提案の5機能が変更前と同じ入出力になる。401 / 429 / 529 / ネットワークエラーの4パターンで従来と同一の日本語メッセージが出る。
+
+---
+
+### Phase 33: モノレポ移行（約5日）
+
+**目標**: 既存 Web 版を壊さずに `packages/core` / `packages/ui` / `packages/platform` / `apps/web` へ分割し、デスクトップ版を追加できる土台を作る。
+
+> 参照: `docs/desktop/architecture.md` §2〜5（移行手順 Step 0〜7）。**各ステップの完了判定条件を満たすまで次に進まないこと。** 「ファイル移動のみ」と「ロジック変更」のコミットを必ず分離する。
+
+#### タスク
+- [ ] Step 0: `feature/monorepo-migration` ブランチ作成。移行前ベースライン（`npm run build` / `npm run lint` 通過）を記録
+- [ ] Step 1: ルートに `pnpm-workspace.yaml` / `package.json` / `tsconfig.base.json` / `eslint.config.js` を追加（既存 `ideamap/` はまだ動かさない）
+- [ ] Step 2: `git mv ideamap apps/web`。`package.json` の `name` を `@ideamap/web` に変更
+- [ ] Step 3: `packages/platform` 新設（Adapter インタフェース＋`setPlatform`/`getPlatform` レジストリのみ。未参照でよい）
+- [ ] Step 4: `apps/web/src/platform/*.web.ts` を既存サービスのラッパーとして作成（**未接続**）
+- [ ] Step 5-1: `types/index.ts` を `packages/core` へ移動
+- [ ] Step 5-2: `mapStore.ts` を無改修で `packages/core` へ移動
+- [ ] Step 5-3: `uiStore.ts` を移動し、`saveDriveFileId`/`loadDriveFileId` 直呼びを `getPlatform().storage` 経由に置換
+- [ ] Step 5-4: `settingsStore.ts` を移動し、`encryption.ts` 呼び出しを `getPlatform().secret` へ。Drive 同期は `apps/web` からのコールバック注入に変更
+- [ ] Step 6: `packages/ui` へコンポーネント・hooks を `common → canvas → panels → screens` の順に移動。`useAutoSave` を `FileAdapter` 経由に。`useGoogleAuth` と `FileOpenDashboard` の Google 連携部分は `apps/web` に残す
+- [ ] Step 6: Phase 32 で作った `src/services/llm/` を `packages/core/src/llm/` へ移動し、HTTP 呼び出しを `getPlatform().http` 経由に変更
+- [ ] Step 7: `apps/web/src/main.tsx` で `setPlatform(webPlatform)` を呼んでから `<App/>` をレンダーする構成に整理
+- [ ] Step 9: GitHub Actions のビルドパスを `ideamap/` → `apps/web/` に更新
+- [ ] `eslint-plugin-import` の `import/no-restricted-paths` で依存方向違反を検出できるようにする
+- [ ] `CLAUDE.md` にモノレポ構成のルールを追記（`docs/desktop/architecture.md` §6 の内容）
+- [ ] `docs/design.md` の「3. プロジェクト構成」をモノレポ構成に更新
+
+**完了条件**: `pnpm build` が全パッケージで通る。Web版の全機能（マップ作成・Undo/Redo・保存・Drive同期・AI提案・エクスポート・プレゼンモード）が移行前と同じ動作をする。GitHub Pages へのデプロイが成功する。依存方向違反が ESLint で検出される。
+
+---
+
+### Phase 34: Tauri デスクトップ版の骨格（約5日）
+
+**目標**: `apps/desktop` を新設し、ウィンドウが起動してマップ編集とローカルファイル保存ができる状態にする。Ollama 連携はまだ含まない。
+
+> 参照: `docs/desktop/platform-integration.md` §3〜5・§7、`docs/desktop/architecture.md` §5 Step 8。
+
+#### タスク
+- [ ] Windows 開発環境セットアップ（Rust ツールチェーン / MSVC Build Tools / WebView2）。手順は `platform-integration.md` §7
+- [ ] **最優先の検証**: Tauri の空ウィンドウで React Flow を表示し、①日本語IME入力が正常か ②大規模マップの描画性能が実用範囲か を確認する。**ここが致命的なら ADR-001 §6 に従いフレームワーク選定をやり直す**
+- [ ] `apps/desktop` を作成（Vite + `src-tauri`）。`packages/ui` / `packages/core` を参照する
+- [ ] `tauri.conf.json` と `capabilities/*.json` を作成。CSP と `fs` / `dialog` / `store` / `http` のスコープを最小権限で設定
+- [ ] `apps/desktop/src/platform/*.desktop.ts` に Adapter を実装
+  - [ ] `StorageAdapter`: `@tauri-apps/plugin-store`
+  - [ ] `FileAdapter`: `@tauri-apps/plugin-dialog` の `open`/`save` ＋ `@tauri-apps/plugin-fs`
+  - [ ] `SecretAdapter`: OSキーチェーン（`keyring` crate をラップした Tauri コマンド）。`isPassphraseFree: true`
+  - [ ] `HttpAdapter`: `@tauri-apps/plugin-http`
+  - [ ] `SystemAdapter`: クリップボード、`opener`、ウィンドウ `close-requested` による終了前確認
+- [ ] `main.tsx` で `setPlatform(desktopPlatform)` を呼ぶ
+- [ ] 自動保存の書き込み先を「開いているファイル」に切り替え。ファイル未確定時は `$APPLOCALDATA/autosave/<mapId>.ideamap`
+- [ ] APIキー入力時にマスターパスワードを要求しない分岐（`SecretAdapter.isPassphraseFree` を見る）
+- [ ] Web専用機能（Drive同期・GIS認証・共有URL）がデスクトップ版UIに出ないことを確認
+- [ ] `docs/requirements.md` にデスクトップ版の機能要件を追記
+
+**完了条件**: `pnpm tauri dev` でウィンドウが起動する。マップの作成・編集・Undo/Redo・ローカルファイルへの保存と読み込み・Claude API でのAI提案が動作する。日本語入力に問題がない。アプリ再起動後も設定とAPIキーが復元される（マスターパスワード入力なしで）。
+
+---
+
+### Phase 35: Ollama 統合（約4日）
+
+**目標**: **本計画の主目的。** デスクトップ版でローカルLLM（Ollama）を選択して、AI機能が動く状態にする。
+
+> 参照: `docs/desktop/llm-abstraction.md` §3〜7（Step 3-7）・§8（API調査結果）。
+
+#### タスク
+- [ ] `packages/core/src/llm/ollamaProvider.ts` を実装（`/api/chat` を使用、NDJSON ストリーミングの手動パース、`format` への JSON Schema 指定、`/api/tags` によるモデル一覧取得）
+- [ ] `HttpAdapter` 経由で Ollama に到達できることを実機確認。**未検証事項**: 開発時の Vite オリジンが `OLLAMA_ORIGINS` のデフォルト許可に含まれるか（`docs/desktop/README.md` §5 の #4）
+- [ ] 型移行: `AIModel`（Claude専用 union）を `AIModelSelection { provider, model }` へ。`settingsStore` を `llmProvider` / `claudeModel` / `ollamaModel` / `ollamaBaseUrl` に分割
+- [ ] zustand `persist` の `version` + `migrate` で旧 `localStorage` データを無破壊移行
+- [ ] Drive の `AppSettings` を `version: '2.0'` に。旧 `1.0` を読んでもエラーにならないこと
+- [ ] 設定UIにプロバイダ切り替え・エンドポイントURL設定・接続テスト・インストール済みモデル一覧を追加。Web版ではプロバイダ切り替えUIを表示しない
+- [ ] Ollama 未起動時のエラー表示とガイダンス（起動方法・`ollama pull` の案内）
+- [ ] 各パネルの呼び出しを `getActiveProvider(settings)` から得た `LLMProvider` を渡す方式に変更。`claudeService.ts` を `aiService.ts` にリネーム
+- [ ] 小型モデル向けの出力安定化（`temperature: 0`、スキーマのプロンプト埋め込み、パース失敗時のリトライ）
+- [ ] 日本語対応モデルでの実用性確認（Gemma 3 / Qwen3 / ELYZA-JP-8B など）
+- [ ] `docs/design.md` の「9. LLM連携設計」に Ollama を反映。`docs/requirements.md` にローカルLLM要件を追記
+
+**完了条件**: デスクトップ版でプロバイダを Ollama に切り替え、接続テストとモデル一覧取得が成功する。ローカルモデルでアイデア提案・AIチャット・マップ分析・接続提案・クラスタ提案の5機能が動作する。旧形式の `localStorage` データで起動してもエラーなく移行される。Web版は見た目・挙動とも Phase 34 以前と一致する。
+
+---
+
+### Phase 36: ビルド・配布・自動更新（約3日）
+
+**目標**: 他人にインストーラを配れる状態にする。
+
+> 参照: `docs/desktop/platform-integration.md` §6。
+
+#### タスク
+- [ ] GitHub Actions で Windows（MSI/NSIS）・macOS（dmg）をビルドするワークフローを作成（`tauri-action`）
+- [ ] GitHub Releases への成果物公開
+- [ ] `tauri-plugin-updater` の設定（署名鍵の生成と管理、アップデートマニフェストの配置）
+- [ ] バージョニング方針の決定（Web版とデスクトップ版の番号の揃え方）
+- [ ] コード署名なし配布時の SmartScreen / Gatekeeper 警告に対するユーザー向け案内文を README に用意
+- [ ] インストール〜起動〜アップデートの一連の流れを、開発機以外で確認
+
+**完了条件**: タグを打つと Windows・macOS 向けインストーラが自動ビルドされ Releases に公開される。インストールしたアプリが起動し、新バージョン公開時に自動更新が動作する。
+
+---
+
+### Phase 37: デスクトップ固有UX（約3日）
+
+**目標**: 「ネイティブアプリらしさ」を足す。
+
+> 参照: `docs/desktop/platform-integration.md` §3.4〜3.7。
+
+#### タスク
+- [ ] `.ideamap` 拡張子の OS 関連付け（`bundle.fileAssociations`）＋ `tauri-plugin-single-instance` でダブルクリック起動を既存ウィンドウに転送
+- [ ] ファイルのドラッグ&ドロップ受け入れ（`onDragDropEvent`）。**要検証**: React Flow のノード操作と競合しないか
+- [ ] `window-state` プラグインでウィンドウ位置・サイズを記憶
+- [ ] 外部でファイルが変更された場合の検知（ウィンドウ `focus` 時に `mtime` 比較 → 再読み込み確認ダイアログ）
+- [ ] アプリ内「最近開いたファイル」リスト（必須）。OSの「最近使った項目」統合は**要検証**のため任意
+- [ ] エクスポート（JSON/画像/Markdown）を `dialog.save()` ＋ `fs` 書き込みに変更
+- [ ] 共有URL機能の代替案内（「JSONファイルとして共有」への文言変更）
+
+**完了条件**: エクスプローラから `.ideamap` をダブルクリックでアプリが開く。ドラッグ&ドロップでマップを読み込める。前回のウィンドウ位置・サイズで起動する。
+
+---
+
+### Phase 38: デスクトップ版 Google Drive 連携（任意・約3日）
+
+**目標**: デスクトップ版からも Google Drive 同期を使えるようにする。**任意フェーズ。** Ollama 対応という主目的とは独立しており、必要になってから着手する。
+
+> 参照: `docs/desktop/platform-integration.md` §3.8。Google は組み込みWebViewからの OAuth を `disallowed_useragent` でブロックするため、Web版の GIS ポップアップ方式は使えない。
+
+#### タスク
+- [ ] Google Cloud Console で「デスクトップアプリ」種別の OAuth クライアントIDを新規発行
+- [ ] ループバックサーバ（`http://127.0.0.1:<port>`）＋ PKCE によるOAuthフローを実装
+- [ ] `opener` プラグインで OS 既定ブラウザに認可URLを開く
+- [ ] 取得したトークンを OSキーチェーンに保存
+- [ ] `googleDriveService.ts` を `packages/core` に移し、Web/Desktop 双方から使えるようにする（`fetch` は `HttpAdapter` 経由に）
+- [ ] `useGoogleAuth` の消費インタフェース（`isSignedIn`/`accessToken`/`signIn`/`signOut`/`userEmail`）を保ったまま内部実装のみ差し替え
+- [ ] `docs/desktop/README.md` §3.1 の裁定を「デスクトップも Drive 対応」に更新
+
+**完了条件**: デスクトップ版から Google サインインでき、Web版と同じマップを開いて保存できる。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。

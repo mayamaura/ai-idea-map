@@ -24,6 +24,10 @@
     └── localStorage（マップデータ・設定・暗号化APIキー）
 ```
 
+> **デスクトップアプリ版について（Phase 32〜）**
+> ローカルLLM（Ollama）対応のため、Tauri v2 によるデスクトップアプリ版を計画しています。あわせて Web版とコアを共通化するモノレポ構成（`packages/core` / `packages/ui` / `packages/platform` + `apps/web` / `apps/desktop`）へ移行します。
+> 本書は **移行完了までの間は現行の Web 版（`ideamap/` 単一プロジェクト）を記述**します。デスクトップ版の設計は [desktop/README.md](desktop/README.md) を起点とする `docs/desktop/` 配下を参照してください。第18章に要点を記載しています。
+
 ---
 
 ## 2. 技術スタック
@@ -927,3 +931,65 @@ Phase 24 で Toolbar / BottomNav / IdeaCanvas（NodeActionBar・空状態・Back
 - `IdeaNode.tsx`: `handleTouchStart(e: React.TouchEvent)` で `e.touches.length === 1` のみ処理。座標を先にローカル変数に取り込んで 500ms タイマーを張る。発火時に `openContextMenu({ type: 'node', x, y, targetId: id })` → `navigator.vibrate?.(10)`。
 - `IdeaCanvas.tsx`: 外側ラッパ div に `onTouchStart/End/Move` を追加。対象が `.react-flow__pane` 上かつ `.react-flow__node` でない場合のみ 500ms タイマーで `openContextMenu({ type: 'pane', x, y, flowPosition })` → `navigator.vibrate?.(10)`。`touchmove/touchend` でタイマー解除（パン・スクロールと競合させない）。`preventDefault` は呼ばない（React Flow のパン/ピンチを保護）。
 - `ContextMenu.tsx` の node メニューに「🔗 接続を作成」を追加 → `setConnectingFromNodeId(targetId)` で接続モード開始。
+
+---
+
+## 18. デスクトップアプリ版とコア共通化（Phase 32〜）
+
+**詳細設計は [desktop/README.md](desktop/README.md) を起点とする `docs/desktop/` 配下にあります。** 本章はその要点と、本書（Web版設計）との関係のみを記載します。移行完了時には本書の第1章・第3章・第9章・第10章・第12章を新構成に書き換えます。
+
+### 18.1 目的
+
+**ローカルLLM（Ollama, `http://localhost:11434`）を使うこと。** ブラウザから localhost の Ollama を叩く構成は CORS 設定（`OLLAMA_ORIGINS`）がユーザー環境に依存し、GitHub Pages 配信の Web 版では安定提供できません。Tauri の Rust プロセス経由（`tauri-plugin-http`）ならブラウザの CORS 制約を受けません。
+
+### 18.2 技術選定
+
+| 項目 | 決定 |
+|---|---|
+| フレームワーク | Tauri v2 |
+| リポジトリ構成 | pnpm workspaces のモノレポ |
+| プラットフォーム差の吸収 | Platform Adapter を `setPlatform()` でシングルトン注入 |
+| LLM 抽象化 | `LLMProvider` インタフェース（`ClaudeProvider` / `OllamaProvider`） |
+| デスクトップの保存先 | ローカルファイル（`.ideamap`、実体はJSON）中心 |
+| APIキー保管 | デスクトップは OSキーチェーン（マスターパスワード不要） |
+
+選定理由と却下した候補は [desktop/adr-001-framework-selection.md](desktop/adr-001-framework-selection.md) を参照。
+
+### 18.3 目標構成
+
+```
+ai-idea-map/
+├── packages/
+│   ├── core/          型・Zustandストア・レイアウト計算・LLMProvider（純粋ロジック）
+│   ├── ui/            Reactコンポーネント・UI hooks
+│   └── platform/      Platform Adapter の型定義とレジストリのみ
+└── apps/
+    ├── web/           Web版シェル。Adapter Web実装・Google Drive同期・GIS認証・共有URL
+    └── desktop/       Tauri v2 シェル。Adapter Desktop実装・src-tauri
+```
+
+依存方向は `apps/* → packages/ui → packages/core → packages/platform` の一方向。逆方向の import は `eslint-plugin-import` の `import/no-restricted-paths` で検出します。
+
+### 18.4 Platform Adapter
+
+| Adapter | 責務 | Web実装 | Desktop実装 |
+|---|---|---|---|
+| `StorageAdapter` | Key-Value 永続化 | `localStorage` | `@tauri-apps/plugin-store` |
+| `FileAdapter` | マップファイルの読み書き | Google Drive API / ブラウザダウンロード | `plugin-dialog` + `plugin-fs` |
+| `SecretAdapter` | APIキー等の秘密情報 | WebCrypto（PBKDF2+AES-GCM）+ localStorage | OSキーチェーン（`keyring` crate） |
+| `HttpAdapter` | HTTP 呼び出し | `fetch` | `@tauri-apps/plugin-http` |
+| `SystemAdapter` | クリップボード・外部URL・終了前確認 | ブラウザAPI | Tauri プラグイン |
+
+**`HttpAdapter` が本計画で最も重要な接続点です。** `packages/core` の `LLMProvider` 実装は `fetch` を直接呼ばず必ず `getPlatform().http` を経由し、デスクトップ版ではそれが Rust 側の HTTP クライアントに解決されることで **Ollama の CORS 問題が1箇所で解決します**。
+
+インタフェースの完全な型定義は [desktop/architecture.md](desktop/architecture.md) §3 にあります。
+
+### 18.5 本書の既存章への影響
+
+| 本書の章 | 移行後の変更 |
+|---|---|
+| 1. アーキテクチャ概要 | Web版/デスクトップ版の2構成に書き換え |
+| 3. プロジェクト構成 | モノレポ構成に書き換え |
+| 9. Claude API連携設計 | 「LLM連携設計」に改称。`LLMProvider` と Ollama を追加 |
+| 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要 |
+| 12. Google Drive連携設計 | Web版専用機能である旨を明記（デスクトップ版 v1 は非対応） |

@@ -18,6 +18,16 @@ AIと一緒に育てるアイデアマップアプリ。React Flow でノード�
 | [docs/design.md](docs/design.md) | アーキテクチャ・型定義・設計判断（HOW） | 設計変更・型変更・新コンポーネント追加時 |
 | [docs/implementation-plan.md](docs/implementation-plan.md) | フェーズ・タスク・進捗管理（WHEN） | フェーズ完了・新フェーズ追加時 |
 
+デスクトップアプリ版（Tauri v2）とモノレポ化については、上記3ファイルに加えて `docs/desktop/` 配下に詳細設計がある。**デスクトップ版・モノレポ・LLM抽象化に関わる作業をするときは、必ず [docs/desktop/README.md](docs/desktop/README.md) を先に読むこと。** ドキュメント間で結論が食い違う箇所は同ファイル §3 の裁定が優先される。
+
+| ファイル | 役割 |
+|---|---|
+| [docs/desktop/README.md](docs/desktop/README.md) | **入口。** 決定事項サマリ・矛盾の裁定・ロードマップ・未検証事項 |
+| [docs/desktop/adr-001-framework-selection.md](docs/desktop/adr-001-framework-selection.md) | フレームワーク選定（Tauri v2）の根拠 |
+| [docs/desktop/architecture.md](docs/desktop/architecture.md) | モノレポ構成と Platform Adapter 設計 |
+| [docs/desktop/llm-abstraction.md](docs/desktop/llm-abstraction.md) | `LLMProvider` 抽象化と Ollama 連携 |
+| [docs/desktop/platform-integration.md](docs/desktop/platform-integration.md) | Tauri 固有機能・配布・開発環境 |
+
 ### 各ドキュメントの更新ポイント
 
 - **requirements.md**: 新機能を実装したら対応する機能要件に追記。仕様変更があれば既存要件を修正。
@@ -66,6 +76,44 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ### Google Drive
 - `googleDriveService.ts` の `folderIdCache` はプロセス内メモリキャッシュ。アクセストークンが変わった場合は `clearDriveCache()` を呼ぶ。
 - ファイル保存は既存 fileId があれば `PATCH`、なければ `POST`（マルチパートアップロード）。
+
+---
+
+## モノレポ構成（Phase 33 移行後に適用）
+
+**現在はまだ移行前**であり、ソースは `ideamap/` 配下の単一 Vite プロジェクトにある。以下は Phase 33（モノレポ移行）完了後に適用されるルール。移行を実施したら本節の「移行後に適用」の但し書きを削除すること。
+
+### ディレクトリと責務
+
+| パッケージ | 置くもの | 置いてはいけないもの |
+|---|---|---|
+| `packages/core` | 型定義、Zustandストア、レイアウト計算、`LLMProvider` 実装などの純粋ロジック | `.tsx` のUI、`localStorage`/`window`/`document`/`fetch` の直接呼び出し |
+| `packages/ui` | Reactコンポーネント、UI hooks | 特定プラットフォームの外部サービス依存、`localStorage` 等の直接呼び出し |
+| `packages/platform` | Adapter の**型定義**と `setPlatform`/`getPlatform` レジストリのみ | Adapter の実装、`@tauri-apps/*` や `window.google` への依存 |
+| `apps/web` | Web版シェル、Adapter Web実装、Google Drive同期、GIS認証、共有URL | `packages/*` に置くべき汎用ロジックの重複実装 |
+| `apps/desktop` | Tauri シェル、Adapter Desktop実装、`src-tauri` | Web専用機能（Drive同期・GIS認証・共有URL）の持ち込み |
+
+### 守るべきルール
+
+- 依存方向は `apps/* → packages/ui → packages/core → packages/platform` の**一方向のみ**。逆方向の import は禁止（`eslint-plugin-import` の `import/no-restricted-paths` で検出される）。
+- `packages/core` と `packages/ui` から `localStorage`・`sessionStorage`・`fetch`・Google Drive API・GIS認証・`<a download>` を**直接呼ばない**。必ず `getPlatform()` 経由で Adapter を使う。
+- `getPlatform()` はモジュールのトップレベルではなく、必ず関数の内部（ストアのアクション、イベントハンドラ、`useEffect`）で呼ぶ。`setPlatform()` より先に評価されるのを防ぐため。
+- Adapter にメソッドを追加するときは、`packages/platform` の型追加・`apps/web` 実装・`apps/desktop` 実装の3点を**同一コミット内で揃える**。
+- 新機能を実装する前に「このロジックは Web版・デスクトップ版で同じ動作か？」を自問する。Yes ならロジックは `packages/core`、UIは `packages/ui`。No なら Adapter にメソッドを追加して両アプリに実装する。
+- Web版とデスクトップ版で同じロジックを別々に書かない。それが起きたら `packages/core` に上げる合図。
+- 移行作業中は「ファイル移動（`git mv`）のみのコミット」と「ロジック変更のコミット」を必ず分離する。
+
+### 上記「作業パターン」のパス読み替え
+
+移行後は本ファイルの「新しいノードアクションを追加する」「新しいパネルを追加する」手順のパスを次のように読み替える。
+
+| 移行前 | 移行後 |
+|---|---|
+| `src/types/index.ts` | `packages/core/src/types/index.ts` |
+| `src/stores/*.ts` | `packages/core/src/stores/*.ts` |
+| `src/components/**` | `packages/ui/src/components/**` |
+| `src/hooks/*.ts` | `packages/ui/src/hooks/*.ts` |
+| `src/services/claudeService.ts` | `packages/core/src/llm/aiService.ts` |
 
 ---
 
