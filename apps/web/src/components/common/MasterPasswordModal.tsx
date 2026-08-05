@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useSettingsStore } from '../../stores/settingsStore'
-import { useUIStore } from '@ideamap/core'
+import { useSettingsStore, useUIStore } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
-import { clearStoredApiKey } from '../../utils/encryption'
+import { getPlatform } from '@ideamap/platform'
 
 interface InnerProps {
   isUnlockMode: boolean
@@ -171,7 +170,7 @@ export function MasterPasswordModal() {
   useFocusTrap(dialogRef, isVisible)
 
   const handleForgotPassword = () => {
-    clearStoredApiKey()
+    void getPlatform().secret.clearSecret('apiKey')
     useSettingsStore.setState({ apiKeyLock: 'none', masterPasswordPromptDismissed: false })
     setSettingsOpen(true)
   }

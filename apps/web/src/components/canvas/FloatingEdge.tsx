@@ -1,5 +1,5 @@
 import { useInternalNode, BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, getStraightPath, Position, type EdgeProps } from '@xyflow/react'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useSettingsStore } from '@ideamap/core'
 import { useEdgeFocusOpacity } from '../../hooks/useNodeFocus'
 
 type BezierArgs = {

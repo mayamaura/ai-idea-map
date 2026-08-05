@@ -1,19 +1,41 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '@ideamap/core'
-import {
-  encryptWithPassword,
-  decryptWithPassword,
-  hasStoredApiKey,
-  hasLegacyApiKey,
-  getLegacyApiKey,
-  clearLegacyApiKey,
-  setStoredApiKeyWithPassword,
-  getStoredApiKeyWithPassword,
-  clearStoredApiKey,
-} from '../utils/encryption'
-import { saveAppSettings, loadAppSettings } from '../services/googleDriveService'
+import { getPlatform } from '@ideamap/platform'
+import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '../types'
+import { encryptWithPassword, decryptWithPassword } from '../crypto/passwordCrypto'
+
+/** SecretAdapter に渡す秘密情報の論理キー。保管しているのは Claude APIキーの1件だけ */
+const API_KEY_SECRET = 'apiKey'
+
+/** クラウド上に置くアプリ設定ファイルの中身（Web版は Drive の IdeaMap/settings.json） */
+export interface AppSettingsPayload {
+  version: string
+  encryptedApiKey: string
+  salt: number[]
+  model: string
+  updatedAt: string
+}
+
+/**
+ * 設定のクラウド同期。Google Drive はWeb版だけの機能なので core からは直接呼ばず、
+ * apps/web が setAppSettingsSync() で実装を注入する（デスクトップ版は未注入のまま）。
+ */
+export interface AppSettingsSync {
+  save(token: string, payload: AppSettingsPayload): Promise<void>
+  load(token: string): Promise<AppSettingsPayload | null>
+}
+
+let appSettingsSync: AppSettingsSync | null = null
+
+export function setAppSettingsSync(impl: AppSettingsSync | null): void {
+  appSettingsSync = impl
+}
+
+function requireAppSettingsSync(): AppSettingsSync {
+  if (!appSettingsSync) throw new Error('設定のクラウド同期はこの環境では利用できません')
+  return appSettingsSync
+}
 
 export const DEFAULT_AI_MODEL: AIModel = 'claude-sonnet-5'
 
@@ -115,13 +137,14 @@ export const useSettingsStore = create<SettingsState>()(
 
       setApiKey: (key) => {
         const { syncPassword } = get()
+        const { secret } = getPlatform()
         if (!key) {
           set({ apiKey: '', apiKeyLock: 'none' })
-          clearStoredApiKey()
+          void secret.clearSecret(API_KEY_SECRET)
           return
         }
         if (syncPassword) {
-          void setStoredApiKeyWithPassword(key, syncPassword).then(() => {
+          void secret.setSecret(API_KEY_SECRET, key, syncPassword).then(() => {
             set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: false })
           })
         } else {
@@ -139,11 +162,12 @@ export const useSettingsStore = create<SettingsState>()(
 
       setMasterPassword: (password) => {
         const { apiKey } = get()
+        const { secret } = getPlatform()
         set({ syncPassword: password })
         if (apiKey) {
           // メモリ上の apiKey を新形式で再暗号化して旧形式を削除
-          void setStoredApiKeyWithPassword(apiKey, password).then(() => {
-            clearLegacyApiKey()
+          void secret.setSecret(API_KEY_SECRET, apiKey, password).then(async () => {
+            await secret.clearLegacySecret(API_KEY_SECRET)
             set({ needsMasterPasswordSetup: false, apiKeyLock: 'unlocked' })
           })
         } else {
@@ -176,12 +200,13 @@ export const useSettingsStore = create<SettingsState>()(
       getCategoryById: (id) => get().categories.find((c) => c.id === id),
 
       initApiKey: async () => {
-        if (hasStoredApiKey()) {
+        const { secret } = getPlatform()
+        if (await secret.hasSecret(API_KEY_SECRET)) {
           // 新形式キーあり: ロック状態にしてモーダルが解錠を促す
           set({ apiKeyLock: 'locked' })
-        } else if (hasLegacyApiKey()) {
+        } else if (await secret.hasLegacySecret(API_KEY_SECRET)) {
           // 旧形式キーあり: 自動移行（ハードコード鍵で透過復号してメモリに展開）
-          const key = await getLegacyApiKey()
+          const key = await secret.getLegacySecret(API_KEY_SECRET)
           if (key) {
             set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: true })
             // 旧キーは再暗号化成功（setMasterPassword 呼び出し）後に削除する
@@ -195,8 +220,8 @@ export const useSettingsStore = create<SettingsState>()(
 
       unlockApiKey: async (password) => {
         try {
-          const key = await getStoredApiKeyWithPassword(password)
-          set({ apiKey: key, syncPassword: password, apiKeyLock: 'unlocked' })
+          const key = await getPlatform().secret.getSecret(API_KEY_SECRET, password)
+          set({ apiKey: key ?? '', syncPassword: password, apiKeyLock: 'unlocked' })
           return true
         } catch {
           return false
@@ -212,7 +237,7 @@ export const useSettingsStore = create<SettingsState>()(
         if (!syncPassword) throw new Error('マスターパスワードが設定されていません')
         if (!apiKey) throw new Error('APIキーが設定されていません')
         const { encrypted, salt } = await encryptWithPassword(apiKey, syncPassword)
-        await saveAppSettings(token, {
+        await requireAppSettingsSync().save(token, {
           version: '1.0',
           encryptedApiKey: encrypted,
           salt,
@@ -224,7 +249,7 @@ export const useSettingsStore = create<SettingsState>()(
       loadSettingsFromDrive: async (token: string) => {
         const { syncPassword } = get()
         if (!syncPassword) throw new Error('マスターパスワードが設定されていません')
-        const settings = await loadAppSettings(token)
+        const settings = await requireAppSettingsSync().load(token)
         if (!settings) throw new Error('Driveに設定ファイルが見つかりません')
         const apiKey = await decryptWithPassword(settings.encryptedApiKey, syncPassword, settings.salt)
         get().setApiKey(apiKey)
@@ -233,6 +258,11 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'ideamap-settings',
+      // NOTE(Phase 34): storage は zustand 既定の localStorage のまま。
+      // StorageAdapter は非同期のため差し替えるとハイドレーションが1マイクロタスク遅れ、
+      // 初回描画がテーマ既定値（light）で走ってちらつく。Phase 33 の判定条件は
+      // 「移行前と同じ動作」なのでここでは変更せず、実プラットフォームが2つになる
+      // Phase 34 で非同期ハイドレーション込みで対応する。
       // v0（バージョン未指定）の保存データには廃止済みモデルIDが残るため読み替える
       version: 1,
       migrate: (persisted) => {

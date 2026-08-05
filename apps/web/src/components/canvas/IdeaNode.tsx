@@ -1,8 +1,7 @@
 import { memo, useRef, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflow/react'
-import { useMapStore, useUIStore, type IdeaNodeData } from '@ideamap/core'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useMapStore, useUIStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
 import { renderMarkdownSimple } from '../../utils/markdown'
 

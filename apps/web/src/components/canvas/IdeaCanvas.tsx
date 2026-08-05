@@ -15,8 +15,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useMapStore, useUIStore, type IdeaNodeData } from '@ideamap/core'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useMapStore, useUIStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import { IdeaNode } from './IdeaNode'
 import { GroupNode } from './GroupNode'
 import { FloatingEdge } from './FloatingEdge'

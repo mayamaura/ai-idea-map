@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { useMapStore, useUIStore, type MapFile } from '@ideamap/core'
-import { useSettingsStore } from '../stores/settingsStore'
+import { useMapStore, useUIStore, useSettingsStore, type MapFile } from '@ideamap/core'
 import { saveMap, fetchMapAppProperties, loadMap } from '../services/googleDriveService'
 import { saveMapLocally } from '../services/storageService'
 

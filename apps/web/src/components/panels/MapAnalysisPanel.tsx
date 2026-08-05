@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useUIStore, useMapStore, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useUIStore, useMapStore, useSettingsStore, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
 import { analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError } from '../../services/claudeService'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 

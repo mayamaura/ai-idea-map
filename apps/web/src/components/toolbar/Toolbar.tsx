@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useMapStore, useUIStore, applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition, type IdeaNodeData } from '@ideamap/core'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useMapStore, useUIStore, applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import type { Node, Edge } from '@xyflow/react'
 
 export function Toolbar() {
