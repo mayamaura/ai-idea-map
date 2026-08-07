@@ -37,6 +37,8 @@ export interface ModelInfo {
   description?: string
   /** Ollama のみ: ローカルディスク上のモデルサイズ（バイト） */
   sizeBytes?: number
+  /** Ollama のみ: /api/tags の details.context_length（0.32 系以降が返す）。取れない場合は省略 */
+  contextTokens?: number
   /** Ollama のみ: /api/ps 由来。ロード済み＝初回応答が速い */
   loaded?: boolean
 }

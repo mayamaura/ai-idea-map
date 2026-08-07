@@ -1,10 +1,23 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { getPlatform } from '@ideamap/platform'
-import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, AIParseError, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
+import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, isAbortError, LLMError, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { useActiveProvider } from '../../hooks/useActiveProvider'
 
 type TabKey = 'analysis' | 'connections' | 'clusters'
+
+/** 実行中の分析を中断するボタン。3タブとも同じ見た目で出す */
+function CancelButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+    >
+      キャンセル
+    </button>
+  )
+}
 
 export function MapAnalysisPanel() {
   const {
@@ -44,49 +57,61 @@ export function MapAnalysisPanel() {
       applyClusterCategory: s.applyClusterCategory,
     }))
   )
-  const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore(
+  const { categories, getCategoryById } = useSettingsStore(
     useShallow((s) => ({
-      apiKey: s.apiKey,
-      aiModel: s.aiModel,
       categories: s.categories,
       getCategoryById: s.getCategoryById,
     }))
   )
+  const { provider, isReady, providerId } = useActiveProvider()
 
   const [activeTab, setActiveTab] = useState<TabKey>('analysis')
   const [dismissedConnections, setDismissedConnections] = useState<Set<string>>(new Set())
   const [appliedClusters, setAppliedClusters] = useState<Set<number>>(new Set())
   const [rawErrorResponse, setRawErrorResponse] = useState<string | null>(null)
+  // ローカルLLMは応答が長くかかりうるので3機能とも中断できるようにする（Phase 32 からの積み残し）
+  const abortRef = useRef<AbortController | null>(null)
+
+  const handleCancel = () => abortRef.current?.abort()
+
+  /** AI実行の前提（Claude=APIキー / Ollama=モデル選択）が欠けているときの文言 */
+  const notReadyMessage =
+    providerId === 'ollama'
+      ? '使用するOllamaモデルが選択されていません'
+      : 'APIキーが設定されていません'
 
   const handleAnalyze = useCallback(async () => {
-    if (!apiKey) {
-      addToast('APIキーが設定されていません', 'error')
+    if (!isReady) {
+      addToast(notReadyMessage, 'error')
       return
     }
     setAnalysisLoading(true)
     setMapAnalysis(null)
     setRawErrorResponse(null)
     const { nodes, edges } = useMapStore.getState()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     try {
       const result = await analyzeMap({
-        apiKey,
-        model: aiModel,
+        provider,
         nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
         edges: edges.map((e) => ({ source: e.source, target: e.target })),
         categories,
-      })
+      }, ctrl.signal)
       setMapAnalysis(result)
     } catch (e) {
+      if (isAbortError(e)) return
       addToast(toFriendlyAIError(e), 'error')
-      if (e instanceof AIParseError) setRawErrorResponse(e.rawResponse)
+      if (e instanceof LLMError && e.rawResponse) setRawErrorResponse(e.rawResponse)
     } finally {
       setAnalysisLoading(false)
+      abortRef.current = null
     }
-  }, [apiKey, aiModel, categories, setAnalysisLoading, setMapAnalysis, addToast])
+  }, [isReady, notReadyMessage, provider, categories, setAnalysisLoading, setMapAnalysis, addToast])
 
   const handleFindConnections = useCallback(async () => {
-    if (!apiKey) {
-      addToast('APIキーが設定されていません', 'error')
+    if (!isReady) {
+      addToast(notReadyMessage, 'error')
       return
     }
     setAnalysisLoading(true)
@@ -94,26 +119,29 @@ export function MapAnalysisPanel() {
     setDismissedConnections(new Set())
     setRawErrorResponse(null)
     const { nodes, edges } = useMapStore.getState()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     try {
       const result = await suggestConnections({
-        apiKey,
-        model: aiModel,
+        provider,
         nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body })),
         existingEdges: edges.map((e) => ({ source: e.source, target: e.target })),
-      })
+      }, ctrl.signal)
       setConnectionSuggestions(result)
       if (result.length === 0) addToast('新しい接続候補は見つかりませんでした', 'info')
     } catch (e) {
+      if (isAbortError(e)) return
       addToast(toFriendlyAIError(e), 'error')
-      if (e instanceof AIParseError) setRawErrorResponse(e.rawResponse)
+      if (e instanceof LLMError && e.rawResponse) setRawErrorResponse(e.rawResponse)
     } finally {
       setAnalysisLoading(false)
+      abortRef.current = null
     }
-  }, [apiKey, aiModel, setAnalysisLoading, setConnectionSuggestions, addToast])
+  }, [isReady, notReadyMessage, provider, setAnalysisLoading, setConnectionSuggestions, addToast])
 
   const handleSuggestClusters = useCallback(async () => {
-    if (!apiKey) {
-      addToast('APIキーが設定されていません', 'error')
+    if (!isReady) {
+      addToast(notReadyMessage, 'error')
       return
     }
     setAnalysisLoading(true)
@@ -121,22 +149,25 @@ export function MapAnalysisPanel() {
     setAppliedClusters(new Set())
     setRawErrorResponse(null)
     const { nodes } = useMapStore.getState()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     try {
       const result = await suggestClusters({
-        apiKey,
-        model: aiModel,
+        provider,
         nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body })),
         categories,
-      })
+      }, ctrl.signal)
       setClusterSuggestions(result)
       if (result.length === 0) addToast('グループ化の提案がありませんでした', 'info')
     } catch (e) {
+      if (isAbortError(e)) return
       addToast(toFriendlyAIError(e), 'error')
-      if (e instanceof AIParseError) setRawErrorResponse(e.rawResponse)
+      if (e instanceof LLMError && e.rawResponse) setRawErrorResponse(e.rawResponse)
     } finally {
       setAnalysisLoading(false)
+      abortRef.current = null
     }
-  }, [apiKey, aiModel, categories, setAnalysisLoading, setClusterSuggestions, addToast])
+  }, [isReady, notReadyMessage, provider, categories, setAnalysisLoading, setClusterSuggestions, addToast])
 
   const handleApproveConnection = useCallback(
     (suggestion: ConnectionSuggestion) => {
@@ -207,8 +238,9 @@ export function MapAnalysisPanel() {
           </button>
         </div>
 
-        {!apiKey ? (
+        {!isReady ? (
           <ApiKeyRequired
+            providerId={providerId}
             onOpenSettings={() => {
               setAnalysisPanelOpen(false)
               setSettingsOpen(true)
@@ -269,6 +301,7 @@ export function MapAnalysisPanel() {
                     <div className="flex flex-col items-center gap-3 py-8">
                       <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
                       <p className="text-sm text-gray-500 dark:text-gray-400">マップを読み取っています...</p>
+                      <CancelButton onClick={handleCancel} />
                     </div>
                   )}
 
@@ -344,6 +377,7 @@ export function MapAnalysisPanel() {
                     <div className="flex flex-col items-center gap-3 py-8">
                       <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
                       <p className="text-sm text-gray-500 dark:text-gray-400">関連するノードを探しています...</p>
+                      <CancelButton onClick={handleCancel} />
                     </div>
                   )}
 
@@ -421,6 +455,7 @@ export function MapAnalysisPanel() {
                     <div className="flex flex-col items-center gap-3 py-8">
                       <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
                       <p className="text-sm text-gray-500 dark:text-gray-400">ノードを分類しています...</p>
+                      <CancelButton onClick={handleCancel} />
                     </div>
                   )}
 

@@ -2,8 +2,9 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform } from '@ideamap/platform'
-import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '../types'
+import type { Theme, AIModelSelection, LLMProviderId, NodeShape, EdgeStyle, Category } from '../types'
 import { encryptWithPassword, decryptWithPassword } from '../crypto/passwordCrypto'
+import { DEFAULT_OLLAMA_BASE_URL } from '../llm/ollamaProvider'
 
 /** SecretAdapter に渡す秘密情報の論理キー。保管しているのは Claude APIキーの1件だけ */
 const API_KEY_SECRET = 'apiKey'
@@ -37,15 +38,18 @@ function requireAppSettingsSync(): AppSettingsSync {
   return appSettingsSync
 }
 
-export const DEFAULT_AI_MODEL: AIModel = 'claude-sonnet-5'
+export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5'
+
+/** Drive の設定ファイル（AppSettings）のスキーマ版。Phase 35 で Claude 専用であることを明示して 2.0 に上げた */
+const APP_SETTINGS_VERSION = '2.0'
 
 /**
  * 保存済み設定のモデルIDを現行IDへ読み替える。
  * localStorage（旧 'claude-sonnet-4-6'）と Drive 上の設定ファイルの両方が対象で、
  * 未知の値も既定モデルへ倒して不正なIDがAPIに渡るのを防ぐ。
  */
-function normalizeAiModel(model: unknown): AIModel {
-  return model === 'claude-haiku-4-5-20251001' ? model : DEFAULT_AI_MODEL
+function normalizeClaudeModel(model: unknown): string {
+  return model === 'claude-haiku-4-5-20251001' ? model : DEFAULT_CLAUDE_MODEL
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -60,7 +64,12 @@ export const DEFAULT_CATEGORIES: Category[] = [
 
 interface SettingsState {
   apiKey: string
-  aiModel: AIModel
+  /** 使用するLLMプロバイダ。Web版は常に 'claude'（切り替えUIを出さない） */
+  llmProvider: LLMProviderId
+  claudeModel: string
+  /** Ollama の使用モデル（/api/tags の name）。未選択は '' */
+  ollamaModel: string
+  ollamaBaseUrl: string
   suggestionCount: number
   autoSave: boolean
   theme: Theme
@@ -79,7 +88,12 @@ interface SettingsState {
   masterPasswordPromptDismissed: boolean
 
   setApiKey: (key: string) => void
-  setAiModel: (model: AIModel) => void
+  setLlmProvider: (provider: LLMProviderId) => void
+  setClaudeModel: (model: string) => void
+  setOllamaModel: (model: string) => void
+  setOllamaBaseUrl: (url: string) => void
+  /** llmProvider に応じて claudeModel / ollamaModel のどちらかを返す */
+  getActiveModelSelection: () => AIModelSelection
   setSuggestionCount: (count: number) => void
   setAutoSave: (enabled: boolean) => void
   setTheme: (theme: Theme) => void
@@ -106,7 +120,10 @@ interface SettingsState {
 /** localStorage に永続化する項目（APIキー・パスワード・一時状態は含めない） */
 type PersistedSettings = Pick<
   SettingsState,
-  | 'aiModel'
+  | 'llmProvider'
+  | 'claudeModel'
+  | 'ollamaModel'
+  | 'ollamaBaseUrl'
   | 'suggestionCount'
   | 'autoSave'
   | 'theme'
@@ -121,7 +138,10 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       apiKey: '',
-      aiModel: DEFAULT_AI_MODEL,
+      llmProvider: 'claude',
+      claudeModel: DEFAULT_CLAUDE_MODEL,
+      ollamaModel: '',
+      ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
       suggestionCount: 4,
       autoSave: true,
       theme: 'light',
@@ -161,7 +181,19 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
 
-      setAiModel: (model) => set({ aiModel: model }),
+      setLlmProvider: (provider) => set({ llmProvider: provider }),
+      setClaudeModel: (model) => set({ claudeModel: model }),
+      setOllamaModel: (model) => set({ ollamaModel: model }),
+      setOllamaBaseUrl: (url) => set({ ollamaBaseUrl: url }),
+
+      getActiveModelSelection: () => {
+        const { llmProvider, claudeModel, ollamaModel } = get()
+        return {
+          provider: llmProvider,
+          model: llmProvider === 'ollama' ? ollamaModel : claudeModel,
+        }
+      },
+
       setSuggestionCount: (count) => set({ suggestionCount: count }),
       setAutoSave: (enabled) => set({ autoSave: enabled }),
       setTheme: (theme) => set({ theme }),
@@ -252,15 +284,16 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       saveSettingsToDrive: async (token: string) => {
-        const { apiKey, aiModel, syncPassword } = get()
+        const { apiKey, claudeModel, syncPassword } = get()
         if (!syncPassword) throw new Error('マスターパスワードが設定されていません')
         if (!apiKey) throw new Error('APIキーが設定されていません')
         const { encrypted, salt } = await encryptWithPassword(apiKey, syncPassword)
+        // Ollama のURL・モデルは端末ローカルのサービスを指すため同期しない（別PCで復元しても意味がない）
         await requireAppSettingsSync().save(token, {
-          version: '1.0',
+          version: APP_SETTINGS_VERSION,
           encryptedApiKey: encrypted,
           salt,
-          model: aiModel,
+          model: claudeModel,
           updatedAt: new Date().toISOString(),
         })
       },
@@ -272,7 +305,8 @@ export const useSettingsStore = create<SettingsState>()(
         if (!settings) throw new Error('Driveに設定ファイルが見つかりません')
         const apiKey = await decryptWithPassword(settings.encryptedApiKey, syncPassword, settings.salt)
         get().setApiKey(apiKey)
-        if (settings.model) set({ aiModel: normalizeAiModel(settings.model) })
+        // model フィールドの意味（Claudeのモデル名）は 1.0 と 2.0 で同じなので version による分岐は不要
+        if (settings.model) set({ claudeModel: normalizeClaudeModel(settings.model) })
       },
     }),
     {
@@ -287,15 +321,27 @@ export const useSettingsStore = create<SettingsState>()(
         removeItem: (name) => getPlatform().storage.removeItem(name),
       })),
       skipHydration: true,
-      // v0（バージョン未指定）の保存データには廃止済みモデルIDが残るため読み替える
-      version: 1,
+      // v0（バージョン未指定）: 廃止済みモデルIDが残るため読み替える
+      // v1 → v2: Claude専用の aiModel を llmProvider + claudeModel + Ollama設定に分割する
+      version: 2,
       migrate: (persisted) => {
-        const state = (persisted ?? {}) as Partial<PersistedSettings>
-        // 欠けたキーは zustand が既定値とマージするため PersistedSettings として扱ってよい
-        return { ...state, aiModel: normalizeAiModel(state.aiModel) } as PersistedSettings
+        const state = (persisted ?? {}) as Partial<PersistedSettings> & { aiModel?: unknown }
+        const { aiModel, ...rest } = state
+        // 旧 aiModel をそのまま claudeModel に移し、llmProvider は 'claude' 固定で入れる。
+        // これで既存ユーザーはアップデート後も何もせず Claude を使い続けられる
+        return {
+          ...rest,
+          llmProvider: 'claude',
+          claudeModel: normalizeClaudeModel(rest.claudeModel ?? aiModel),
+          ollamaModel: rest.ollamaModel ?? '',
+          ollamaBaseUrl: rest.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL,
+        } as PersistedSettings
       },
       partialize: (state): PersistedSettings => ({
-        aiModel: state.aiModel,
+        llmProvider: state.llmProvider,
+        claudeModel: state.claudeModel,
+        ollamaModel: state.ollamaModel,
+        ollamaBaseUrl: state.ollamaBaseUrl,
         suggestionCount: state.suggestionCount,
         autoSave: state.autoSave,
         theme: state.theme,

@@ -12,6 +12,8 @@ const REACHABILITY_TIMEOUT_MS = 2000
  * 到達先は capabilities/*.json の http スコープで許可したホストに限られる。
  */
 export const desktopHttpAdapter: HttpAdapter = {
+  canAccessLocalServers: true,
+
   async canReach(url) {
     try {
       await tauriFetch(url, { method: 'GET', connectTimeout: REACHABILITY_TIMEOUT_MS })

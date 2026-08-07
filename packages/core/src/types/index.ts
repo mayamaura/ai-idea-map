@@ -1,9 +1,23 @@
+import type { LLMProvider } from '../llm/types'
+
 export interface Category {
   id: string
   name: string
   color: string
   icon: string
   description?: string
+}
+
+export type LLMProviderId = 'claude' | 'ollama'
+
+/**
+ * UI・サービス層が扱う「今アクティブなプロバイダ + モデルID」の組。
+ * Phase 34 以前の `AIModel`（Claude専用 union）を置き換える。
+ */
+export interface AIModelSelection {
+  provider: LLMProviderId
+  /** Claude: 'claude-sonnet-5' 等の固定ID / Ollama: 'gemma3:12b' など /api/tags の name */
+  model: string
 }
 
 export interface IdeaNodeData extends Record<string, unknown> {
@@ -87,7 +101,6 @@ export interface ClusterSuggestion {
 }
 
 export type Theme = 'light' | 'dark'
-export type AIModel = 'claude-sonnet-5' | 'claude-haiku-4-5-20251001'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
 export type EdgeStyle = 'bezier' | 'smoothstep' | 'straight'
@@ -126,8 +139,8 @@ export interface MapContext {
 }
 
 export interface ChatWithMapRequest {
-  apiKey: string
-  model: AIModel
+  /** 呼び出し側が settingsStore から解決した LLMProvider（Claude / Ollama） */
+  provider: LLMProvider
   messages: ChatMessage[]
   mapContext: MapContext
   mentionedNodeIds?: string[]

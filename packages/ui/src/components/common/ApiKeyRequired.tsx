@@ -1,20 +1,31 @@
+import type { LLMProviderId } from '@ideamap/core'
+
 interface ApiKeyRequiredProps {
   /** 呼び出し元のパネルを閉じて設定パネルを開く処理 */
   onOpenSettings: () => void
   /** パネルごとの配置差分（flex-1 で縦中央にするか、固定余白にするか）を吸収する */
   className?: string
+  /** 未設定の内容がプロバイダごとに違う（Claude=APIキー / Ollama=モデル選択） */
+  providerId?: LLMProviderId
 }
 
-/** APIキー未設定時にAI系パネルが表示する空状態 */
-export function ApiKeyRequired({ onOpenSettings, className = 'flex-1 p-6' }: ApiKeyRequiredProps) {
+/** AI機能の前提設定が未完了のときにAI系パネルが表示する空状態 */
+export function ApiKeyRequired({
+  onOpenSettings,
+  className = 'flex-1 p-6',
+  providerId = 'claude',
+}: ApiKeyRequiredProps) {
+  const isOllama = providerId === 'ollama'
   return (
     <div className={`flex flex-col items-center justify-center text-center gap-4 ${className}`}>
-      <span className="text-4xl">🔑</span>
+      <span className="text-4xl">{isOllama ? '🖥️' : '🔑'}</span>
       <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-        Claude APIキーが必要です
+        {isOllama ? '使用するOllamaモデルが未選択です' : 'Claude APIキーが必要です'}
       </h3>
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        AI機能を使うには Anthropic の APIキーを設定してください
+        {isOllama
+          ? '設定画面の「AIプロバイダ」で接続テストを実行し、モデルを選んでください'
+          : 'AI機能を使うには Anthropic の APIキーを設定してください'}
       </p>
       <button
         onClick={onOpenSettings}

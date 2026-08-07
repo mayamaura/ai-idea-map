@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuidv4 } from 'uuid'
 import { useUIStore, useMapStore, useSettingsStore, chatWithMap, toFriendlyAIError, type ChatMessage, type ChatAction, type MapContext, type IdeaNodeData } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { useActiveProvider } from '../../hooks/useActiveProvider'
 import type { Node } from '@xyflow/react'
 
 // メンション候補を購読しないときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
@@ -68,14 +69,13 @@ export function AIChatPanel() {
     }))
   )
   const nodeCount = useMapStore((s) => s.nodes.length)
-  const { apiKey, aiModel, categories, getCategoryById } = useSettingsStore(
+  const { categories, getCategoryById } = useSettingsStore(
     useShallow((s) => ({
-      apiKey: s.apiKey,
-      aiModel: s.aiModel,
       categories: s.categories,
       getCategoryById: s.getCategoryById,
     }))
   )
+  const { provider, isReady, providerId } = useActiveProvider()
 
   const [input, setInput] = useState('')
   const [mentionState, setMentionState] = useState<{ query: string; startIndex: number } | null>(
@@ -189,7 +189,7 @@ export function AIChatPanel() {
 
   const handleSend = async (text?: string) => {
     const content = (text ?? input).trim()
-    if (!content || isChatLoading || !apiKey) return
+    if (!content || isChatLoading || !isReady) return
 
     const userMsg: ChatMessage = {
       id: uuidv4(),
@@ -219,8 +219,7 @@ export function AIChatPanel() {
     try {
       const { content: aiContent, actions } = await chatWithMap(
         {
-          apiKey,
-          model: aiModel,
+          provider,
           messages: [...chatMessages, userMsg],
           mapContext: buildMapContext(),
           mentionedNodeIds: currentMentionedIds,
@@ -334,8 +333,9 @@ export function AIChatPanel() {
         </div>
       </div>
 
-      {!apiKey && (
+      {!isReady && (
         <ApiKeyRequired
+          providerId={providerId}
           onOpenSettings={() => {
             setChatPanelOpen(false)
             setSettingsOpen(true)
@@ -343,8 +343,8 @@ export function AIChatPanel() {
         />
       )}
 
-      {/* APIキー設定済み時の通常UI */}
-      {apiKey && (
+      {/* AI実行の前提が揃っているときの通常UI */}
+      {isReady && (
         <>
           {/* クイック質問チップ */}
           {selectedNode && (

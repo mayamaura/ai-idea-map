@@ -6,6 +6,8 @@ import type { HttpAdapter } from '@ideamap/platform'
  * デフォルト設定のままでは到達できない。この制約を外すのがデスクトップ版の主目的。
  */
 export const webHttpAdapter: HttpAdapter = {
+  canAccessLocalServers: false,
+
   async canReach(url) {
     try {
       // no-cors では成否を判定できないため通常リクエストを投げ、

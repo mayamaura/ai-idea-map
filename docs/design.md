@@ -100,10 +100,12 @@ ai-idea-map/
 │   │       │   │   └── documentSlice.ts # ロード・シリアライズ・リセット
 │   │       │   ├── uiStore.ts       # UI状態。currentFileId の永続化は StorageAdapter 経由
 │   │       │   └── settingsStore.ts # 設定状態。APIキーは SecretAdapter、Drive 同期は注入
-│   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動）
+│   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動 → Phase 35 で Ollama 追加）
 │   │       │   ├── types.ts         # LLMProvider / LLMRequest / LLMError / isAbortError ほか
 │   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / AIParseError
 │   │       │   ├── claudeProvider.ts # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
+│   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
+│   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35）
 │   │       │   └── aiService.ts     # AI機能5関数（旧 claudeService.ts）
 │   │       ├── layout/
 │   │       │   ├── mapLayout.ts     # ノード自動配置ロジック（dagre・円形配置）
@@ -126,7 +128,7 @@ ai-idea-map/
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
 │           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired
 │           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
-│           │                        # useNodeFocus / useOnlineStatus
+│           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）
 │           ├── services/exportService.ts # 画像・JSON・Markdown の書き出しとインポート
 │           ├── utils/markdown.ts    # Markdown→HTML変換ユーティリティ
 │           └── index.ts
@@ -307,7 +309,10 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | 状態 | 型 | 説明 |
 |------|-----|------|
 | `apiKey` | `string` | Claude APIキー（メモリ上・永続化しない） |
-| `model` | `AIModel` | `claude-sonnet-5 \| claude-haiku-4-5-20251001` |
+| `llmProvider` | `LLMProviderId` | `claude \| ollama`。Web版は常に `'claude'`（切り替えUIを出さない）（Phase 35） |
+| `claudeModel` | `string` | `claude-sonnet-5 \| claude-haiku-4-5-20251001`（旧 `aiModel` を改名。Phase 35） |
+| `ollamaModel` | `string` | Ollama の使用モデル（`/api/tags` の `name`）。未選択は `''`（Phase 35） |
+| `ollamaBaseUrl` | `string` | Ollama の接続先URL。既定値は `OllamaProvider.DEFAULT_OLLAMA_BASE_URL`（`http://localhost:11434`）（Phase 35） |
 | `suggestionCount` | `number` | AI提案件数（3〜7） |
 | `autoSave` | `boolean` | 自動保存のオン/オフ |
 | `theme` | `Theme` | `light \| dark` |
@@ -324,7 +329,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 - `storage` は `createJSONStorage(() => ({ getItem/setItem/removeItem }))` で `getPlatform().storage` に委譲する（Web=localStorage、Desktop=`@tauri-apps/plugin-store`）
 - `skipHydration: true`。ストア生成時には自動復元されず、`stores/bootstrap.ts` の `restorePersistedState()`（§4.4）を各アプリの `main.tsx` が最初のレンダー前に `await` する
 - `partialize` で `apiKey` / `syncPassword` / ロック状態を除いた項目のみ永続化
-- `version: 1` + `migrate`（Phase 29）: 保存済みの `aiModel` を `normalizeAiModel` で現行IDへ読み替える。廃止した `claude-sonnet-4-6` や未知の値は既定モデル（`claude-sonnet-5`）へ倒す。Drive から設定を読み込む `loadSettingsFromDrive` も同じ関数を通す
+- `version: 2`（Phase 35。Phase 29〜34 は `version: 1`）+ `migrate`: v1→v2 で `aiModel` を `llmProvider`（常に `'claude'` で初期化）・`claudeModel`・`ollamaModel`・`ollamaBaseUrl` に分割する。`claudeModel` は `normalizeClaudeModel`（旧 `normalizeAiModel` を改名）で現行IDへ読み替える。廃止した `claude-sonnet-4-6` や未知の値は既定モデル（`claude-sonnet-5`）へ倒す。Drive から設定を読み込む `loadSettingsFromDrive` も同じ関数を通す。**Ollama の接続先URL・モデルは Drive 同期対象に含めない**（端末ローカルのサービスを指すため、他デバイスに同期しても意味がない）
 
 **APIキー管理アクション（Phase 27 / Phase 34 で `SecretAdapter.isPassphraseFree` 分岐を追加）:**
 - `secret.isPassphraseFree` が `true`（デスクトップ版のOSキーチェーン）のときは、マスターパスワードの概念を経由しない。`setApiKey` は `syncPassword` を無視して `secret.setSecret(key)` にそのまま預け、即座に `apiKeyLock: 'unlocked'` にする。`initApiKey` も起動時に `secret.getSecret()` を読むだけで `apiKeyLock` を `'locked'` にしないため、`MasterPasswordModal` は一度も表示されない
@@ -332,6 +337,10 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 - `unlockApiKey(password)` — マスターパスワードで復号し `unlocked` にする
 - `setMasterPassword(password)` — マスターパスワードを設定し、メモリ上の apiKey を新形式で再暗号化して旧形式を削除
 - `dismissMasterPasswordPrompt()` — 設定促進をセッション中スキップ
+
+**モデル選択アクション（Phase 35）:**
+- `setLlmProvider(provider)` / `setClaudeModel(model)` / `setOllamaModel(model)` / `setOllamaBaseUrl(url)`
+- `getActiveModelSelection()` — `llmProvider` に応じて `claudeModel` / `ollamaModel` のどちらかを `AIModelSelection` として返すセレクタ。`packages/core/src/llm/providerFactory.ts` の `getActiveProvider(settings)` / `isProviderReady(settings)` がこれと同じ4項目（`llmProvider` / `apiKey` / `claudeModel` / `ollamaModel` / `ollamaBaseUrl`）を使って `LLMProvider` インスタンスと準備状態を導出する（§9.0.1）
 
 ### 4.4 bootstrap.ts — 永続化状態の復元（packages/core/src/stores/bootstrap.ts、Phase 34）
 
@@ -518,16 +527,17 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 - 適用先: `ConfirmDialog`（初期フォーカス＝確定ボタン）/ `InputDialog`（＝入力欄）/ `NodeDetailPanel` / `KeyboardShortcutsModal` / `MasterPasswordModal`
 - モーダルが重なった場合（詳細パネルの上に確認ダイアログ等）は、DOM 上で最後にある `[role="dialog"]` を最前面とみなし、そこだけがトラップを効かせる
 
-### 5.7 ApiKeyRequired（packages/ui/src/components/common/ApiKeyRequired.tsx）（Phase 29）
+### 5.7 ApiKeyRequired（packages/ui/src/components/common/ApiKeyRequired.tsx）（Phase 29 / Phase 35 でプロバイダ分岐を追加）
 
-APIキー未設定時に AI系パネル（AISuggestionPanel / MapAnalysisPanel / AIChatPanel）が表示する空状態。3パネルで重複していたマークアップを共通化したもの。
+AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPanel / MapAnalysisPanel / AIChatPanel）が表示する空状態。3パネルで重複していたマークアップを共通化したもの。
 
 | Props | 型 | 説明 |
 |---|---|---|
 | `onOpenSettings` | `() => void` | 「設定を開く」押下時の処理。呼び出し元パネルを閉じて設定パネルを開く |
 | `className` | `string` | 配置差分の吸収用。既定は `'flex-1 p-6'`、AISuggestionPanel のみ `'px-5 py-10'` |
+| `providerId` | `LLMProviderId`（既定 `'claude'`） | Phase 35 追加。`'ollama'` のときはアイコンを 🔑→🖥️ に、文言を「使用するOllamaモデルが未選択です／設定画面の『AIプロバイダ』で接続テストを実行し、モデルを選んでください」に切り替える |
 
-ボタン配色は `primary-600` に統一（旧 AIChatPanel の `blue-500` から変更）。
+ボタン配色は `primary-600` に統一（旧 AIChatPanel の `blue-500` から変更）。呼び出し元3パネルは `useActiveProvider()` の `providerId` をそのまま渡す（§9.0.1）。
 
 ### 5.8 NodeDetailPanel の閉じ方（Phase 30）
 
@@ -556,6 +566,14 @@ interface Category {
   color: string        // hex カラーコード
   icon: string         // 絵文字
   description?: string
+}
+
+type LLMProviderId = 'claude' | 'ollama'
+
+// UI・サービス層が扱う「今アクティブなプロバイダ + モデルID」の組。Phase 34 以前の AIModel（Claude専用 union）を置き換える（Phase 35）
+interface AIModelSelection {
+  provider: LLMProviderId
+  model: string         // Claude: 'claude-sonnet-5' 等の固定ID / Ollama: 'gemma3:12b' など /api/tags の name
 }
 
 interface IdeaNodeData extends Record<string, unknown> {
@@ -602,7 +620,6 @@ interface AISuggestion {
 }
 
 type Theme = 'light' | 'dark'
-type AIModel = 'claude-sonnet-5' | 'claude-haiku-4-5-20251001'
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
 type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
@@ -726,33 +743,55 @@ Redo: future の先頭を復元 → 現在状態を past 末尾に追加 → fut
 
 ## 9. AI連携設計（packages/core/src/llm/）
 
-### 9.0 LLMProvider 抽象化（Phase 32）
+### 9.0 LLMProvider 抽象化（Phase 32・Phase 35 で `OllamaProvider` を追加）
 
-Phase 35 のローカルLLM（Ollama）対応に備え、**「APIを呼ぶ部分」と「エラー分類」だけ**を `LLMProvider` の背後に隠した。プロンプト構築とJSON抽出はプロバイダ非依存なので `claudeService.ts` / `llm/jsonUtils.ts` 側に残る。
+**「APIを呼ぶ部分」と「エラー分類」だけ**を `LLMProvider` の背後に隠した。プロンプト構築とJSON抽出はプロバイダ非依存なので `aiService.ts` / `llm/jsonUtils.ts` 側に残る。
 
 ```
-claudeService.ts   … プロンプト構築・戻り値整形（5関数のシグネチャは Phase 31 以前と同一）
-  └─ llm/claudeProvider.ts … Anthropic SDK 呼び出し・例外→LLMError 変換（SDK依存はこのファイルのみ）
-       ├─ llm/types.ts     … LLMProvider / LLMRequest / LLMError / ProviderCapabilities / ModelInfo
-       └─ llm/jsonUtils.ts … sanitizeJsonString / safeParseJson / AIParseError
+aiService.ts             … プロンプト構築・戻り値整形（5関数は req.provider に渡された LLMProvider を使う。Phase 33 で claudeService.ts から改名）
+  ├─ llm/claudeProvider.ts   … Anthropic SDK 呼び出し・例外→LLMError 変換（SDK依存はこのファイルのみ）
+  ├─ llm/ollamaProvider.ts   … Ollama REST API（/api/chat・/api/tags・/api/ps）呼び出し（Phase 35）
+  ├─ llm/providerFactory.ts  … settingsStore の状態から LLMProvider を生成（Phase 35、§9.0.1）
+  ├─ llm/types.ts     … LLMProvider / LLMRequest / LLMError / ProviderCapabilities / ModelInfo
+  └─ llm/jsonUtils.ts … sanitizeJsonString / safeParseJson / AIParseError
 ```
 
 **`LLMProvider` の4メソッド**
 
-| メソッド | 用途 | Claude 実装 |
-|---|---|---|
-| `complete(req, signal?)` | 非ストリーミング補完 | `messages.create` |
-| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答から最初の `{...}` を正規表現抽出し `safeParseJson`。`schema` は無視（`structuredOutput: 'prompt-only'`） |
-| `stream(req, onText, signal?)` | ストリーミング補完 | `messages.stream` + `.on('text')`。`onText` には**累積テキスト**を渡す |
-| `listModels()` | モデル一覧 | 固定リスト（`supportsModelListing: false`） |
+| メソッド | 用途 | Claude 実装 | Ollama 実装（Phase 35） |
+|---|---|---|---|
+| `complete(req, signal?)` | 非ストリーミング補完 | `messages.create` | `POST /api/chat`（`stream: false`）。`think: false` を付与 |
+| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答から最初の `{...}` を正規表現抽出し `safeParseJson`。`schema` は無視（`structuredOutput: 'prompt-only'`） | `format` に `schema`（省略時は `'json'`）を渡し制約付きデコードさせる。`temperature: 0` を明示指定 |
+| `stream(req, onText, signal?)` | ストリーミング補完 | `messages.stream` + `.on('text')`。`onText` には**累積テキスト**を渡す | NDJSON を `ReadableStream` から手動パース（改行区切りで1行1JSONオブジェクト）。行ごとの `message.content` を累積して渡す |
+| `listModels()` | モデル一覧 | 固定リスト（`supportsModelListing: false`） | `GET /api/tags` + `GET /api/ps`（ロード済み判定）。`ModelInfo.contextTokens` は `/api/tags` の `details.context_length`（Ollama 0.32系以降が返す）から取得 |
 
-**設計判断（`docs/desktop/llm-abstraction.md` からの意図的な差分）**
+`OllamaProvider` は `complete`/`completeJson`/`stream` すべてに `think: false` を送る。思考モデル（qwen3 系など）は思考トークンが `num_predict` の枠を食い、出力が `done_reason: 'length'` で途中停止することを実測で確認したため（`ClaudeProvider` が `thinking: { type: 'disabled' }` を送るのと同じ理由）。`think` を解釈しないモデル・バージョンの組み合わせに備え、HTTP 400 が返ったときだけ `think` を外して1回だけ再送するフォールバックを持つ。
 
-- **中断時の `stream()` は throw せず、それまでの累積テキストを返す。** 呼び出し側（`chatWithMap`）は戻り値の後に `signal?.aborted` を見て分岐する。設計書の §3.3 は「`LLMError('aborted')` を catch する」例だったが、`ClaudeProvider` のコード例（累積テキストを return）の方に合わせた。
-- **`LLMError` の `kind === 'aborted'` のときだけ `name` を `'AbortError'` にする。** `AISuggestionPanel` が `name === 'AbortError'` でキャンセルを判定しているため。
-- **`capabilities.maxContextTokens` はモデル別**（Sonnet 5 = 1M / Haiku 4.5 = 200K）。設計書の固定値 200K は Haiku 基準だったため実値に合わせた。
-- **`toFriendlyAIError` は kind を見るが文言は上書きしない**（`e.message` をそのまま返す）。同じ `connection` でも Claude と Ollama で案内文が変わるため、文言の単一の置き場所を Provider 側にした。
-- **`claudeService.ts` に移行用アダプタ（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）を置いた。** Provider は解析失敗を一律 `LLMError('parse')` で返すが、Phase 31 以前と表示文言・例外型を1文字も変えないため機能別の従来例外へ戻す。エラー表示を統一する際（Phase 35 Step 6）に削除する。
+**設計判断（`docs/desktop/llm-abstraction.md` からの意図的な差分。Phase 32 分＋Phase 35 分。詳細は `docs/desktop/README.md` §3.1-B・§3.1-E）**
+
+- **中断時の `stream()` は throw せず、それまでの累積テキストを返す。**（Phase 32）呼び出し側（`chatWithMap`）は戻り値の後に `signal?.aborted` を見て分岐する。設計書の §3.3 は「`LLMError('aborted')` を catch する」例だったが、`ClaudeProvider` のコード例（累積テキストを return）の方に合わせた。`OllamaProvider` も同じ規約に揃えている。
+- **`LLMError` の `kind === 'aborted'` のときだけ `name` を `'AbortError'` にする。**（Phase 32）`AISuggestionPanel` が `name === 'AbortError'` でキャンセルを判定しているため。
+- **`capabilities.maxContextTokens` はモデル別**（Phase 32、Claude: Sonnet 5 = 1M / Haiku 4.5 = 200K）。`OllamaProvider` は固定値 8192 のまま据え置き、実際のコンテキスト長は `ModelInfo.contextTokens`（§9.1.2）として設定UIの表示にのみ使う（`capabilities` はコンストラクタ時点で確定させる必要があるが、実長はモデル選択後にしか分からないため。Phase 35）。
+- **`toFriendlyAIError` は kind を見るが文言は上書きしない**（Phase 32、`e.message` をそのまま返す）。同じ `connection` でも Claude と Ollama で案内文が変わるため、文言の単一の置き場所を Provider 側にした。
+- **`completeJson` の `temperature: 0` は Ollama のみに適用する**（Phase 35）。`llm-abstraction.md` §4.2 は「両方」としていたが、Web版の挙動を Phase 34 以前と一致させることを優先し `ClaudeProvider` 側は変更していない。
+- **Phase 32 の移行用アダプタ（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）は Phase 35 で削除した。** エラーは `LLMError` に一本化し、UIの「生レスポンスをコピー」導線は `LLMError.rawResponse` から直接取る（`MapAnalysisPanel.tsx`）。
+
+### 9.0.1 プロバイダの解決（`providerFactory.ts` / `useActiveProvider`、Phase 35）
+
+```typescript
+// packages/core/src/llm/providerFactory.ts
+interface ProviderSettings {
+  llmProvider: LLMProviderId
+  apiKey: string
+  claudeModel: string
+  ollamaModel: string
+  ollamaBaseUrl: string
+}
+function getActiveProvider(s: ProviderSettings): LLMProvider   // llmProvider に応じて ClaudeProvider / OllamaProvider を生成
+function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKey !== '' / Ollama: ollamaModel !== ''
+```
+
+`packages/ui/src/hooks/useActiveProvider.ts` は上記2関数を `settingsStore` に接続する共通フック。`useShallow` で該当5項目だけを購読し `{ provider, isReady, providerId }` を返す。`AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` はいずれもこのフックから `provider` を取得して `aiService.ts` の各関数に渡す（Phase 34 以前の `apiKey`/`aiModel` の直接購読を置き換えた）。
 
 ### 9.1 ブラウザからの直接呼び出し
 
@@ -769,7 +808,23 @@ claudeService.ts   … プロンプト構築・戻り値整形（5関数のシ�
 | `claude-sonnet-5` | Claude Sonnet 5（高品質） | 1M | 既定。Phase 29 で `claude-sonnet-4-6` から更新 |
 | `claude-haiku-4-5-20251001` | Claude Haiku 4.5（高速・低コスト） | 200K | コスト重視時の選択肢 |
 
-一覧は `ClaudeProvider.listModels()`（`CLAUDE_MODELS` 定数）と `SettingsPanel.tsx` の `<option>` に二重で存在する。Phase 35 で設定UIを `listModels()` 由来に一本化する。
+一覧は `ClaudeProvider.listModels()`（`CLAUDE_MODELS` 定数）と `SettingsPanel.tsx` の `<option>` に二重で存在する。Phase 35 では Ollama 側の一覧のみ `listModels()` 由来（§9.1.2）に一本化し、Claude 側は静的な `<option>` のまま据え置いた（`supportsModelListing: false` で一覧が固定リストのため、二重管理の実害が小さいと判断）。
+
+### 9.1.2 Ollama のモデル一覧とコンテキスト長（Phase 35）
+
+`OllamaProvider.listModels()` は `/api/tags`（インストール済みモデル）と `/api/ps`（ロード中モデル）を呼び、次の `ModelInfo` を返す。
+
+| フィールド | 由来 | 備考 |
+|---|---|---|
+| `id` / `label` | `/api/tags` の `name` | 例: `gemma3:12b` |
+| `description` | `/api/tags` の `details.parameter_size` / `quantization_level` ／ サイズ（GB換算）／ `Kコンテキスト`表示 | 例: `12.2B / Q4_K_M / 8.1GB / 32Kコンテキスト` |
+| `sizeBytes` | `/api/tags` の `size` | |
+| `contextTokens` | `/api/tags` の `details.context_length` | Ollama 0.32系以降が返すフィールド。無ければ `undefined`（`llm-abstraction.md` §8.2 で「未確認」としていたモデルファミリーごとの `/api/show` フィールド名調査が不要になった） |
+| `loaded` | `/api/ps` に同名の `name` が含まれるか | `true` なら初回応答が速い旨を選択UIに表示 |
+
+`DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'` は `ollamaProvider.ts` にあり、`settingsStore` の `ollamaBaseUrl` の初期値・`migrate` の補完値として使う。
+
+`/api/tags` と `/api/ps` のタイムアウト（5秒）には **`AbortSignal.timeout()` を使ってはいけない**。`tauri-plugin-http` は signal の abort を受けるとレスポンスボディを解放する（`fetch_cancel_body`）ため、読み終わったあとにタイマーが発火すると解放済みリソースの二重解放になり、デスクトップ実機で `The resource id ... is invalid` の未処理例外が出る。`AbortController` ＋ `setTimeout` にして、応答を読み切った時点で `clearTimeout` する（`OllamaProvider.getWithTimeout()`）。
 
 ### 9.2 プロンプト設計
 
@@ -795,12 +850,19 @@ return safeParseJson<T>(jsonMatch[0])
 | 関数 | max_tokens | 備考 |
 |---|---|---|
 | `generateSuggestions(req, signal?)` | 2048 | signal で途中キャンセル可 |
-| `analyzeMap(req, signal?)` | 2048 | Phase 32 で `signal` 追加（UI未接続） |
-| `suggestConnections(req, signal?)` | 2048 | Phase 32 で `signal` 追加（UI未接続） |
-| `suggestClusters(req, signal?)` | 4096 | Phase 32 で `signal` 追加（UI未接続） |
+| `analyzeMap(req, signal?)` | 2048 | Phase 32 で `signal` 追加、Phase 35 で UI 接続 |
+| `suggestConnections(req, signal?)` | 2048 | Phase 32 で `signal` 追加、Phase 35 で UI 接続 |
+| `suggestClusters(req, signal?)` | 4096 | Phase 32 で `signal` 追加、Phase 35 で UI 接続 |
 | `chatWithMap(req, onText?, signal?)` | 2048 | ストリーミング + system パラメータ化 |
 
-分析系3関数の `signal` は Phase 32 でサービス層まで通したが、`MapAnalysisPanel` にキャンセルUIは未追加（Phase 32 の完了条件が「パネルに差分なし」のため）。UI追加は Phase 35 Step 6 で行う。
+分析系3関数の `signal` は Phase 32 でサービス層まで通したが `MapAnalysisPanel` 側のUIが無かった。Phase 35 で `abortRef`（`AbortController`）と3タブ共通の `CancelButton` を追加し、キャンセル時は `isAbortError(e)` で握り潰してトーストを出さないようにしている。ローカルLLMは応答が長くかかりうるため必要性が上がったことが理由。
+
+**Phase 35 でのシグネチャ変更:** 5関数すべての `*Request` インタフェースにあった `apiKey: string` / `model: AIModel` の2フィールドを `provider: LLMProvider` に統合した。呼び出し側（各パネル）は `useActiveProvider()`（§9.0.1）で解決済みの `LLMProvider` をそのまま渡す。
+
+`generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` は機能ごとの JSON Schema 定数（`SUGGESTIONS_SCHEMA` / `MAP_ANALYSIS_SCHEMA` / `CONNECTIONS_SCHEMA` / `CLUSTERS_SCHEMA`、`aiService.ts` 内）を `completeJsonWithRetry(provider, req, schema, signal)` に渡すようになった。
+
+- `jsonInstructionSuffix(provider, schema)` — プロンプト末尾に付けるスキーマ提示。`provider.capabilities.structuredOutput === 'json-schema'`（＝Ollama）のときだけ `\n\n出力は以下のJSON Schemaに厳密に従ってください:\n${JSON.stringify(schema)}` を追加する。Claude 向けプロンプト文字列は Phase 34 以前と1文字も変わらない。
+- `completeJsonWithRetry(provider, req, schema, signal)` — `provider.completeJson()` が `LLMError('parse')` を投げたら1回だけ「直前の応答はJSONとして解析できませんでした（エラー: …）。同じ内容をJSON形式で出力し直してください」という修復メッセージを追加して再試行する。2回目の失敗はそのまま呼び出し元（`LLMError.rawResponse` 経由でUIの「生レスポンスをコピー」導線）に投げる。
 
 ### 9.5 chatWithMap のストリーミング設計（Phase 23）
 
@@ -838,6 +900,17 @@ export function toFriendlyAIError(e: unknown): string
 
 `LLMError` なら `kind === 'aborted'` のときだけ「キャンセルされました」、それ以外は `e.message` をそのまま返す。`LLMError` 以外（`AIParseError`・アダプタが戻した `Error`）は従来どおり `e.message`。**表示文言は Phase 31 以前と完全に同一**（Phase 32 で old/new を同一モックに対してA/B比較して確認済み）。
 
+**`OllamaProvider` のエラー分類（Phase 35）:** `ClaudeProvider.toLLMError()` とは別に、`OllamaProvider` 内で次の判定を行う。
+
+| 条件 | `kind` | メッセージ |
+|---|---|---|
+| `http.request()` が例外を投げ、`signal?.aborted` でない | `connection` | 「Ollamaに接続できませんでした。Ollamaが起動しているか、接続先URLが正しいか確認してください。」 |
+| HTTP 404 | `notFound` | 「モデル「\<model\>」が見つかりません。「ollama pull \<model\>」でモデルを取得してください。」（`rawResponse` にレスポンス本文を保持） |
+| `signal?.aborted` | `aborted` | 「キャンセルされました」（`name` は `'AbortError'`） |
+| 他の非2xxレスポンス | `unknown` | 「Ollamaがエラーを返しました（HTTP \<status\>）」 |
+
+Node から `OllamaProvider` を直接動かし、404・到達不可（`http://127.0.0.1:9`）・`completeJson()` の中断の3パターンで上記どおりの `kind` になることを確認済み（2026-08-07・Ollama 0.32.6）。
+
 ### 9.7 updateLastChatMessage（uiStore — Phase 23）
 
 ```typescript
@@ -845,6 +918,29 @@ updateLastChatMessage: (content: string) => void
 ```
 
 `chatMessages` 配列の末尾メッセージが `role === 'assistant'` の場合のみ、その `content` を置換した新配列をセットする。ストリーミング中にデルタを逐次反映するために使用。
+
+### 9.8 プロバイダ切り替えUIの表示判定（`HttpAdapter.canAccessLocalServers`、Phase 35）
+
+`packages/platform` の `HttpAdapter` に `readonly canAccessLocalServers: boolean` を追加した（Web実装=`false`、Desktop実装=`true`）。ブラウザから Ollama を叩く構成は `OLLAMA_ORIGINS` というユーザー環境依存の設定に阻まれ安定提供できないため、**プロバイダ切り替えUIそのものを Web版には出さない**。判定はランタイム種別の直接判定（`'__TAURI_INTERNALS__' in window` 等）ではなく Adapter 経由にしている（`docs/desktop/README.md` §3.1-E、`llm-abstraction.md` §6.1 からの差分）。
+
+`SettingsPanel.tsx` は `const [showProviderSwitch] = useState(() => getPlatform().http.canAccessLocalServers)` という遅延初期化で1度だけ読む（`isKeychainBacked` と同じパターン。レンダー本体で `getPlatform()` を呼ぶと `setPlatform()` 前の評価に晒されるため）。
+
+### 9.9 設定UI: AIプロバイダ切り替えと Ollama セクション（`SettingsPanel.tsx`、Phase 35）
+
+`showProviderSwitch` が `true` のときだけ「AIプロバイダ」セクション（Claude API / Ollama の2択ボタン）を描画する。選んだプロバイダに応じて、既存の「Claude API」セクション（APIキー入力・モデル選択）と新設の `OllamaSection` を排他表示する。
+
+**`OllamaSection` の構成:**
+
+| 要素 | 内容 |
+|---|---|
+| 接続先URL入力 | `ollamaBaseUrl` を編集。「接続テスト」ボタン押下で `setOllamaBaseUrl` に反映してから疎通確認する |
+| 疎通確認 | `new OllamaProvider(baseUrl, ollamaModel).listModels()` を呼ぶだけ（`/api/tags` が疎通確認とモデル一覧取得を兼ねる）。パネルを開いた直後に1回だけ自動実行する（`useRef` の初回フラグでガード） |
+| 成功時 | 「✅ 接続成功 / N個のモデルが見つかりました」。選択中の `ollamaModel` が一覧に無ければ先頭のモデルへ自動で寄せる |
+| 失敗時 | `LLMError.kind` が `connection` なら `ollama serve` の実行案内、`notFound` なら `ollama pull <model>` の案内。いずれも `CommandHint`（コマンド文字列＋コピーボタン）を添える |
+| モデル0件 | 空状態として `ollama pull gemma3:4b` の案内＋日本語対応モデル（gemma3 / qwen3 / elyza-jp）のおすすめ文言 |
+| モデル選択 | `<select>`。各 `<option>` に `ModelInfo.label` と `description`（パラメータ数/量子化/サイズ/コンテキスト長）、`loaded` なら「⚡ロード済み」を付記 |
+
+`CommandHint`（コマンド文字列＋コピーボタン、`getPlatform().system.copyToClipboard()` 経由）と `SuggestionCountField`（AI提案数スライダー）は Claude セクションと `OllamaSection` の両方から使う共通コンポーネントとして切り出した。
 
 ---
 
@@ -1367,6 +1463,8 @@ ai-idea-map/
 
 **`HttpAdapter` が本計画で最も重要な接続点です。** `packages/core` の `LLMProvider` 実装は `fetch` を直接呼ばず必ず `getPlatform().http` を経由し、デスクトップ版ではそれが Rust 側の HTTP クライアントに解決されることで **Ollama の CORS 問題が1箇所で解決します**。
 
+**`HttpAdapter.canAccessLocalServers`（Phase 35 で追加）**: Web=`false` / Desktop=`true` の読み取り専用プロパティ。`SettingsPanel` がプロバイダ切り替えUIを描画するかどうかの判定に使う（§9.8）。
+
 **`FileAdapter.origin`（Phase 34 で追加）**: Adapter が扱う保存先の種別を `'cloud' | 'local'` で公開する読み取り専用プロパティ。`useAutoSave` が `currentFileId` から `FileRef` を組み立てる際に `origin` を決め打ちできないため追加した。Web実装は常に `'cloud'`、Desktop実装は常に `'local'` を返す。
 
 **`SecretAdapter.isPassphraseFree`**（Phase 33 で追加・Phase 34 で初めて `true` の実装が入った）: Desktop実装は常に `true` を返し、`SettingsPanel` はこの値を起動時に一度だけ読んで「キーはこの端末のOSキーチェーンにのみ保存されます」／「キーはこのブラウザにのみ保存されます」の文言を出し分ける。
@@ -1381,7 +1479,7 @@ ai-idea-map/
 |---|---|
 | `main-window` | ウィンドウの基本操作（タイトル変更・閉じる・破棄）、`dialog`（open/save/ask/message）、クリップボード書き込み、外部URLオープン、`store` |
 | `file-access` | `fs`（読み書き・mkdir・remove・stat・exists）。`fs:scope` は `$APPCONFIG` と `$APPLOCALDATA` 配下のみに限定する |
-| `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`http://localhost:11434/*`・`http://127.0.0.1:11434/*`）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している |
+| `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している |
 
 **ダイアログで選んだパスへの `fs` 許可**: `fs:scope` はアプリ専用ディレクトリだけに絞り、ユーザーが「開く/保存」ダイアログで選んだ任意のパスは `dialog` プラグインが実行時に付与する一時許可に任せる。この許可を次回起動でも有効にする（＝「最近開いたファイル」を再度開ける）ため、`tauri-plugin-persisted-scope` を依存に追加し、`lib.rs` で **`fs` プラグインより後に**登録している。任意のディレクトリを `fs:scope` に静的追加するより攻撃面が狭い（「ユーザーが一度選んだファイルだけ」に限定できる）。
 
@@ -1395,6 +1493,6 @@ ai-idea-map/
 |---|---|
 | 1. アーキテクチャ概要 | Web版/デスクトップ版の2構成に書き換え |
 | 3. プロジェクト構成 | モノレポ構成に書き換え |
-| 9. Claude API連携設計 | 「LLM連携設計」に改称。`LLMProvider` と Ollama を追加 |
+| 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9） |
 | 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要 |
 | 12. Google Drive連携設計 | Web版専用機能である旨を明記（デスクトップ版 v1 は非対応） |

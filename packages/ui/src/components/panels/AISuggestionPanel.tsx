@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
 import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, isAbortError, type AISuggestion } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { useActiveProvider } from '../../hooks/useActiveProvider'
 
 export function AISuggestionPanel() {
   const {
@@ -34,17 +35,16 @@ export function AISuggestionPanel() {
     useShallow((s) => ({ edges: s.edges, addNode: s.addNode, onConnect: s.onConnect }))
   )
   const selectedNode = useMapStore((s) => s.nodes.find((n) => n.id === selectedNodeId))
-  const { apiKey, aiModel, suggestionCount, setSuggestionCount, categories, getCategoryById } =
+  const { suggestionCount, setSuggestionCount, categories, getCategoryById } =
     useSettingsStore(
       useShallow((s) => ({
-        apiKey: s.apiKey,
-        aiModel: s.aiModel,
         suggestionCount: s.suggestionCount,
         setSuggestionCount: s.setSuggestionCount,
         categories: s.categories,
         getCategoryById: s.getCategoryById,
       }))
     )
+  const { provider, isReady, providerId } = useActiveProvider()
   const { fitView } = useReactFlow()
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -81,8 +81,7 @@ export function AISuggestionPanel() {
     const siblingNodeObjects = nodes.filter((n) => siblingNodeIdSet.has(n.id))
 
     return {
-      apiKey,
-      model: aiModel,
+      provider,
       selectedNodeTitle: selectedNode.data.title,
       selectedNodeBody: selectedNode.data.body,
       connectedNodes: connectedNodeObjects.map((n) => ({
@@ -107,8 +106,7 @@ export function AISuggestionPanel() {
     selectedNode,
     edges,
     parentNodeIds,
-    apiKey,
-    aiModel,
+    provider,
     suggestionCount,
     categories,
     userInstruction,
@@ -120,8 +118,14 @@ export function AISuggestionPanel() {
   }
 
   const handleFetch = useCallback(async () => {
-    if (!selectedNode || !apiKey) {
-      setError(apiKey ? 'ノードが選択されていません' : 'APIキーが設定されていません。設定画面から入力してください。')
+    if (!selectedNode || !isReady) {
+      setError(
+        isReady
+          ? 'ノードが選択されていません'
+          : providerId === 'ollama'
+            ? '使用するOllamaモデルが選択されていません。設定画面で選んでください。'
+            : 'APIキーが設定されていません。設定画面から入力してください。',
+      )
       return
     }
     setError(null)
@@ -156,12 +160,12 @@ export function AISuggestionPanel() {
       setAILoading(false)
       abortRef.current = null
     }
-  }, [selectedNode, apiKey, buildBaseRequest, setAILoading, setAISuggestions])
+  }, [selectedNode, isReady, providerId, buildBaseRequest, setAILoading, setAISuggestions])
 
   /** 指定インデックスの提案だけを再生成する */
   const handleRegenerate = useCallback(
     async (idx: number) => {
-      if (!selectedNode || !apiKey || regeneratingIdx !== null) return
+      if (!selectedNode || !isReady || regeneratingIdx !== null) return
       setRegeneratingIdx(idx)
       try {
         const baseReq = buildBaseRequest()
@@ -181,7 +185,7 @@ export function AISuggestionPanel() {
         setRegeneratingIdx(null)
       }
     },
-    [selectedNode, apiKey, aiSuggestions, regeneratingIdx, buildBaseRequest, setAISuggestions, addToast],
+    [selectedNode, isReady, aiSuggestions, regeneratingIdx, buildBaseRequest, setAISuggestions, addToast],
   )
 
   const handleAddSelected = useCallback(() => {
@@ -292,9 +296,10 @@ export function AISuggestionPanel() {
           </button>
         </div>
 
-        {!apiKey ? (
+        {!isReady ? (
           <ApiKeyRequired
             className="px-5 py-10"
+            providerId={providerId}
             onOpenSettings={() => {
               setAIPanelOpen(false)
               setSettingsOpen(true)

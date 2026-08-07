@@ -1,5 +1,5 @@
-import type { AISuggestion, AIModel, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '../types'
-import { ClaudeProvider } from './claudeProvider'
+import type { AISuggestion, Category, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatAction, ChatWithMapRequest } from '../types'
+import type { JsonSchema, LLMProvider, LLMRequest } from './types'
 import { LLMError } from './types'
 import { AIParseError } from './jsonUtils'
 
@@ -7,32 +7,124 @@ import { AIParseError } from './jsonUtils'
 export { AIParseError }
 
 /**
- * Phase 32 の移行用アダプタ。
- * Provider は解析失敗を一律 `LLMError('parse')` で返すが、UI側の文言と例外型を
- * Phase 31 以前と1文字も変えないため、機能ごとの従来例外へ戻してから投げ直す。
- * エラー表示を LLMError ベースへ統一する際（Phase 35 Step 6）にこの2関数ごと削除する。
+ * JSON出力を要求する指示文の末尾に付けるスキーマ提示。
+ *
+ * Ollama は format にスキーマを渡すのに加えてプロンプトにも埋め込むと追従率が上がる（公式ドキュメント推奨）。
+ * Claude はプロンプト内の「JSON形式のみで回答」指示だけで十分なため何も足さない
+ * ＝ Claude に送るプロンプトは Phase 34 以前と1文字も変わらない。
  */
-function toLegacySuggestionParseError(e: unknown): unknown {
-  if (!(e instanceof LLMError) || e.kind !== 'parse') return e
-  if (e.cause instanceof AIParseError) {
-    return new Error(
-      `AIの応答形式が不正でした。もう一度お試しください。\n詳細: ${e.cause.message}`,
-      { cause: e.cause },
-    )
-  }
-  return new Error('AIからの応答を解析できませんでした。もう一度お試しください。')
+function jsonInstructionSuffix(provider: LLMProvider, schema: JsonSchema): string {
+  if (provider.capabilities.structuredOutput !== 'json-schema') return ''
+  return `\n\n出力は以下のJSON Schemaに厳密に従ってください:\n${JSON.stringify(schema)}`
 }
 
-function toLegacyAnalysisParseError(e: unknown): unknown {
-  if (!(e instanceof LLMError) || e.kind !== 'parse') return e
-  // safeParseJson の AIParseError をそのまま伝播させる（rawResponse をUIがコピーできる）
-  if (e.cause instanceof AIParseError) return e.cause
-  return new Error('AIからの応答を解析できませんでした')
+/**
+ * 構造化出力のパースに失敗したら1回だけ修復を促して再試行する。
+ * 小型ローカルモデルはJSONの逸脱が起きやすく、この1回で大半は回復する。
+ * 2回目の失敗はそのまま呼び出し元（＝UIの「生レスポンスをコピー」導線）に渡す。
+ */
+async function completeJsonWithRetry<T>(
+  provider: LLMProvider,
+  req: LLMRequest,
+  schema: JsonSchema,
+  signal?: AbortSignal,
+): Promise<T> {
+  try {
+    return await provider.completeJson<T>(req, schema, signal)
+  } catch (e) {
+    if (!(e instanceof LLMError) || e.kind !== 'parse') throw e
+    // Claude API は空の content ブロックを拒否するため、生レスポンスが取れたときだけ差し戻す
+    const previous: LLMRequest['messages'] = e.rawResponse
+      ? [{ role: 'assistant', content: e.rawResponse }]
+      : []
+    const repairReq: LLMRequest = {
+      ...req,
+      messages: [
+        ...req.messages,
+        ...previous,
+        {
+          role: 'user',
+          content: `直前の応答はJSONとして解析できませんでした（エラー: ${e.message}）。同じ内容をJSON形式で出力し直してください。説明文は不要です。`,
+        },
+      ],
+    }
+    return provider.completeJson<T>(repairReq, schema, signal)
+  }
+}
+
+const SUGGESTIONS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '簡潔なタイトル（20字以内）' },
+          body: { type: 'string', description: '補足説明・詳細' },
+          categoryId: { type: 'string', description: 'カテゴリID' },
+          parentNodeId: { type: 'string', description: '兄弟モードで複数親があるときの接続先ノードID' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  required: ['suggestions'],
+}
+
+const MAP_ANALYSIS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    missingAreas: { type: 'array', items: { type: 'string' } },
+    importantNodeIds: { type: 'array', items: { type: 'string' } },
+    importantNodeTitles: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary', 'missingAreas', 'importantNodeIds', 'importantNodeTitles'],
+}
+
+const CONNECTIONS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          sourceId: { type: 'string' },
+          targetId: { type: 'string' },
+          sourceTitle: { type: 'string' },
+          targetTitle: { type: 'string' },
+          reason: { type: 'string' },
+        },
+        required: ['sourceId', 'targetId', 'sourceTitle', 'targetTitle', 'reason'],
+      },
+    },
+  },
+  required: ['suggestions'],
+}
+
+const CLUSTERS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    clusters: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          groupName: { type: 'string' },
+          categoryId: { type: 'string' },
+          nodeIds: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['groupName', 'categoryId', 'nodeIds'],
+      },
+    },
+  },
+  required: ['clusters'],
 }
 
 interface SuggestionRequest {
-  apiKey: string
-  model: AIModel
+  provider: LLMProvider
   selectedNodeTitle: string
   selectedNodeBody?: string
   /** 接続ノードのタイトルと本文（1ホップ隣接ノード） */
@@ -53,7 +145,7 @@ interface SuggestionRequest {
 }
 
 export async function generateSuggestions(req: SuggestionRequest, signal?: AbortSignal): Promise<AISuggestion[]> {
-  const provider = new ClaudeProvider(req.apiKey, req.model)
+  const { provider } = req
 
   const bodySection = req.selectedNodeBody
     ? `\n【選択ノードの詳細メモ】\n${req.selectedNodeBody}`
@@ -115,33 +207,28 @@ ${categoryList}
     ...
   ]
 }
-title は短く端的に。詳細・補足・具体例は body に記述してください。body が不要なら省略できます。`
+title は短く端的に。詳細・補足・具体例は body に記述してください。body が不要なら省略できます。${jsonInstructionSuffix(provider, SUGGESTIONS_SCHEMA)}`
 
-  let parsed: { suggestions: AISuggestion[] }
-  try {
-    parsed = await provider.completeJson<{ suggestions: AISuggestion[] }>(
-      { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
-      undefined,
-      signal,
-    )
-  } catch (e) {
-    throw toLegacySuggestionParseError(e)
-  }
+  const parsed = await completeJsonWithRetry<{ suggestions: AISuggestion[] }>(
+    provider,
+    { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
+    SUGGESTIONS_SCHEMA,
+    signal,
+  )
   if (!Array.isArray(parsed.suggestions)) throw new Error('AIからの応答形式が正しくありません')
 
   return parsed.suggestions.slice(0, req.count)
 }
 
 interface AnalyzeMapRequest {
-  apiKey: string
-  model: AIModel
+  provider: LLMProvider
   nodes: { id: string; title: string; body?: string; categoryId?: string }[]
   edges: { source: string; target: string }[]
   categories: Category[]
 }
 
 export async function analyzeMap(req: AnalyzeMapRequest, signal?: AbortSignal): Promise<MapAnalysis> {
-  const provider = new ClaudeProvider(req.apiKey, req.model)
+  const { provider } = req
 
   const nodeList = req.nodes
     .map((n) => {
@@ -177,28 +264,24 @@ ${edgeList || '（接続なし）'}
   "missingAreas": ["見落としている領域1", "見落としている領域2"],
   "importantNodeIds": ["node-id-1", "node-id-2"],
   "importantNodeTitles": ["タイトル1", "タイトル2"]
-}`
+}${jsonInstructionSuffix(provider, MAP_ANALYSIS_SCHEMA)}`
 
-  try {
-    return await provider.completeJson<MapAnalysis>(
-      { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
-      undefined,
-      signal,
-    )
-  } catch (e) {
-    throw toLegacyAnalysisParseError(e)
-  }
+  return completeJsonWithRetry<MapAnalysis>(
+    provider,
+    { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
+    MAP_ANALYSIS_SCHEMA,
+    signal,
+  )
 }
 
 interface SuggestConnectionsRequest {
-  apiKey: string
-  model: AIModel
+  provider: LLMProvider
   nodes: { id: string; title: string; body?: string }[]
   existingEdges: { source: string; target: string }[]
 }
 
 export async function suggestConnections(req: SuggestConnectionsRequest, signal?: AbortSignal): Promise<ConnectionSuggestion[]> {
-  const provider = new ClaudeProvider(req.apiKey, req.model)
+  const { provider } = req
 
   if (req.nodes.length < 2) return []
 
@@ -227,18 +310,14 @@ ${req.existingEdges.map((e) => `${e.source} → ${e.target}`).join('\n') || '（
       "reason": "なぜこの2つが関連するかの理由（1文）"
     }
   ]
-}`
+}${jsonInstructionSuffix(provider, CONNECTIONS_SCHEMA)}`
 
-  let parsed: { suggestions: ConnectionSuggestion[] }
-  try {
-    parsed = await provider.completeJson<{ suggestions: ConnectionSuggestion[] }>(
-      { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
-      undefined,
-      signal,
-    )
-  } catch (e) {
-    throw toLegacyAnalysisParseError(e)
-  }
+  const parsed = await completeJsonWithRetry<{ suggestions: ConnectionSuggestion[] }>(
+    provider,
+    { messages: [{ role: 'user', content: prompt }], maxTokens: 2048 },
+    CONNECTIONS_SCHEMA,
+    signal,
+  )
   if (!Array.isArray(parsed.suggestions)) return []
 
   return parsed.suggestions.filter(
@@ -251,14 +330,13 @@ ${req.existingEdges.map((e) => `${e.source} → ${e.target}`).join('\n') || '（
 }
 
 interface SuggestClustersRequest {
-  apiKey: string
-  model: AIModel
+  provider: LLMProvider
   nodes: { id: string; title: string; body?: string }[]
   categories: Category[]
 }
 
 export async function suggestClusters(req: SuggestClustersRequest, signal?: AbortSignal): Promise<ClusterSuggestion[]> {
-  const provider = new ClaudeProvider(req.apiKey, req.model)
+  const { provider } = req
 
   if (req.nodes.length < 3) return []
 
@@ -287,23 +365,21 @@ JSON形式のみで回答してください（説明文不要）:
       "nodeIds": ["id1", "id2"]
     }
   ]
-}`
+}${jsonInstructionSuffix(provider, CLUSTERS_SCHEMA)}`
 
-  let parsed: { clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }
-  try {
-    parsed = await provider.completeJson<{ clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }>(
-      { messages: [{ role: 'user', content: prompt }], maxTokens: 4096 },
-      undefined,
-      signal,
-    )
-  } catch (e) {
-    throw toLegacyAnalysisParseError(e)
-  }
+  const parsed = await completeJsonWithRetry<{ clusters: Array<Omit<ClusterSuggestion, 'nodeTitles'>> }>(
+    provider,
+    { messages: [{ role: 'user', content: prompt }], maxTokens: 4096 },
+    CLUSTERS_SCHEMA,
+    signal,
+  )
   if (!Array.isArray(parsed.clusters)) return []
 
   return parsed.clusters.map((c) => ({
     ...c,
-    nodeTitles: c.nodeIds.map((id) => nodeMap.get(id) ?? id),
+    // 小型モデルは nodeIds を返さないことがあるため、欠けても後段の map で落ちないようにする
+    nodeIds: Array.isArray(c.nodeIds) ? c.nodeIds : [],
+    nodeTitles: (Array.isArray(c.nodeIds) ? c.nodeIds : []).map((id) => nodeMap.get(id) ?? id),
   }))
 }
 
@@ -312,7 +388,7 @@ export async function chatWithMap(
   onText?: (partialText: string) => void,
   signal?: AbortSignal,
 ): Promise<{ content: string; actions: ChatAction[] }> {
-  const provider = new ClaudeProvider(req.apiKey, req.model)
+  const { provider } = req
 
   const prioritizedNodeIds = new Set(req.mentionedNodeIds ?? [])
   const orderedNodes = [

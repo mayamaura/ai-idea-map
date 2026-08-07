@@ -1624,26 +1624,84 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 
 ---
 
-### Phase 35: Ollama 統合（約4日）
+### Phase 35: Ollama 統合（約4日）🔨 実装済み（確認中）
 
 **目標**: **本計画の主目的。** デスクトップ版でローカルLLM（Ollama）を選択して、AI機能が動く状態にする。
 
-> 参照: `docs/desktop/llm-abstraction.md` §3〜7（Step 3-7）・§8（API調査結果）。
+> 参照: `docs/desktop/llm-abstraction.md` §3〜7（Step 3-7）・§8（API調査結果）。設計からの差分は `docs/desktop/README.md` §3.1-E。
 
 #### タスク
-- [ ] `packages/core/src/llm/ollamaProvider.ts` を実装（`/api/chat` を使用、NDJSON ストリーミングの手動パース、`format` への JSON Schema 指定、`/api/tags` によるモデル一覧取得）
-- [ ] `HttpAdapter` 経由で Ollama に到達できることを実機確認。**未検証事項**: 開発時の Vite オリジンが `OLLAMA_ORIGINS` のデフォルト許可に含まれるか（`docs/desktop/README.md` §5 の #4）
-- [ ] 型移行: `AIModel`（Claude専用 union）を `AIModelSelection { provider, model }` へ。`settingsStore` を `llmProvider` / `claudeModel` / `ollamaModel` / `ollamaBaseUrl` に分割
-- [ ] zustand `persist` の `version` + `migrate` で旧 `localStorage` データを無破壊移行
-- [ ] Drive の `AppSettings` を `version: '2.0'` に。旧 `1.0` を読んでもエラーにならないこと
-- [ ] 設定UIにプロバイダ切り替え・エンドポイントURL設定・接続テスト・インストール済みモデル一覧を追加。Web版ではプロバイダ切り替えUIを表示しない
-- [ ] Ollama 未起動時のエラー表示とガイダンス（起動方法・`ollama pull` の案内）
-- [ ] 各パネルの呼び出しを `getActiveProvider(settings)` から得た `LLMProvider` を渡す方式に変更。`claudeService.ts` を `aiService.ts` にリネーム
-- [ ] 小型モデル向けの出力安定化（`temperature: 0`、スキーマのプロンプト埋め込み、パース失敗時のリトライ）
-- [ ] 日本語対応モデルでの実用性確認（Gemma 3 / Qwen3 / ELYZA-JP-8B など）
-- [ ] `docs/design.md` の「9. LLM連携設計」に Ollama を反映。`docs/requirements.md` にローカルLLM要件を追記
+- [x]✅ `packages/core/src/llm/ollamaProvider.ts` を実装（`/api/chat` を使用、NDJSON ストリーミングの手動パース、`format` への JSON Schema 指定、`/api/tags` + `/api/ps` によるモデル一覧取得）。全リクエストに `think: false` を付与し、HTTP 400 のときだけ `think` を外して1回だけ再送するフォールバックを追加
+- [x] `HttpAdapter` に `canAccessLocalServers: boolean` を追加（`packages/platform` の型・`apps/web`・`apps/desktop` の3点。Web=false / Desktop=true）。プロバイダ切り替えUIの表示判定に使う
+- [x] `apps/desktop/src-tauri/capabilities/ai-http.json` の Ollama 到達先を `http://localhost:11434/*` 固定から `http://localhost:*/*` ＋ `http://127.0.0.1:*/*` に拡大（接続先URLでポートを変更できるようにするため）
+- [x]✅ `HttpAdapter` 経由で Ollama に到達できることを実機確認。デスクトップ実機（`pnpm dev:desktop`）で Rust 側 `plugin-http` 経由の `/api/tags` `/api/ps` `/api/chat` すべてに到達。**`OLLAMA_ORIGINS` の追加設定は不要だった**（README §5 #4 を解消）
+- [x] 型移行: `AIModel`（Claude専用 union）を `AIModelSelection { provider, model }` へ。`settingsStore` を `llmProvider` / `claudeModel` / `ollamaModel` / `ollamaBaseUrl` に分割
+- [x] zustand `persist` の `version` + `migrate` で旧 `localStorage` データを無破壊移行（`version: 1 → 2`。旧 `aiModel` を `claudeModel` に移し、`llmProvider` は必ず `'claude'` で初期化）
+- [x] Drive の `AppSettings` を `version: '2.0'` に。旧 `1.0` を読んでもエラーにならないこと（`model` フィールドの意味は変えていないため後方互換。Ollama の接続先URL・モデルは同期対象に含めない）
+- [x] 設定UIにプロバイダ切り替え・エンドポイントURL設定・接続テスト・インストール済みモデル一覧を追加。Web版ではプロバイダ切り替えUIを表示しない（`HttpAdapter.canAccessLocalServers` で判定）
+- [x] Ollama 未起動時のエラー表示とガイダンス（`ollama serve` / `ollama pull` の案内、コピーボタン付き。モデル0件時の空状態も追加）
+- [x] 各パネルの呼び出しを `getActiveProvider(settings)` から得た `LLMProvider` を渡す方式に変更（`useActiveProvider` フック経由）。`claudeService.ts` → `aiService.ts` のリネームは Phase 33 で実施済みのため、本フェーズでは `SuggestionRequest` 等の `apiKey`/`model` → `provider` へのシグネチャ変更のみ実施
+- [x] 小型モデル向けの出力安定化（`completeJson` の `temperature: 0` は Ollama のみ、スキーマのプロンプト埋め込み `jsonInstructionSuffix`、パース失敗時の1回リトライ `completeJsonWithRetry`）
+- [x]✅ `MapAnalysisPanel` の3機能にキャンセルUIを追加（Phase 32 の積み残し。`llm-abstraction.md` §7 Step 2 の未達項目）。ローカルLLMは応答が長くかかりうるため
+- [x] 日本語対応モデルでの実用性確認（Gemma 3 / Qwen3 / ELYZA-JP-8B など）※Qwen3.6（36B）でチャット・マップ分析は確認済み。小型モデルでの評価はユーザー手動確認待ち
+- [x] `docs/design.md` の「9. AI連携設計」に Ollama を反映。`docs/requirements.md` にローカルLLM要件を追記
 
 **完了条件**: デスクトップ版でプロバイダを Ollama に切り替え、接続テストとモデル一覧取得が成功する。ローカルモデルでアイデア提案・AIチャット・マップ分析・接続提案・クラスタ提案の5機能が動作する。旧形式の `localStorage` データで起動してもエラーなく移行される。Web版は見た目・挙動とも Phase 34 以前と一致する。
+
+#### 検証済み（Node から Provider を直接実行・Ollama 0.32.6 / Windows 11・2026-08-07）
+
+`HttpAdapter` をスタブして `OllamaProvider` を直接動かして確認した。デスクトップアプリの実機上での確認ではない点に注意。
+
+- [x]✅ `listModels()` — `/api/tags` + `/api/ps` から `qwen3.6:latest | 36.0B / Q4_K_M / 22.3GB / 256Kコンテキスト | loaded=true` を取得
+- [x]✅ `complete()` / `completeJson()`（JSON Schema制約付き。2件の配列を正しくパース）/ `stream()`（NDJSON・12チャンク）
+- [x]✅ `stream()` の中断 — 例外を投げず、途中までの累積テキストを返す
+- [x]✅ 404（未インストールモデル）→ `LLMError('notFound')` に `ollama pull <model>` の案内
+- [x]✅ 到達不可（`http://127.0.0.1:9`）→ `LLMError('connection')`
+- [x]✅ `completeJson()` の中断 → `LLMError('aborted')`・`name === 'AbortError'`
+- [x]✅ `/api/tags` の `details.context_length` が実コンテキスト長を返す（Ollama 0.32系）。`docs/desktop/README.md` §5 #5 の解消材料
+- [x]✅ `format` にJSON Schemaオブジェクトを渡す構造化出力が 0.32.6 で動作（`docs/desktop/README.md` §5 #3 の実測値。ただし「どのバージョンから」の下限は未確定のまま）
+- [x]✅ 思考モデル（qwen3.6）は `think: false` を送らないと思考トークンが `num_predict` を食って出力が途中で切れる（`done_reason: 'length'`）ことを確認。全リクエストへの `think: false` 付与で解消
+- [x]✅ `settingsStore` の persist マイグレーション4ケース（StorageAdapter をスタブして `restorePersistedState()` 相当を実行）
+  - v1（`aiModel: 'claude-haiku-4-5-20251001'`）→ `llmProvider: 'claude'` / `claudeModel` に引き継ぎ。テーマ・提案数・エッジ形状など他項目も保持
+  - v0（`aiModel: 'claude-sonnet-4-6'` ＝廃止済みID）→ `claudeModel: 'claude-sonnet-5'` に正規化
+  - v2（`llmProvider: 'ollama'` / カスタムURL）→ migrate が走らず、そのまま復元
+  - 保存データ無し → 既定値（`claude` / `claude-sonnet-5` / `http://localhost:11434`）
+
+#### 動作確認（デスクトップ実機・CDP 経由の自動検証・2026-08-07）
+
+`pnpm dev:desktop` を `--remote-debugging-port` 付きで起動し、Playwright を CDP でアタッチして検証した。検証スクリプトは確認後に削除済み。**ここで通った経路は Rust 側 `plugin-http` 経由の実通信**であり、Node スタブでの確認とは別物。
+
+- [x]✅ 設定パネルに「AIプロバイダ」セクションが出る（デスクトップ版のみ）。Ollama を選ぶと「Ollama（ローカル）」セクションに切り替わり、Claude API セクションが隠れる
+- [x]✅ 接続先URLの初期値が `http://localhost:11434`。接続テストが成功し「接続成功 / 1個のモデルが見つかりました」を表示
+- [x]✅ モデル一覧に `qwen3.6:latest（36.0B / Q4_K_M / 22.3GB / 256Kコンテキスト）` が出て、自動で選択される
+- [x]✅ AIチャットが Ollama で動く（9.1秒で日本語の応答。`/api/chat` のストリーミング）
+- [x]✅ マップ分析が Ollama で動く（12ノードのマップを4.4秒で分析。`format` へのJSON Schema指定 → `completeJson` のパース成功）
+- [x]✅ 分析実行中にキャンセルボタンが表示され、押すとローディングが解除されエラートーストも出ない
+- [x]✅ 全工程で console error / pageerror がゼロ。**検証中に見つけた `The resource id ... is invalid` の未処理例外（`AbortSignal.timeout()` と `plugin-http` のボディ解放の二重解放）は修正済み**
+
+#### 実装時の判断（設計ドキュメントからの差分）
+
+`docs/desktop/README.md` §3.1-E に表としてまとめた。要点のみ再掲する。
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | プラットフォーム判定 | `llm-abstraction.md` §6.1 の `isDesktopRuntime()`（`'__TAURI_INTERNALS__' in window`）は使わず、`HttpAdapter.canAccessLocalServers` を Adapter 経由で判定する。README §3.2 の「`setPlatform()` 注入に統一」という裁定と整合させるため |
+| 2 | `completeJson` の `temperature: 0` | Ollama のみに適用し、Claude は SDK 既定のまま。`llm-abstraction.md` §4.2 は「両方」としていたが、「Web版は Phase 34 以前と挙動が一致する」という完了条件を優先した |
+| 3 | Claude 向けプロンプト | スキーマのプロンプト埋め込みは Ollama のときだけ。Claude に送るプロンプト文字列は Phase 34 以前と1文字も変わらない |
+| 4 | `maxContextTokens` | `OllamaProvider.capabilities` は固定値 8192 のまま。実コンテキスト長は `ModelInfo.contextTokens` として `/api/tags` から取り、設定UIの表示に使う（`capabilities` はコンストラクタ時点で確定させたいが、実長はモデル選択後にしか分からないため） |
+| 5 | `think: false` | 全リクエストで送る。400 のときだけ `think` を外して1回だけ再送するフォールバックあり |
+| 6 | `ai-http` capability | `http://localhost:*/*` / `http://127.0.0.1:*/*` に拡大。接続先URL設定でポートを変更可能にするため。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる |
+| 7 | Phase 32 の移行用アダプタ削除 | `toLegacySuggestionParseError` / `toLegacyAnalysisParseError` を削除し `LLMError` に一本化。UI の生レスポンスコピーは `LLMError.rawResponse` から取る（`llm-abstraction.md` §7 Step 6 の予告どおり） |
+| 8 | モデル一覧取得のタイムアウト | `AbortSignal.timeout()` ではなく `AbortController` ＋ `setTimeout` にし、読了時に `clearTimeout` する。`plugin-http` が abort でボディを解放するため、読了後の発火が二重解放になり実機で未処理例外になった |
+| 9 | 分析3機能のキャンセルUI | `MapAnalysisPanel` に `AbortController` とキャンセルボタンを追加。Phase 32 の積み残しをここで解消した |
+
+#### 残りの手動確認項目
+
+- デスクトップアプリ上で、Ollama を選んだ状態でのアイデア提案・接続提案・クラスタ提案（チャットとマップ分析は CDP 検証で確認済み）
+- 日本語対応モデル（Gemma 3 / Qwen3 / ELYZA-JP-8B など小型モデル）での実用性確認。とくに `suggestClusters` のようなネストしたJSONの追従率
+- Ollama 未起動・モデル0件・接続先URL誤りの各エラーガイダンスの実機表示
+- 旧形式 `localStorage`（`aiModel` のみ保持）での**実アプリ起動時**のマイグレーション（Node 上ではストアの migrate を直接実行して確認済み）、旧 `version: '1.0'` の Drive 設定ファイルの読み込み
+- Web版が Phase 34 以前と一致すること（プロバイダ切り替えUIが出ない・Claude で5機能が従来どおり動く）
 
 ---
 

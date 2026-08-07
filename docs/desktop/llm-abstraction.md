@@ -814,6 +814,8 @@ export function isDesktopRuntime(): boolean {
 
 `SettingsPanel.tsx` では `isDesktopRuntime()` が `false` の間は現行の「Claude API」セクションのみを表示し、`true` のときだけプロバイダ切り替えUIを追加で描画する。これにより、単一のコードベース（`ideamap/`）を Web ビルドと Tauri ビルドの両方で共用できる。
 
+> **Phase 35 では採用せず、`HttpAdapter.canAccessLocalServers` にした（[README.md](README.md) §3.1-E）。** `'__TAURI_INTERNALS__' in window` のようなランタイム種別の直接判定は、README §3.2 の「`setPlatform()` 注入に統一」という裁定と衝突するため、Adapter 経由の判定に一本化した。判定対象自体（Web=非表示・Desktop=表示）は変わらない。
+
 ### 6.2 プロバイダ切り替えUI（デスクトップ版のみ）
 
 ```
@@ -882,8 +884,10 @@ Ollamaはデフォルトでは `OLLAMA_ORIGINS` に `http://localhost` 等の限
 > | §7 Step 2「`toFriendlyAIError` を `LLMError.kind` を見て日本語文言を返す実装に置き換え」 | kind は見るが**文言は上書きせず `e.message` を返す**（`aborted` のみ例外） | 同じ `connection` でも Claude と Ollama で案内文が変わる。文言の置き場所を Provider 側に一本化した |
 >
 > あわせて、Phase 32 の完了条件「パネルに差分なし」を守るため次の2点を持ち越しています（Phase 35 Step 6 で解消）。
-> - **Step 2 の「3機能でキャンセルボタンが機能すること」は未達**。`analyzeMap`/`suggestConnections`/`suggestClusters` はサービス層まで `signal` を通したが、`MapAnalysisPanel` のキャンセルUIは未追加。
+> - **Step 2 の「3機能でキャンセルボタンが機能すること」は未達**。`analyzeMap`/`suggestConnections`/`suggestClusters` はサービス層まで `signal` を通したが、`MapAnalysisPanel` のキャンセルUIは未追加。→ **Phase 35 で解消（2026-08-07）。** ローカルLLMは応答が長くかかりうるため、`MapAnalysisPanel` に `AbortController` と3タブ共通のキャンセルボタンを追加した。
 > - `claudeService.ts` に**移行用アダプタ**（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）を置き、`LLMError('parse')` を機能別の従来例外（`AIParseError` を含む）へ戻している。エラー表示を統一する際に削除する。
+
+> **Step 3〜7 は Phase 35 で実施済み（2026-08-07）。** 本書の記述から変えた点は `docs/desktop/README.md` §3.1-E を参照。Step 1-2 からの持ち越し（移行用アダプタの削除・`MapAnalysisPanel` のキャンセルUI追加）は**どちらも Phase 35 で解消した**。各ステップの完了条件のうち「手動確認する」とされている項目は、Node から `OllamaProvider` を直接実行する確認に加え、デスクトップ実機に CDP でアタッチして接続テスト・モデル一覧・AIチャット・マップ分析・キャンセルまで確認済み。アイデア提案／接続提案／クラスタ提案の実機確認と小型モデルでの実用性評価が残っている（詳細は各ステップの note と `docs/implementation-plan.md` Phase 35 を参照）。
 
 ### Step 1: `LLMProvider` 型と `ClaudeProvider` を追加し、内部実装だけを差し替える
 
@@ -907,12 +911,16 @@ Ollamaはデフォルトでは `OLLAMA_ORIGINS` に `http://localhost` 等の限
 
 **完了条件**: ローカルで起動した Ollama（例: `ollama run gemma3:4b`）に対し、`complete` / `completeJson` / `stream` / `listModels` の4メソッドがそれぞれ期待した型で応答を返すことを手動確認する。
 
+→ **実施済み（2026-08-07・Ollama 0.32.6）。** Node から `HttpAdapter` をスタブして `OllamaProvider` を直接実行し、4メソッドとも期待どおりの型で応答することを確認した。あわせて 404（未インストールモデル）・接続不可・`stream()`/`completeJson()` の中断が、想定どおりの `LLMError.kind` になることも確認した（Node からの実行であり、UI・実機Tauriを通した確認ではない。詳細は `docs/implementation-plan.md` Phase 35「検証済み」）。
+
 ### Step 4: 型移行（`AIModel` → `AIModelSelection`、`settingsStore`、Drive `AppSettings`）
 
 - 5節の設計に従い `types/index.ts`・`settingsStore.ts` を変更し、`migrate` を実装する。
 - `AppSettings` の `version` を `'2.0'` にし、`loadSettingsFromDrive` を更新する。
 
 **完了条件**: `aiModel` のみを持つ旧形式の `localStorage` データで起動し、エラーなく `claudeModel` に移行されること。旧 `version: '1.0'` のDrive設定ファイルを読み込んでもエラーにならないこと。
+
+→ **実装済み（2026-08-07）。** `version: 1 → 2` の `migrate` と `normalizeClaudeModel` を実装し `pnpm build` は通過している。旧形式データでの実際の起動確認・旧 `version: '1.0'` の Drive 設定ファイルの読み込み確認は未実施（ユーザーの手動確認待ち）。
 
 ### Step 5: 設定UIにプロバイダ切り替え・接続テスト・モデル一覧を追加する
 
@@ -921,6 +929,8 @@ Ollamaはデフォルトでは `OLLAMA_ORIGINS` に `http://localhost` 等の限
 
 **完了条件**: Tauriビルドでプロバイダを Ollama に切り替え、接続テスト・モデル一覧取得・モデル選択が動作すること。Webビルドではプロバイダ切り替えUIが一切表示されないこと（既存UIと見た目が完全一致すること）。
 
+→ **実装済み（2026-08-07）。** 表示分岐は `isDesktopRuntime()` ではなく `HttpAdapter.canAccessLocalServers`（README §3.1-E）を採用。実装は当初から2案のうち「`@tauri-apps/plugin-http` 経由（Rust側発行）」の方針で統一しているため6.4節の分岐自体は発生しない。Tauriビルドでの接続テスト・モデル一覧取得の実機確認は未実施。
+
 ### Step 6: 各パネルの呼び出しを `provider` 注入方式に切り替える
 
 - `AISuggestionPanel.tsx` / `AIChatPanel.tsx` / `MapAnalysisPanel.tsx` で `apiKey` / `aiModel` を直接渡していた箇所を、`providerFactory.ts` の `getActiveProvider(settings)` から得た `LLMProvider` を渡す形に変更する。
@@ -928,11 +938,15 @@ Ollamaはデフォルトでは `OLLAMA_ORIGINS` に `http://localhost` 等の限
 
 **完了条件**: Claude / Ollama 双方の設定で5機能すべてが動作することを手動確認する。Web版は `llmProvider` が常に `'claude'` のため、Step 1〜3以前と体感上の差が無いこと。
 
+→ **実施済み（2026-08-07）。** `claudeService.ts` → `aiService.ts` のリネームは Phase 33 で先行実施済みだったため、本ステップでは `apiKey`/`model` → `provider` へのシグネチャ変更と、3パネル共通の `useActiveProvider` フック（`packages/ui/src/hooks/useActiveProvider.ts`）の追加のみ行った。Phase 32 の移行用アダプタ（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）もここで削除した。Claude / Ollama 双方での5機能の動作確認は未実施（ユーザーの手動確認待ち）。
+
 ### Step 7（任意・安定化）: Ollama向けの出力安定化策を追加する
 
 - 4.2節の「スキーマ検証＋自動修復リトライ」「few-shot」を必要に応じて追加する。
 
 **完了条件**: 選定した小型モデル（4B〜8B級）で `suggestClusters` など複雑なJSON構造を要求する機能のパース失敗率が、目視確認で許容範囲（体感で連続失敗しない程度）に収まること。
+
+→ **実施済み（2026-08-07）。** `completeJsonWithRetry`（パース失敗時に1回だけ修復プロンプトを追加して再試行）と `jsonInstructionSuffix`（`structuredOutput === 'json-schema'` のときだけプロンプト末尾にスキーマを埋め込む）を実装。few-shot例の追加は本節の想定どおり見送った。日本語モデル（4B〜8B級）でのパース失敗率の目視確認は未実施（ユーザーの手動確認待ち）。
 
 ---
 
@@ -955,11 +969,13 @@ WebSearch / WebFetch で一次情報（Ollama公式リポジトリの `docs/api.
 
 ### 8.2 未確認事項
 
-- **`format` にJSON Schemaオブジェクト（文字列 `"json"` ではなく）を渡す機能が、Ollamaのどのバージョンから利用可能か**の正確なバージョン番号。基本的な `format: "json"` モードは0.3.0以降という情報は得られたが、フルスキーマ制約は別リリースの可能性があり、公式ドキュメントからは正確なバージョン境界を特定できなかった。
-- **開発時（`tauri dev`、Viteの `http://localhost:5173` 等のオリジン）から `OLLAMA_ORIGINS` の追加設定なしにOllamaへアクセスできるか**。デフォルト許可リストに `http://localhost` が含まれる旨の情報はあるが、ポート番号違いのオリジンまで一致とみなされるかは検証できていない。6.4節の通り実機検証が必要。
-- **モデルファミリーごとの `/api/show` の `model_info` 内フィールド名**（コンテキスト長を表すキーが `llama.context_length` 等ファミリーごとに異なる）の網羅的な一覧。
-- **Rakuten AI 2.0 が Ollama公式ライブラリから直接 `ollama pull` できるか**。調査した範囲では Hugging Face から GGUF を取得し `Modelfile` 経由で手動インポートする方法のみ確認できた。
-- **`done_reason` フィールド**（ストリーミング最終行に含まれるとされる終了理由）が全バージョンの `/api/chat` レスポンスに存在するか。
+> **Phase 35（2026-08-07、Ollama 0.32.6 / Windows 11）で以下を実測した。** Node から `HttpAdapter` をスタブして `OllamaProvider` を直接動かした結果であり、UI・デスクトップ実機を通した確認ではない。
+
+- **`format` にJSON Schemaオブジェクト（文字列 `"json"` ではなく）を渡す機能が、Ollamaのどのバージョンから利用可能か**の正確なバージョン番号。**Ollama 0.32.6 では動作を確認した**（2件配列を含むスキーマで正しくパースできた）。基本的な `format: "json"` モードは0.3.0以降という情報は得られたが、フルスキーマ制約がどのバージョンから入ったかという**下限は依然として未確定**。
+- **開発時（`tauri dev`、Viteの `http://localhost:5173` 等のオリジン）から `OLLAMA_ORIGINS` の追加設定なしにOllamaへアクセスできるか**。**実装は素の `fetch` ではなく `@tauri-apps/plugin-http`（Rust側、`HttpAdapter` 経由）に統一したため、ブラウザのオリジン判定自体が経路に登場せずこの論点は原理的に無効化されている。** ただしデスクトップ実機を通した到達確認はまだ（`docs/desktop/README.md` §5 #4）。
+- ~~**モデルファミリーごとの `/api/show` の `model_info` 内フィールド名**（コンテキスト長を表すキーが `llama.context_length` 等ファミリーごとに異なる）の網羅的な一覧。~~ → **解消。** `/api/show` を使う必要がなくなった。`/api/tags` の `details.context_length` が Ollama 0.32系以降のモデルで実コンテキスト長を直接返すことを実測で確認したため、`OllamaProvider.listModels()` はこちらを `ModelInfo.contextTokens` として使う（`docs/desktop/README.md` §5「Phase 35 で解消した項目」）。
+- **Rakuten AI 2.0 が Ollama公式ライブラリから直接 `ollama pull` できるか**。Phase 35 では未調査のまま。調査した範囲では Hugging Face から GGUF を取得し `Modelfile` 経由で手動インポートする方法のみ確認できた。
+- **`done_reason` フィールド**（ストリーミング最終行に含まれるとされる終了理由）が全バージョンの `/api/chat` レスポンスに存在するか。**Ollama 0.32.6 では非ストリーミング応答にも存在することを確認した**（思考モデルの出力が途中で切れた際に `done_reason: 'length'` が返り、これが `think: false` を全リクエストに付与する実装のきっかけになった）。他バージョンでの存在は未確認。
 
 ---
 

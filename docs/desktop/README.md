@@ -96,6 +96,24 @@ Phase 33 の判定条件が「移行前と同じ動作」であることを優�
 | ウィンドウの `dragDropEnabled` | `false` にする | §8 #4 の React Flow との競合が未検証。D&D を扱う Phase 37 で `true` にして検証する |
 | クリップボード | `@tauri-apps/plugin-clipboard-manager` を使う（`navigator.clipboard` は使わない） | WebView のセキュアコンテキスト判定に依存しない |
 
+### 3.1-E Ollama統合時の設計判断（Phase 35 実施済み・2026-08-07）
+
+`llm-abstraction.md` の記述から意図的に変えた点があります。**本節が優先されます。**
+
+| 事項 | 判断 | 理由 |
+|---|---|---|
+| プラットフォーム判定 | `llm-abstraction.md` §6.1 の `isDesktopRuntime()`（`'__TAURI_INTERNALS__' in window`）は**使わない**。`HttpAdapter.canAccessLocalServers` を追加して Adapter 経由で判定する | §3.2 の裁定（`setPlatform()` 注入に統一）と整合させるため |
+| `completeJson` の `temperature: 0` | **Ollama のみ**に適用し、Claude は SDK 既定のまま | `llm-abstraction.md` §4.2 は「両方」としていたが、Phase 35 の完了条件「Web版は Phase 34 以前と挙動が一致する」を優先した |
+| Claude 向けプロンプト | スキーマのプロンプト埋め込みは Ollama のときだけ。Claude のプロンプト文字列は不変 | 同上 |
+| `maxContextTokens` | `OllamaProvider.capabilities` は固定値 8192 のまま。実コンテキスト長は `ModelInfo.contextTokens` として `/api/tags` から取り、設定UIの表示に使う | `capabilities` はコンストラクタ時点で確定させたいが、実長はモデル選択後にしか分からないため |
+| `think: false` | 全リクエストで送る（400 時フォールバックあり） | 思考モデル（qwen3.6 等）は思考トークンが `num_predict` を食い、`done_reason: 'length'` で出力が途中停止することを実測で確認したため |
+| モデル一覧取得のタイムアウト | `AbortSignal.timeout()` は**使わない**。`AbortController` ＋ `setTimeout` にして、応答を読み切った時点で `clearTimeout` する | `tauri-plugin-http` は signal の abort でレスポンスボディを解放する（`fetch_cancel_body`）。読了後にタイマーが発火すると解放済みリソースを二重に解放し、`The resource id ... is invalid` の未処理例外がデスクトップ実機で出た |
+| 分析3機能のキャンセルUI | `MapAnalysisPanel` に `AbortController` とキャンセルボタンを追加（`llm-abstraction.md` §7 の Phase 32 積み残しの解消） | ローカルLLMは応答が長くかかりうるため、Claude 前提だった頃より中断の必要性が高い |
+| `ai-http` capability | `http://localhost:*/*` / `http://127.0.0.1:*/*` に拡大 | 接続先URL設定でポートを変更可能にするため。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる |
+| Phase 32 の移行用アダプタ削除 | `toLegacySuggestionParseError` / `toLegacyAnalysisParseError` を削除し `LLMError` に一本化。UI の生レスポンスコピーは `LLMError.rawResponse` から取る | `llm-abstraction.md` §7 Step 6 の予告どおり |
+
+検証した事実（Ollama 0.32.6 / Windows 11・2026-08-07）は `docs/implementation-plan.md` Phase 35 の「検証済み」「動作確認」を参照。Node から `HttpAdapter` をスタブした Provider 単体の確認に加え、`pnpm dev:desktop` で起動したデスクトップ実機に CDP でアタッチし、Rust 側 `plugin-http` 経由での Ollama 到達・AIチャット・マップ分析まで確認済み。残るのはアイデア提案／接続提案／クラスタ提案の実機確認と、日本語対応モデルの実用性評価（ユーザーの手動確認待ち）。
+
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 
 `platform-integration.md` §3.2 は「`import.meta.env` や `'__TAURI__' in window` 判定でエントリポイントを分ける」と書いていますが、これは `architecture.md` §3.5 で**明示的に却下された案C**です。
@@ -128,7 +146,7 @@ graph LR
     P31["Phase 31<br/>既存フェーズの動作確認<br/>（前提）"] --> P32["Phase 32<br/>LLM抽象化<br/>（Web版のまま）"]
     P32 --> P33["Phase 33<br/>モノレポ移行<br/>（実装済み）"]
     P33 --> P34["Phase 34 ✅<br/>Tauri骨格<br/>ローカルファイル保存"]
-    P34 --> P35["Phase 35<br/>Ollama統合<br/>★主目的達成"]
+    P34 --> P35["Phase 35 🔨<br/>Ollama統合<br/>★主目的達成（実機確認待ち）"]
     P35 --> P36["Phase 36<br/>ビルド・配布・自動更新"]
     P36 --> P37["Phase 37<br/>デスクトップ固有UX"]
     P36 -.任意.-> P38["Phase 38<br/>Drive連携<br/>（PKCE）"]
@@ -139,7 +157,7 @@ graph LR
 | 32 ✅ | LLMプロバイダ抽象化（Claude のみ、既存構成のまま） | 2日 | llm-abstraction §2〜3, §7 Step1-2 | Web版の挙動は不変。AbortSignal の実装漏れ解消とエラー分類の統一という副産物 |
 | 33 🔨 | モノレポ移行（`packages/*` + `apps/web`） | 5日 | architecture §4〜5 Step0-7 | Web版が従来通り動き、コアが共通パッケージに分離された状態（実装済み・Drive 連携とデプロイの実機確認待ち） |
 | 34 ✅ | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる（Windows 実機で確認済み。設計からの差分は §3.1-D） |
-| 35 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成** |
+| 35 🔨 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成**（実装済み。デスクトップ実機でのAI機能5種の動作確認と日本語モデルの実用性確認が未了。差分は §3.1-E） |
 | 36 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | 他人に配れるインストーラと自動更新 |
 | 37 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・最近使った項目） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」 |
 | 38 | （任意）デスクトップ版 Google Drive 連携 | 3日 | platform-integration §3.8 | Web版とのクラウド同期 |
@@ -162,9 +180,7 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 
 | # | 事項 | 検証フェーズ | 出典 |
 |---|---|---|---|
-| 3 | `format` に JSON Schema オブジェクトを渡す機能の Ollama 最低バージョン | 35 | llm-abstraction §8.2 |
-| 4 | 開発時の Vite オリジン（`http://localhost:5173`）が `OLLAMA_ORIGINS` のデフォルト許可に含まれるか（ポート違いの扱い） | 35 | llm-abstraction §8.2 |
-| 5 | `/api/show` の `model_info` のコンテキスト長キー名がモデルファミリーごとに異なる件の網羅 | 35 | llm-abstraction §8.2 |
+| 3 | `format` に JSON Schema オブジェクトを渡す機能の Ollama 最低バージョン。**Ollama 0.32.6 では動作を確認済み**（2026-08-07実測、`docs/implementation-plan.md` Phase 35「検証済み」参照）だが、「どのバージョンから」の下限は未確定のまま | 35 | llm-abstraction §8.2 |
 | 7 | Tauri のドラッグ&ドロップと React Flow のノード操作が競合しないか | 37 | platform-integration §8 |
 | 8 | OSの「最近使った項目」「ジャンプリスト」統合が公式プラグインだけで完結するか | 37 | platform-integration §8 |
 | 9 | `tauri.conf.json` の `version` に `package.json` の相対パスを指定できるか | 36 | platform-integration §8 |
@@ -179,6 +195,15 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | 6 | **解消。** ダイアログで選んだパスは `fs:scope` の外でも読み書きできた（`dialog` プラグインが実行時にスコープを付与する）。ダイアログを通していない `fs:scope` 外のパスは `forbidden path` で拒否されることも確認済みなので、スコープは意図どおり最小に効いている。`$HOME/Documents/**` の明示追加は不要 |
 
 番号は元の表のものを維持している（#1・#2・#6 は上の表から削除済み）。
+
+#### Phase 35 で解消した項目（2026-08-07・Ollama 0.32.6 / Windows 11）
+
+| # | 結果 |
+|---|---|
+| 4 | **解消。** 実装が `tauri-plugin-http`（Rust側発行）経由に統一されたため、そもそもブラウザの CORS 制約を受けない。`OLLAMA_ORIGINS` を触らないデフォルト状態のまま、デスクトップ実機（`pnpm dev:desktop`・Vite オリジン `http://localhost:5174`）から `/api/tags` `/api/ps` `/api/chat` すべてに到達できることを CDP 経由で確認した |
+| 5 | **解消。** `/api/tags` の `details.context_length` が実コンテキスト長を返す（Ollama 0.32系以降が対応）。モデルファミリーごとに `/api/show` の `model_info` フィールド名を調べる必要がなくなった。取得値は `ModelInfo.contextTokens` として設定UIの表示に使う（`docs/design.md` §9.1.2） |
+
+番号は元の表のものを維持している（#4・#5 は上の表から削除済み）。
 
 ---
 

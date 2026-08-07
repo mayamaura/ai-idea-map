@@ -92,6 +92,12 @@ export interface SecretAdapter {
 // docs/desktop/llm-abstraction.md で扱う。ここでは「誰が実際に fetch するか」の境界のみ定義する。
 
 export interface HttpAdapter {
+  /**
+   * ブラウザの CORS 制約を受けずに localhost 上のサービスへ到達できるか。
+   * Web = false（Ollama 側の OLLAMA_ORIGINS 設定に依存するため提供できない）、
+   * Desktop = true。ローカルLLMの設定UIを出すかどうかの判定に使う。
+   */
+  readonly canAccessLocalServers: boolean
   /** 任意のURLに到達可能か（Ollama 等のローカルサーバー起動確認に使用） */
   canReach(url: string): Promise<boolean>
   /**
