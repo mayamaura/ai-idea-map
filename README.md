@@ -30,8 +30,8 @@ pnpm workspaces のモノレポです。コマンドはリポジトリのルー�
 
 ```bash
 pnpm install
-pnpm dev        # http://localhost:5173
-pnpm build      # 型検査 + プロダクションビルド
+pnpm dev        # Web版 http://localhost:5173
+pnpm build      # 型検査 + Web版のプロダクションビルド
 ```
 
 | ディレクトリ | 中身 |
@@ -40,6 +40,18 @@ pnpm build      # 型検査 + プロダクションビルド
 | `packages/core` | 型・Zustand ストア・レイアウト計算・LLM 抽象化 |
 | `packages/ui` | React コンポーネントと UI hooks |
 | `apps/web` | Web版シェル（Google Drive 連携・GIS 認証・共有URL） |
+| `apps/desktop` | デスクトップ版シェル（Tauri v2・ローカルファイル保存・OSキーチェーン） |
+
+### デスクトップ版（Tauri v2・開発中）
+
+ローカルLLM（Ollama）連携を目的としたデスクトップ版を `apps/desktop` で開発中です。マップはローカルの `.ideamap` ファイル（実体は Web版と同じ JSON）として保存し、APIキーは OSキーチェーンに置きます。Google Drive 同期と共有URLは Web版だけの機能です。
+
+```bash
+pnpm dev:desktop    # Tauri のウィンドウを起動（Vite は 5174）
+pnpm build:desktop  # インストーラをビルド
+```
+
+ビルドには Rust ツールチェーン（`stable-msvc`）・Visual Studio Build Tools 2022 の C++ ワークロード・WebView2 ランタイムが必要です（[手順](docs/desktop/platform-integration.md#7-開発環境セットアップ手順windows)）。
 
 ## 使い方
 

@@ -360,6 +360,12 @@ export function getPlatform(): Platform {
 
 ### 3.3 Web実装 / Desktop実装 対応表
 
+> **Phase 34 実装時の差分（2026-08-07）。** Desktop 実装で本表と変えた点が3つあります。
+> `SecretAdapter` は `@tauri-apps/plugin-keyring` ではなく **`keyring` crate を薄くラップした自前の Tauri コマンド4本**（`apps/desktop/src-tauri/src/keychain.rs`）。
+> `SystemAdapter.openExternalUrl` は `@tauri-apps/plugin-shell` ではなく **`@tauri-apps/plugin-opener`**（Tauri v2 で `shell` の `open` が `opener` へ分離されたため）。
+> `FileAdapter.listRecent` は OS の recent documents ではなく **`@tauri-apps/plugin-store` に自前で持つパスの一覧**（OS統合は Phase 37 で検証）。
+> あわせて `origin` プロパティが追加されています（README §3.1-D）。
+
 #### StorageAdapter
 
 | メソッド | Web実装（`apps/web/src/platform/storage.web.ts`） | Desktop実装（`apps/desktop/src/platform/storage.desktop.ts`） |
@@ -686,6 +692,9 @@ export default {
 > 当初案からの主な差分は、①Step 5-2（mapStore 移動）と 5-3（uiStore 移動）を入れ替えたこと
 > （mapStore が uiStore に依存するため）、②パッケージ間に composite なプロジェクト参照を張らないこと
 > （ソース直接参照方式では成立しない）、③依存バージョンを移行前ロックファイルに固定したことの3点です。
+>
+> **Step 8 は Phase 34 で実施済み（2026-08-07）。** 設計からの差分は [README.md](README.md) §3.1-D、
+> 実施内容と残りの実機確認項目は [../implementation-plan.md](../implementation-plan.md) の Phase 34 にあります。
 
 
 既存の `ideamap/` は現在動作しているWeb版であり、移行中も壊さないことを最優先とする。各ステップは**独立したコミット（可能ならPR）**とし、`git mv` でファイル移動の履歴を保つ。ロジック変更を伴うステップとファイル移動のみのステップを分離することで、問題発生時の原因切り分けを容易にする。

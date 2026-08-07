@@ -136,7 +136,7 @@ function AppInner({
       </div>
       {!isPresentationMode && (
         <>
-          <SettingsPanel accessToken={auth.accessToken} />
+          <SettingsPanel accessToken={auth.accessToken} showCloudSync={cloudAuth != null} />
           <AISuggestionPanel />
           {mapListSlot}
           <NodeDetailPanel />

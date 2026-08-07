@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
 import { useUIStore, useMapStore, type MapFile } from '@ideamap/core'
+import { openLoadedMap, startNewMap, useDashboardEscapeToClose } from '@ideamap/ui'
 import { listMaps, loadMap, deleteMap, saveMap } from '../../services/googleDriveService'
 import { loadRecentMaps, saveRecentMap, loadMapLocally } from '../../services/storageService'
 import type { DriveFile } from '../../services/googleDriveService'
@@ -20,7 +21,7 @@ export function FileOpenDashboard({
   onGoogleSignIn,
 }: FileOpenDashboardProps) {
   const { isFileDashboardOpen, setFileDashboardOpen, setMapTitle, setSaveStatus, setCurrentFileId, setCurrentMapId, setPresentationNodeIds, openConfirmDialog, hasActiveMap, addToast } = useUIStore()
-  const { loadFromSerialized, reset } = useMapStore()
+  const { loadFromSerialized } = useMapStore()
 
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([])
   const [isDriveLoading, setIsDriveLoading] = useState(false)
@@ -41,30 +42,9 @@ export function FileOpenDashboard({
       .finally(() => setIsDriveLoading(false))
   }, [isFileDashboardOpen, accessToken])
 
-  // マップを開いた後の再表示時のみ Esc で閉じられる（初回起動時は閉じる先がない）
-  // hasActiveMap をクロージャで持たず getState() で都度読むことでスタレ値を防ぐ
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const { hasActiveMap: active, confirmDialog } = useUIStore.getState()
-      if (e.key === 'Escape' && active && !confirmDialog) {
-        setFileDashboardOpen(false)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [setFileDashboardOpen])
+  useDashboardEscapeToClose()
 
   if (!isFileDashboardOpen) return null
-
-  const handleNewMap = () => {
-    reset()
-    setMapTitle('新しいマップ')
-    setCurrentFileId(null)
-    setCurrentMapId(null)
-    setPresentationNodeIds([])
-    setSaveStatus('unsaved')
-    setFileDashboardOpen(false)
-  }
 
   const handleResumeLocal = () => {
     if (!localMap) return
@@ -82,15 +62,9 @@ export function FileOpenDashboard({
     setIsDriveLoading(true)
     try {
       const data = (await loadMap(accessToken, file.id)) as MapFile & { mapId?: string }
-      loadFromSerialized(data.nodes, data.edges)
       const title = data.title || file.name.replace(/\.json$/, '')
-      setMapTitle(title)
-      setCurrentFileId(file.id)
-      setCurrentMapId(data.mapId ?? null)
-      setPresentationNodeIds(data.presentationNodeIds ?? [])
-      setSaveStatus('saved')
+      openLoadedMap(data, file.id, file.name.replace(/\.json$/, ''))
       saveRecentMap({ fileId: file.id, title, updatedAt: file.modifiedTime })
-      setFileDashboardOpen(false)
     } catch {
       addToast('マップの読み込みに失敗しました', 'error')
     } finally {
@@ -161,13 +135,7 @@ export function FileOpenDashboard({
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target?.result as string) as MapFile & { mapId?: string }
-        loadFromSerialized(data.nodes, data.edges)
-        setMapTitle(data.title || file.name.replace(/\.json$/, ''))
-        setCurrentFileId(null)
-        setCurrentMapId(data.mapId ?? null)
-        setPresentationNodeIds(data.presentationNodeIds ?? [])
-        setSaveStatus('unsaved')
-        setFileDashboardOpen(false)
+        openLoadedMap(data, null, file.name.replace(/\.json$/, ''))
       } catch {
         addToast('ファイルの読み込みに失敗しました', 'error')
       }
@@ -405,7 +373,7 @@ export function FileOpenDashboard({
           {/* アクションボタン */}
           <div className="px-6 py-4 flex gap-3">
             <button
-              onClick={handleNewMap}
+              onClick={startNewMap}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

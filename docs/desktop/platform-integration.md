@@ -249,6 +249,9 @@ Ollamaはローカルで動作するため認証キーを必要としません�
 
 ## 5. Tauri設定の具体例
 
+> **Phase 34 で実装済み（2026-08-07）。** 実際の設定は `apps/desktop/src-tauri/tauri.conf.json` と `apps/desktop/src-tauri/capabilities/*.json` が正です。
+> 本節の例から意図的に変えた点（capability を `main-window` / `file-access` / `ai-http` の3つに整理したこと、`fs:scope` を絞って `tauri-plugin-persisted-scope` で補うこと、`dragDropEnabled: false` にしたこと等）は [README.md](README.md) §3.1-D の表が優先されます。
+
 ### 5.1 `tauri.conf.json`
 
 ```json
@@ -585,6 +588,17 @@ async function checkForUpdate() {
 
 AIエージェント（Claude Code）が実行できる粒度でコマンドを列挙します。上から順に実行してください。
 
+> **Phase 34 時点の実績（2026-08-07）**: 開発機には §7.1〜§7.4 がすべて導入済みでした（rustc 1.97.1 `stable-x86_64-pc-windows-msvc` / Visual Studio Build Tools 2022（`Microsoft.VisualStudio.Component.VC.Tools.x86.x64`）/ WebView2 Runtime 151.0.4129.59 / Node.js 24.18.0）。
+> §7.5 以降は**モノレポ構成後のコマンドに読み替えてください**。プロジェクトは `npm create tauri-app` を使わず手書きで作成し、依存は `apps/desktop/package.json` に pnpm で追加しています。
+>
+> ```powershell
+> pnpm install            # ルートで実行
+> pnpm dev:desktop        # = pnpm --filter @ideamap/desktop tauri dev
+> pnpm build:desktop      # = tsc -b && pnpm --filter @ideamap/desktop tauri build
+> ```
+>
+> 導入した Tauri プラグインは `dialog` / `fs` / `store` / `http` / `opener` / `clipboard-manager` / `persisted-scope` の7つです。`updater` と `notification` と `window-state` は未導入（それぞれ Phase 36・未使用・Phase 37）。
+
 ### 7.1 Rustツールチェーン
 
 ```powershell
@@ -676,15 +690,16 @@ await fetch('http://localhost:11434/api/tags').then(r => r.json())
 | # | 項目 | 内容 | 対応方針 |
 |---|---|---|---|
 | 1 | `version` フィールドへのパッケージ相対パス指定 | `tauri.conf.json` の `version` に `package.json` へのパスを直接渡せるかは未確認 | 実装時に検証し、不可なら §6.4 のバージョン同期スクリプトで代替 |
-| 2 | `dialog` で選択した任意パスへの `fs` 書き込み許可の実際の挙動 | `fs:scope` の外にあるユーザー選択パスへの書き込みがdialog-fs連携で自動的に許可されるか未確認 | 実装時に実機検証し、必要なら `fs:scope` に `$HOME/Documents/**` 等を明示追加 |
+| 2 | `dialog` で選択した任意パスへの `fs` 書き込み許可の実際の挙動 | `fs:scope` の外にあるユーザー選択パスへの書き込みがdialog-fs連携で自動的に許可されるか未確認 | **Phase 34 で解消（2026-08-07）。** ダイアログで選んだパスは `fs:scope` の外でも読み書きできることを実機確認した（`dialog` プラグインが実行時にスコープを付与する）。あわせて、ダイアログを通していない `fs:scope` 外のパス（`~/Documents` 直下の直読み）は `forbidden path` で拒否されることも確認済み＝スコープは意図どおり最小に効いている。したがって `$HOME/Documents/**` の明示追加は不要。次回起動への引き継ぎには `tauri-plugin-persisted-scope` を採用している |
 | 3 | OSの「最近使った項目」（ジャンプリスト／macOS最近使った項目）へのネイティブ統合 | Tauri公式プラグインの範囲内で完結するか未確認。追加のRust実装が必要な可能性 | 初期リリースはアプリ内リストのみとし、OSネイティブ統合は別Phaseで検証 |
-| 4 | Tauriのドラッグ&ドロップイベントと React Flow のノードドラッグ操作の競合可能性 | `dragDropEnabled` がHTML5標準の `dragover`/`drop` を奪う場合、React Flow内のノードD&D操作に影響する懸念 | 実装時にReact Flowキャンバス上でのドラッグ操作を回帰テストする |
+| 4 | Tauriのドラッグ&ドロップイベントと React Flow のノードドラッグ操作の競合可能性 | `dragDropEnabled` がHTML5標準の `dragover`/`drop` を奪う場合、React Flow内のノードD&D操作に影響する懸念 | **Phase 34 では `dragDropEnabled: false` にして競合そのものを回避した。** D&D 受け入れを実装する Phase 37 で `true` にし、React Flowキャンバス上でのドラッグ操作を回帰テストする |
 | 5 | ファイルシステム監視（外部変更のリアルタイム検知） | `fs` プラグインに監視APIがなく、`notify` crateの自前実装が必要 | 初期リリースはフォーカス復帰時のポーリング検知のみとし、リアルタイム監視は見送り |
 | 6 | Google OAuthループバックサーバーのポート固定可否 | 固定ポートにするとCSPを絞れる一方、ポート競合時に失敗しうる。動的ポート採番との両立方針は未検証 | 実装時に `tauri-plugin-oauth` 等の挙動を確認し、フォールバック戦略を決める |
 | 7 | Windowsジャンプリストへのカスタムタスク登録・macOS Dockメニュー拡張 | 未着手・未調査 | Phase外。ユーザー要望が出た段階で再検討 |
 | 8 | `keyring` crateのLinux（libsecret）環境依存 | 配布優先度はWindows/macOSだが、将来Linux対応時にlibsecretが未インストールな環境でのフォールバック挙動が未確認 | Linux対応は本書のスコープ外。着手時に別途調査 |
 | 9 | コード署名なし配布時の実際のダウンロード転換率への影響 | SmartScreen/Gatekeeper警告がユーザー離脱に与える定量的影響は未計測 | リリース後の実利用データで判断し、必要性が高ければ§6.6の署名導入を前倒し |
-| 10 | AIプロバイダ抽象化（Claude/Ollama切り替え）の詳細設計 | `settingsStore.ts`/`claudeService.ts` の型・関数をどう拡張するかは本書スコープ外 | 別Phaseの設計書として切り出す |
+| 10 | AIプロバイダ抽象化（Claude/Ollama切り替え）の詳細設計 | `settingsStore.ts`/`claudeService.ts` の型・関数をどう拡張するかは本書スコープ外 | [llm-abstraction.md](llm-abstraction.md) として切り出し済み。Phase 32 で `LLMProvider` を実装、Ollama 実装は Phase 35 |
+| 12 | `keyring` crate の API | 本書 §4.2 のコード例は keyring v3 相当。実際に導入した v4.1.6 では `keyring::v1::Entry` に移動している | **Phase 34 で解消。** `apps/desktop/src-tauri/src/keychain.rs` が `keyring::v1::{Entry, Error}` を使い、`NoEntry` を「未設定」として `null` / `false` / no-op に写している |
 | 11 | 共有URL機能の代替（カスタムURIスキーム） | `ideamap://` スキームでの代替は設計のみ言及し実装方式は未検討 | 需要が確認できた場合に別途設計 |
 
 ---

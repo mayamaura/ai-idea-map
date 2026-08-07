@@ -1539,30 +1539,88 @@ Playwright では確認できていないため、`pnpm dev` での手動確認�
 
 ---
 
-### Phase 34: Tauri デスクトップ版の骨格（約5日）
+### Phase 34: Tauri デスクトップ版の骨格（約5日）✅ 完了（2026-08-07）
 
 **目標**: `apps/desktop` を新設し、ウィンドウが起動してマップ編集とローカルファイル保存ができる状態にする。Ollama 連携はまだ含まない。
 
-> 参照: `docs/desktop/platform-integration.md` §3〜5・§7、`docs/desktop/architecture.md` §5 Step 8。
+> 参照: `docs/desktop/platform-integration.md` §3〜5・§7、`docs/desktop/architecture.md` §5 Step 8。設計からの差分は `docs/desktop/README.md` §3.1-D。
 
 #### タスク
-- [ ] Windows 開発環境セットアップ（Rust ツールチェーン / MSVC Build Tools / WebView2）。手順は `platform-integration.md` §7
-- [ ] **最優先の検証**: Tauri の空ウィンドウで React Flow を表示し、①日本語IME入力が正常か ②大規模マップの描画性能が実用範囲か を確認する。**ここが致命的なら ADR-001 §6 に従いフレームワーク選定をやり直す**
-- [ ] `apps/desktop` を作成（Vite + `src-tauri`）。`packages/ui` / `packages/core` を参照する
-- [ ] `tauri.conf.json` と `capabilities/*.json` を作成。CSP と `fs` / `dialog` / `store` / `http` のスコープを最小権限で設定
-- [ ] `apps/desktop/src/platform/*.desktop.ts` に Adapter を実装
-  - [ ] `StorageAdapter`: `@tauri-apps/plugin-store`
-  - [ ] `FileAdapter`: `@tauri-apps/plugin-dialog` の `open`/`save` ＋ `@tauri-apps/plugin-fs`
-  - [ ] `SecretAdapter`: OSキーチェーン（`keyring` crate をラップした Tauri コマンド）。`isPassphraseFree: true`
-  - [ ] `HttpAdapter`: `@tauri-apps/plugin-http`
-  - [ ] `SystemAdapter`: クリップボード、`opener`、ウィンドウ `close-requested` による終了前確認
-- [ ] `main.tsx` で `setPlatform(desktopPlatform)` を呼ぶ
-- [ ] 自動保存の書き込み先を「開いているファイル」に切り替え。ファイル未確定時は `$APPLOCALDATA/autosave/<mapId>.ideamap`
-- [ ] APIキー入力時にマスターパスワードを要求しない分岐（`SecretAdapter.isPassphraseFree` を見る）
-- [ ] Web専用機能（Drive同期・GIS認証・共有URL）がデスクトップ版UIに出ないことを確認
-- [ ] `docs/requirements.md` にデスクトップ版の機能要件を追記
+- [x]✅ Windows 開発環境セットアップ（Rust ツールチェーン / MSVC Build Tools / WebView2）。**すべて導入済みだった**（rustc 1.97.1 stable-msvc / Visual Studio Build Tools 2022（VC.Tools.x86.x64）/ WebView2 Runtime 151.0.4129.59）
+- [x]✅ **最優先の検証**: Tauri の空ウィンドウで React Flow を表示し、①日本語IME入力が正常か ②大規模マップの描画性能が実用範囲か を確認する。**ここが致命的なら ADR-001 §6 に従いフレームワーク選定をやり直す** → **どちらも問題なし**（2026-08-07・Windows 11 + WebView2 151 の実機）。ADR-001 の結論は維持
+- [x] `apps/desktop` を作成（Vite + `src-tauri`）。`packages/ui` / `packages/core` を参照する
+- [x] `tauri.conf.json` と `capabilities/*.json` を作成。CSP と `fs` / `dialog` / `store` / `http` のスコープを最小権限で設定（`main-window` / `file-access` / `ai-http` の3ファイル）
+- [x] `apps/desktop/src/platform/*.desktop.ts` に Adapter を実装
+  - [x] `StorageAdapter`: `@tauri-apps/plugin-store`（`$APPCONFIG/app-data.json`）
+  - [x] `FileAdapter`: `@tauri-apps/plugin-dialog` の `open`/`save` ＋ `@tauri-apps/plugin-fs`
+  - [x] `SecretAdapter`: OSキーチェーン（`keyring` crate v4 をラップした Tauri コマンド4本）。`isPassphraseFree: true`
+  - [x] `HttpAdapter`: `@tauri-apps/plugin-http`
+  - [x] `SystemAdapter`: クリップボード（`plugin-clipboard-manager`）、`opener`、ウィンドウ `close-requested` による終了前確認
+- [x] `main.tsx` で `setPlatform(desktopPlatform)` を呼ぶ
+- [x] 自動保存の書き込み先を「開いているファイル」に切り替え。ファイル未確定時は `$APPLOCALDATA/autosave/<mapId>.ideamap`
+- [x] APIキー入力時にマスターパスワードを要求しない分岐（`SecretAdapter.isPassphraseFree` を見る）
+- [x]✅ Web専用機能（Drive同期・GIS認証・共有URL）がデスクトップ版UIに出ないことを確認
+- [x] `settingsStore` の zustand `persist` を StorageAdapter 経由へ（Phase 33 からの積み残し #8）。`skipHydration: true` ＋ `restorePersistedState()` を初回レンダー前に await
+- [x] `docs/requirements.md` にデスクトップ版の機能要件を追記
 
 **完了条件**: `pnpm tauri dev` でウィンドウが起動する。マップの作成・編集・Undo/Redo・ローカルファイルへの保存と読み込み・Claude API でのAI提案が動作する。日本語入力に問題がない。アプリ再起動後も設定とAPIキーが復元される（マスターパスワード入力なしで）。
+
+#### 動作確認（CDP 経由の自動検証・2026-08-07）
+
+WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP でアタッチして検証した。検証スクリプトは確認後に削除済み。
+
+- [x]✅ `pnpm tauri dev` でウィンドウが起動する（`cargo check` 通過。dev ビルドで起動しウィンドウタイトル「IdeaMap」を確認）
+- [x]✅ 起動画面がデスクトップ版のもの（新規作成／ファイルを開く／最近開いたファイル）で、Google・Drive・サインインの文字列が画面上に一切ない
+- [x]✅ ヘッダーが `IdeaMap 未保存 · ローカル AIチャット マップ分析` で、Drive接続ボタンが出ない。設定パネルに Drive同期セクションとマスターパスワード欄が出ない
+- [x]✅ APIキーの説明文が「この端末のOSキーチェーンにのみ保存されます」に切り替わる
+- [x]✅ `MasterPasswordModal` が一度も表示されない（`initApiKey` が `isPassphraseFree` 分岐に入るため `apiKeyLock` が `locked` にならない）
+- [x]✅ OSキーチェーンの往復（`set_secret` → `has_secret` → `get_secret` → `clear_secret`）。日本語を含む値 `probe-値-123` がそのまま戻る
+- [x]✅ `HttpAdapter` が Rust 側の http プラグイン経由で発行され、`ai-http` capability の許可URLが通る
+- [x]✅ 自動保存が `$APPLOCALDATA/com.ideamap.desktop/autosave/<mapId>.ideamap` を書き、UTF-8 の正しい JSON（`title: "新しいマップ"`）になっている。保存表示が「保存済み · ローカル」になる
+- [x]✅ `$APPCONFIG/com.ideamap.desktop/app-data.json` に `ideamap-welcomed` / `ideamap-settings`（zustand persist のペイロード）/ `last-autosave-path` が入る＝StorageAdapter への移行が効いている
+- [x]✅ 再起動後、起動画面の「前回の作業を再開」に前回の自動保存が出る
+- [x]✅ `fs:scope` が効いている。`~/Documents` 直下を直接読むと `forbidden path` で拒否される
+- [x]✅ リリースビルド（`tauri build --no-bundle`）が通り、生成した exe が **本番CSP**（`devCsp` ではない方）で起動・描画・自動保存まで動く
+- [x]✅ 全工程で console error / pageerror がゼロ
+- [x]✅ `pnpm typecheck` 通過。`pnpm lint` は 16 problems（13 errors, 3 warnings）で Phase 33 完了時と同数、`apps/desktop` の新規指摘はゼロ
+- [x]✅ Web版の `pnpm build` に影響なし（CSS 48.64 kB・`ai` チャンク 144.40 kB とも Phase 33 と一致）
+
+#### 実機確認（`pnpm dev:desktop`・2026-08-07）
+
+合成入力では再現できない項目をユーザーが手動で確認した。
+
+- [x]✅ **日本語IME入力**（README §5 #1・最優先）。ノードのインライン編集・タイトル・AIチャット入力で変換が正常に確定する
+- [x]✅ **大規模マップの描画性能**（README §5 #2）。パン・ズーム・ドラッグが実用範囲
+- [x]✅ ネイティブの「開く」ダイアログで `.ideamap` を選んで読み込める。**README §5 #6（`fs:scope` 外のパスが dialog の実行時許可で読み書きできるか）もこれで解消**
+- [x]✅ 「名前を付けて保存」ダイアログが出て、選んだパスに書き込める
+- [x]✅ マップの編集・Undo/Redo（Ctrl+Z / Ctrl+Y）
+- [x]✅ Claude API でAI提案が動く
+- [x]✅ 未保存のまま閉じたときのネイティブ確認ダイアログ
+- [x]✅ エクスポート（PNG / SVG / Markdown / JSON）が保存ダイアログ経由で書き出せる
+- [x]✅ 再起動後、「最近開いたファイル」から前回のファイルを開ける（`tauri-plugin-persisted-scope` による scope 引き継ぎが効いている）
+- [x]✅ 再起動後もAPIキーが復元される。マスターパスワードは要求されない
+
+#### 実装時の判断（設計ドキュメントからの差分）
+
+`docs/desktop/README.md` §3.1-D に表としてまとめた。要点のみ再掲する。
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | capability の分割 | `main-window` / `file-access` / `ai-http` の3つ。`ollama-http` は Anthropic API と同じ「AIプロバイダへの通信」なので `ai-http` に統合。`google-oauth` はスコープ外、`updater` は Phase 36 |
+| 2 | ダイアログで選んだパスの `fs` 許可 | `fs:scope` はアプリ専用ディレクトリのみに絞り、`tauri-plugin-persisted-scope` で dialog の実行時許可を次回起動へ引き継ぐ。`$HOME/Documents/**` の明示追加より攻撃面が狭い |
+| 3 | `FileAdapter.origin` の追加 | `useAutoSave` が `origin: 'cloud'` 決め打ちで `FileRef` を組んでいたため。platform 型・web 実装・desktop 実装の3点を同時に追加 |
+| 4 | `AutoSaveOptions.createNewFileOnSave` | Web=true / Desktop=false。false ではデバウンス保存がローカル控えだけで完了し、実ファイルの新規作成は明示保存（Ctrl+S）に限る。無いと3秒ごとに保存ダイアログが出る |
+| 5 | `keyring` crate | v4 の `keyring::v1::Entry` を自前の Tauri コマンドで薄くラップ。§4.2 のコード例（v3 相当）とは API が異なる。コミュニティプラグインは使わない |
+| 6 | `dragDropEnabled` | `false`。React Flow との競合（README §5 #7）が未検証のため、D&D を扱う Phase 37 で有効化して検証する |
+| 7 | ダッシュボードの共通化 | `startNewMap` / `openLoadedMap` / `useDashboardEscapeToClose` を `packages/ui/src/hooks/useFileDashboard.ts` に切り出し、Web版 `FileOpenDashboard` とデスクトップ版 `DesktopFileDashboard` の両方から使う |
+| 8 | Vite の watch 除外 | `apps/desktop/vite.config.ts` で `**/src-tauri/**` を watch から外す。cargo が書き込み中の DLL を Vite が監視すると EBUSY で dev サーバーごと落ちる |
+| 9 | dev ポート | デスクトップ版は 5174（Web版の 5173 と分ける）。`strictPort: true` にして、ポート衝突時に別ポートへ逃げてウィンドウが空白になるのを防ぐ |
+
+#### 積み残し
+
+- 自動保存の控え（`$APPLOCALDATA/autosave/<mapId>.ideamap`）は mapId ごとに増え続ける。古いものの掃除は未実装（Phase 37 の「最近開いたファイル」整備とあわせて対応する）
+- `tauri.conf.json` の `version` は `0.1.0` の直書き。`package.json` との同期方針は Phase 36 で決める
+- Ollama への到達確認は capability の許可設定までで、実際の Ollama 通信は Phase 35
 
 ---
 

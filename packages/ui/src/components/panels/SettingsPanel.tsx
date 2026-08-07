@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getPlatform } from '@ideamap/platform'
 import { useUIStore, useSettingsStore, DEFAULT_CATEGORIES, type AIModel } from '@ideamap/core'
 
 interface DriveSyncSectionProps {
@@ -345,9 +346,11 @@ function CategoryManager() {
 
 interface SettingsPanelProps {
   accessToken: string | null
+  /** クラウド設定同期のセクションを出すか。デスクトップ版は false */
+  showCloudSync?: boolean
 }
 
-export function SettingsPanel({ accessToken }: SettingsPanelProps) {
+export function SettingsPanel({ accessToken, showCloudSync = true }: SettingsPanelProps) {
   const { isSettingsOpen, setSettingsOpen } = useUIStore()
   const {
     apiKey, setApiKey,
@@ -361,6 +364,9 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
   const [keyInput, setKeyInput] = useState(apiKey ? '••••••••••••••••' : '')
   const [showKey, setShowKey] = useState(false)
   const [isEditingKey, setIsEditingKey] = useState(false)
+  // 実行中に変わらない値なので遅延初期化で一度だけ読む。
+  // レンダー本体で getPlatform() を呼ぶと setPlatform() 前の評価に晒されるため避ける
+  const [isKeychainBacked] = useState(() => getPlatform().secret.isPassphraseFree)
 
   if (!isSettingsOpen) return null
 
@@ -459,7 +465,9 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
                   </div>
                 )}
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
-                  キーはこのブラウザにのみ保存されます。サーバーには送信しません。
+                  {isKeychainBacked
+                    ? 'キーはこの端末のOSキーチェーンにのみ保存されます。サーバーには送信しません。'
+                    : 'キーはこのブラウザにのみ保存されます。サーバーには送信しません。'}
                 </p>
                 <div className="mt-1.5 space-y-1">
                   <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -512,8 +520,8 @@ export function SettingsPanel({ accessToken }: SettingsPanelProps) {
             </div>
           </section>
 
-          {/* Drive同期 */}
-          <DriveSyncSection accessToken={accessToken} />
+          {/* Drive同期（マスターパスワード設定を兼ねるため Web版でのみ表示する） */}
+          {showCloudSync && <DriveSyncSection accessToken={accessToken} />}
 
           {/* カテゴリ管理 */}
           <section>

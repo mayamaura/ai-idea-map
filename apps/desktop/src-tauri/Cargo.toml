@@ -1,0 +1,30 @@
+[package]
+name = "ideamap-desktop"
+version = "0.1.0"
+description = "IdeaMap Desktop"
+authors = ["Masahiro Yamaura"]
+edition = "2021"
+rust-version = "1.88"
+
+[lib]
+# Tauri v2 の標準構成。main.rs は薄いエントリで、実体は lib 側に置く
+name = "ideamap_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-opener = "2"
+# ダイアログで選ばれたパスへの fs 許可は既定ではプロセス内に留まるため、
+# 「最近開いたファイル」を次回起動でも開けるようスコープを永続化する
+tauri-plugin-persisted-scope = "2"
+tauri-plugin-store = "2"
+keyring = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

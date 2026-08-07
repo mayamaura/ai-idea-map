@@ -37,6 +37,8 @@ function toRef(id: string, name: string): FileRef {
 }
 
 export const webFileAdapter: FileAdapter = {
+  origin: 'cloud',
+
   get isRemoteReady() {
     return accessToken !== null
   },

@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "pnpm --filter @ideamap/web dev",
     "dev:web": "pnpm --filter @ideamap/web dev",
+    "dev:desktop": "pnpm --filter @ideamap/desktop tauri dev",
     "build": "tsc -b && pnpm --filter @ideamap/web build",
+    "build:desktop": "tsc -b && pnpm --filter @ideamap/desktop tauri build",
     "preview": "pnpm --filter @ideamap/web preview",
     "lint": "eslint .",
     "typecheck": "tsc -b"

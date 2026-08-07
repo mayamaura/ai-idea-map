@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform } from '@ideamap/platform'
 import type { Theme, AIModel, NodeShape, EdgeStyle, Category } from '../types'
@@ -143,6 +143,14 @@ export const useSettingsStore = create<SettingsState>()(
           void secret.clearSecret(API_KEY_SECRET)
           return
         }
+        if (secret.isPassphraseFree) {
+          // OSキーチェーン（デスクトップ版）は OS ログインで保護済みなので、
+          // マスターパスワードを介さずそのまま預ける
+          void secret.setSecret(API_KEY_SECRET, key).then(() => {
+            set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: false })
+          })
+          return
+        }
         if (syncPassword) {
           void secret.setSecret(API_KEY_SECRET, key, syncPassword).then(() => {
             set({ apiKey: key, apiKeyLock: 'unlocked', needsMasterPasswordSetup: false })
@@ -201,6 +209,17 @@ export const useSettingsStore = create<SettingsState>()(
 
       initApiKey: async () => {
         const { secret } = getPlatform()
+        if (secret.isPassphraseFree) {
+          // 解錠の概念が無いので起動時にそのまま読み出す。
+          // apiKeyLock を 'locked' にしないことで MasterPasswordModal は一度も出ない
+          const key = await secret.getSecret(API_KEY_SECRET)
+          set({
+            apiKey: key ?? '',
+            apiKeyLock: key ? 'unlocked' : 'none',
+            needsMasterPasswordSetup: false,
+          })
+          return
+        }
         if (await secret.hasSecret(API_KEY_SECRET)) {
           // 新形式キーあり: ロック状態にしてモーダルが解錠を促す
           set({ apiKeyLock: 'locked' })
@@ -258,11 +277,16 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'ideamap-settings',
-      // NOTE(Phase 34): storage は zustand 既定の localStorage のまま。
-      // StorageAdapter は非同期のため差し替えるとハイドレーションが1マイクロタスク遅れ、
-      // 初回描画がテーマ既定値（light）で走ってちらつく。Phase 33 の判定条件は
-      // 「移行前と同じ動作」なのでここでは変更せず、実プラットフォームが2つになる
-      // Phase 34 で非同期ハイドレーション込みで対応する。
+      // 保存先は StorageAdapter（Web=localStorage / Desktop=tauri-plugin-store）。
+      // 非同期なので zustand の自動ハイドレーションでは初回描画がテーマ既定値（light）で
+      // 走ってちらつく。skipHydration で自動復元を止め、各アプリの main.tsx が
+      // restorePersistedState() を await してからレンダーする（stores/bootstrap.ts）
+      storage: createJSONStorage(() => ({
+        getItem: (name) => getPlatform().storage.getItem(name),
+        setItem: (name, value) => getPlatform().storage.setItem(name, value),
+        removeItem: (name) => getPlatform().storage.removeItem(name),
+      })),
+      skipHydration: true,
       // v0（バージョン未指定）の保存データには廃止済みモデルIDが残るため読み替える
       version: 1,
       migrate: (persisted) => {

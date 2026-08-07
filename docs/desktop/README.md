@@ -3,7 +3,7 @@
 **このディレクトリは「Web版とデスクトップ版でコアを共通化しながら、ローカルLLM（Ollama）対応のデスクトップ版を作る」ための設計群です。**
 作業を始める AI エージェント・開発者は、まず本ファイルを読んでから個別ドキュメントに進んでください。
 
-最終更新: 2026-08-06
+最終更新: 2026-08-07
 
 ---
 
@@ -78,6 +78,24 @@
 非同期ストレージにするとハイドレーションが1マイクロタスク遅れ、初回描画がテーマ既定値で走ってちらつくためです。
 Phase 33 の判定条件が「移行前と同じ動作」であることを優先し、Phase 34 で非同期ハイドレーション込みで対応します。
 
+→ **Phase 34 で対応済み（2026-08-07）。** `storage` を StorageAdapter 経由の `createJSONStorage` にしたうえで `skipHydration: true` を付け、
+`packages/core/src/stores/bootstrap.ts` の `restorePersistedState()` を各アプリの `main.tsx` が最初のレンダー前に await します。
+自動ハイドレーションを止めて「復元してから描画する」順序に固定したので、ちらつきは起きません。
+
+### 3.1-D Tauri 骨格実装時の設計判断（Phase 34 実施済み・2026-08-07）
+
+`platform-integration.md` の記述から意図的に変えた点です。**本節が優先されます。**
+
+| 変更 | 内容 | 理由 |
+|---|---|---|
+| capability の分割 | `main-window` / `file-access` / `ai-http` の3ファイル。`google-oauth` と `updater` は作らない | §3.1 の裁定で Drive はスコープ外、自動更新は Phase 36。`ollama-http` は Anthropic API と同じ「AIプロバイダへの通信」なので `ai-http` に統合した |
+| ダイアログで選んだパスの `fs` 許可 | `fs:scope` はアプリ専用ディレクトリ（`$APPCONFIG` / `$APPLOCALDATA`）のみに絞り、ユーザーが選んだパスは dialog プラグインの実行時許可に任せる。それを次回起動へ引き継ぐため **`tauri-plugin-persisted-scope` を追加** | §8 #2 の「`$HOME/Documents/**` 等を明示追加」より攻撃面が狭い。「ユーザーが一度選んだファイルだけ」に限定できる |
+| `FileAdapter.origin` の追加 | Adapter が扱う保存先の種別（`'cloud'` / `'local'`）を公開する | `useAutoSave` が `currentFileId` から `FileRef` を組み立てる際、`origin` を `'cloud'` 決め打ちにしていたため。3点（platform 型・web 実装・desktop 実装）を揃えて追加した |
+| 自動保存の新規ファイル作成 | `AutoSaveOptions` に `createNewFileOnSave`（Web=true / Desktop=false）を追加。false のときデバウンス保存は `saveLocalMirror` だけで完了し、実ファイルの新規作成は明示保存（Ctrl+S・ヘッダークリック）に限る | §3.3 の「ファイル未確定時は `$APPLOCALDATA/autosave/` へ」を実現する具体手段。これが無いと3秒ごとに保存ダイアログが出る |
+| キーチェーンの実装 | `keyring` crate v4 の `keyring::v1::Entry` を薄くラップした Tauri コマンド4本（`has_secret` / `get_secret` / `set_secret` / `clear_secret`）。コミュニティプラグインは使わない | §4.2 のコード例（keyring v3 相当）と API が変わっている。依存を増やさず自前ラッパーで足りる |
+| ウィンドウの `dragDropEnabled` | `false` にする | §8 #4 の React Flow との競合が未検証。D&D を扱う Phase 37 で `true` にして検証する |
+| クリップボード | `@tauri-apps/plugin-clipboard-manager` を使う（`navigator.clipboard` は使わない） | WebView のセキュアコンテキスト判定に依存しない |
+
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 
 `platform-integration.md` §3.2 は「`import.meta.env` や `'__TAURI__' in window` 判定でエントリポイントを分ける」と書いていますが、これは `architecture.md` §3.5 で**明示的に却下された案C**です。
@@ -109,7 +127,7 @@ Phase 33 の判定条件が「移行前と同じ動作」であることを優�
 graph LR
     P31["Phase 31<br/>既存フェーズの動作確認<br/>（前提）"] --> P32["Phase 32<br/>LLM抽象化<br/>（Web版のまま）"]
     P32 --> P33["Phase 33<br/>モノレポ移行<br/>（実装済み）"]
-    P33 --> P34["Phase 34<br/>Tauri骨格<br/>ローカルファイル保存"]
+    P33 --> P34["Phase 34 ✅<br/>Tauri骨格<br/>ローカルファイル保存"]
     P34 --> P35["Phase 35<br/>Ollama統合<br/>★主目的達成"]
     P35 --> P36["Phase 36<br/>ビルド・配布・自動更新"]
     P36 --> P37["Phase 37<br/>デスクトップ固有UX"]
@@ -120,7 +138,7 @@ graph LR
 |---|---|---|---|---|
 | 32 ✅ | LLMプロバイダ抽象化（Claude のみ、既存構成のまま） | 2日 | llm-abstraction §2〜3, §7 Step1-2 | Web版の挙動は不変。AbortSignal の実装漏れ解消とエラー分類の統一という副産物 |
 | 33 🔨 | モノレポ移行（`packages/*` + `apps/web`） | 5日 | architecture §4〜5 Step0-7 | Web版が従来通り動き、コアが共通パッケージに分離された状態（実装済み・Drive 連携とデプロイの実機確認待ち） |
-| 34 | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる |
+| 34 ✅ | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる（Windows 実機で確認済み。設計からの差分は §3.1-D） |
 | 35 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成** |
 | 36 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | 他人に配れるインストーラと自動更新 |
 | 37 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・最近使った項目） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」 |
@@ -144,15 +162,23 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 
 | # | 事項 | 検証フェーズ | 出典 |
 |---|---|---|---|
-| 1 | Tauri v2 + WebView2（Windows）で日本語IME入力に問題がないか（Linux 限定の既知不具合は確認済み、Windows は未確認） | 34（最優先。ここが致命的なら ADR の再検討） | adr-001 §4 |
-| 2 | React Flow の大規模マップ描画性能が WebView2 で実用範囲か | 34 | adr-001 §4 |
 | 3 | `format` に JSON Schema オブジェクトを渡す機能の Ollama 最低バージョン | 35 | llm-abstraction §8.2 |
 | 4 | 開発時の Vite オリジン（`http://localhost:5173`）が `OLLAMA_ORIGINS` のデフォルト許可に含まれるか（ポート違いの扱い） | 35 | llm-abstraction §8.2 |
 | 5 | `/api/show` の `model_info` のコンテキスト長キー名がモデルファミリーごとに異なる件の網羅 | 35 | llm-abstraction §8.2 |
-| 6 | `dialog` で選ばせたパスへの `fs` 書き込みが、スコープ外でも自動許可されるか | 34 | platform-integration §8 |
 | 7 | Tauri のドラッグ&ドロップと React Flow のノード操作が競合しないか | 37 | platform-integration §8 |
 | 8 | OSの「最近使った項目」「ジャンプリスト」統合が公式プラグインだけで完結するか | 37 | platform-integration §8 |
 | 9 | `tauri.conf.json` の `version` に `package.json` の相対パスを指定できるか | 36 | platform-integration §8 |
+| 10 | macOS（WKWebView）でのレンダリング差異・日本語IME・描画性能。Windows では解消済みだが macOS 実機が未入手 | 36 | adr-001 §4 |
+
+#### Phase 34 で解消した項目（2026-08-07・Windows 11 実機）
+
+| # | 結果 |
+|---|---|
+| 1 | **解消。** WebView2 151.0.4129.59 上で日本語IME入力（ノードのインライン編集・タイトル・AIチャット入力欄）に問題なし。**ADR-001 の結論を覆す条件には該当しなかった** |
+| 2 | **解消。** 大規模マップでも React Flow の描画は実用範囲 |
+| 6 | **解消。** ダイアログで選んだパスは `fs:scope` の外でも読み書きできた（`dialog` プラグインが実行時にスコープを付与する）。ダイアログを通していない `fs:scope` 外のパスは `forbidden path` で拒否されることも確認済みなので、スコープは意図どおり最小に効いている。`$HOME/Documents/**` の明示追加は不要 |
+
+番号は元の表のものを維持している（#1・#2・#6 は上の表から削除済み）。
 
 ---
 

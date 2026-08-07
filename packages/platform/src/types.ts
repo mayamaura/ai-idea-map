@@ -33,6 +33,8 @@ export interface RecentFileEntry {
 }
 
 export interface FileAdapter {
+  /** この Adapter が扱う保存先の種別。生成した FileRef の origin と一致する */
+  readonly origin: FileRef['origin']
   /** クラウド／ローカルの保存先が今すぐ使えるか（Web = Drive サインイン済み） */
   readonly isRemoteReady: boolean
   /** 最近開いたマップの一覧（ダッシュボード表示用） */

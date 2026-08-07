@@ -4,7 +4,7 @@
 
 AIと一緒に育てるアイデアマップアプリ。React Flow でノード・エッジを管理し、Claude API でアイデアを拡張する。バックエンドなしのフロントエンドのみ SPA。
 
-ソースコードは `packages/`（core・ui・platform）と `apps/web` に分かれている（Phase 33 でモノレポ化）。
+ソースコードは `packages/`（core・ui・platform）と `apps/`（web・desktop）に分かれている（Phase 33 でモノレポ化、Phase 34 でデスクトップ版 Tauri シェルを追加）。
 
 ---
 
@@ -80,18 +80,22 @@ AIと一緒に育てるアイデアマップアプリ。React Flow でノード�
 pnpm workspaces のモノレポ。コマンドはすべてリポジトリのルートで実行する。
 
 ```bash
-pnpm install     # 依存インストール（初回・依存追加時）
-pnpm dev         # 開発サーバー起動（http://localhost:5173）
-pnpm build       # 型検査（tsc -b）+ プロダクションビルド
-pnpm preview     # ビルド結果を確認
-pnpm lint        # 全パッケージの ESLint
-pnpm typecheck   # 型検査のみ
+pnpm install       # 依存インストール（初回・依存追加時）
+pnpm dev           # Web版の開発サーバー起動（http://localhost:5173）
+pnpm build         # 型検査（tsc -b）+ Web版のプロダクションビルド
+pnpm preview       # ビルド結果を確認
+pnpm lint          # 全パッケージの ESLint
+pnpm typecheck     # 型検査のみ
+pnpm dev:desktop   # デスクトップ版を起動（Vite は 5174、Tauri がウィンドウを開く）
+pnpm build:desktop # デスクトップ版のインストーラをビルド
 ```
 
 必要な環境変数（`apps/web/.env` に設定）:
 ```
 VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ```
+
+デスクトップ版のビルドには Rust ツールチェーン（`stable-msvc`）・Visual Studio Build Tools 2022 の C++ ワークロード・WebView2 ランタイムが必要（手順は `docs/desktop/platform-integration.md` §7）。
 
 ---
 
@@ -152,9 +156,16 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 - Web版とデスクトップ版で同じロジックを別々に書かない。それが起きたら `packages/core` に上げる合図。
 - 移行作業中は「ファイル移動（`git mv`）のみのコミット」と「ロジック変更のコミット」を必ず分離する。
 
-### Phase 33 時点で Adapter 未接続の箇所
+### 永続化状態の復元
 
-- `settingsStore` の zustand `persist` は既定の localStorage のまま。StorageAdapter は非同期でハイドレーションが遅れ初回描画がちらつくため、Phase 34 で非同期ハイドレーション込みで対応する。
+`settingsStore` の zustand `persist` と `uiStore` の `currentFileId` は StorageAdapter 経由（非同期）で読む。ストア生成時には読めないため、各アプリの `main.tsx` が `restorePersistedState()`（`packages/core/src/stores/bootstrap.ts`）を **await してから最初のレンダーを行う**。順序を崩すとテーマ既定値でのちらつきと、前回ファイルへの誤保存が起きる。
+
+### デスクトップ版（`apps/desktop`）で気をつけること
+
+- Tauri プラグインを追加したら、JS 側の依存（`apps/desktop/package.json`）・Rust 側の依存（`src-tauri/Cargo.toml`）・`lib.rs` への登録・`capabilities/*.json` への権限追加の**4点を揃える**。どれか1つでも欠けると実行時に権限エラーになる。
+- `capabilities/*.json` は機能単位で分ける（`main-window` / `file-access` / `ai-http`）。`fs:scope` はアプリ専用ディレクトリ（`$APPCONFIG` / `$APPLOCALDATA`）のみで、ユーザーが選んだパスは dialog プラグインの実行時許可 ＋ `tauri-plugin-persisted-scope` に任せる。安易に `$HOME/**` を足さない。
+- CSP は `tauri.conf.json` の `csp`（本番）と `devCsp`（開発）の両方にある。片方だけ直すと本番ビルドで壊れる。
+- `src-tauri` は Vite の watch から除外してある（`vite.config.ts`）。cargo が書き込み中の DLL を監視すると EBUSY で dev サーバーごと落ちるため、外さないこと。
 
 ### Web専用として `apps/web` に残っているもの
 

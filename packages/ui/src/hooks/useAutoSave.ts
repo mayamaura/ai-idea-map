@@ -23,6 +23,13 @@ export interface AutoSaveOptions {
    * 省略時は汎用トーストを出すだけ。attempt は credentialKey 更新後の連続失敗回数（1 始まり）。
    */
   onSaveError?: (err: unknown, attempt: number) => 'retry' | 'handled'
+  /**
+   * 保存先が未確定のとき、デバウンス保存で新規ファイルを作ってよいか。
+   * Web版（Drive へ黙って新規作成する）は true、
+   * デスクトップ版は false —「名前を付けて保存」ダイアログが3秒ごとに出てしまうため、
+   * ユーザーが明示的に保存するまではローカル控え（autosave 領域）だけに書く。
+   */
+  createNewFileOnSave?: boolean
 }
 
 /**
@@ -31,7 +38,7 @@ export interface AutoSaveOptions {
  * デスクトップ版（ローカルファイル）でも同じフックが使える。
  */
 export function useAutoSave(options: AutoSaveOptions) {
-  const { remoteReady, credentialKey = null, onSaveError } = options
+  const { remoteReady, credentialKey = null, onSaveError, createNewFileOnSave = true } = options
   const { setSaveStatus } = useUIStore()
   const { autoSave } = useSettingsStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -85,7 +92,8 @@ export function useAutoSave(options: AutoSaveOptions) {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
 
-  const performSave = useCallback(async () => {
+  /** @param isExplicit 手動保存（Ctrl+S・ヘッダークリック）か。true なら保存先の確定ダイアログを出してよい */
+  const performSave = useCallback(async (isExplicit = false) => {
     if (isSuspendedRef.current) return
     // マップ未読込（起動直後・ダッシュボード表示中）は保存しない。
     // リロードで mapStore は初期マップにリセットされる一方 currentFileId は永続化領域から
@@ -116,10 +124,13 @@ export function useAutoSave(options: AutoSaveOptions) {
 
     await file.saveLocalMirror(mapFile)
 
-    if (remoteReady) {
-      const ref: FileRef | null = currentFileId
-        ? { id: currentFileId, name: mapTitle, origin: 'cloud', updatedAt: '' }
-        : null
+    const ref: FileRef | null = currentFileId
+      ? { id: currentFileId, name: mapTitle, origin: file.origin, updatedAt: '' }
+      : null
+    // 保存先未確定 + 新規作成が許されていないデバウンス保存は、ローカル控えだけで完了とする
+    const canPersist = remoteReady && (ref !== null || isExplicit || createNewFileOnSave)
+
+    if (canPersist) {
       try {
         // 上書き保存の場合：最初の保存 or バックグラウンド復帰後に衝突チェック
         if (ref && !hasCheckedThisSessionRef.current) {
@@ -133,7 +144,7 @@ export function useAutoSave(options: AutoSaveOptions) {
                 title: `「${mapTitle}」で競合が検出されました`,
                 message:
                   'このファイルは別のデバイスまたは別のプロジェクトの内容で更新されています。' +
-                  '自分の編集内容を上書き保存すると、Drive 上の別の内容が失われます。',
+                  '自分の編集内容を上書き保存すると、保存先にある別の内容が失われます。',
                 confirmLabel: '上書き保存',
                 danger: true,
                 secondaryAction: {
@@ -172,8 +183,15 @@ export function useAutoSave(options: AutoSaveOptions) {
           ? await file.saveFile(ref, mapFile)
           : await file.saveFileAs(mapFile, mapTitle)
 
+        // saveFileAs の null は保存ダイアログのキャンセル（デスクトップ版のみ起きる）。
+        // 失敗ではないのでエラー表示はせず、未保存のまま次の操作を待つ
+        if (!savedRef) {
+          if (isMountedRef.current) setSaveStatus('unsaved')
+          return
+        }
+
         if (isMountedRef.current) {
-          if (!ref && savedRef) {
+          if (!ref) {
             // 新規保存で採番された id と mapId を確定
             setCurrentFileId(savedRef.id)
             setCurrentMapId(mapFile.mapId)
@@ -203,7 +221,7 @@ export function useAutoSave(options: AutoSaveOptions) {
         useUIStore.getState().setLastSavedAt(new Date().toISOString())
       }
     }
-  }, [remoteReady, setSaveStatus])
+  }, [remoteReady, createNewFileOnSave, setSaveStatus])
 
   // データ変更・タイトル変更どちらでも同じデバウンスタイマーを共有する
   const scheduleSave = useCallback(() => {
@@ -245,7 +263,8 @@ export function useAutoSave(options: AutoSaveOptions) {
       if (state.saveRequestId !== prev.saveRequestId) {
         if (debounceRef.current) clearTimeout(debounceRef.current)
         setSaveStatus('saving')
-        void performSave()
+        // 明示的な保存なので、保存先が未確定なら「名前を付けて保存」まで進めてよい
+        void performSave(true)
       }
     })
     return () => unsubscribe()

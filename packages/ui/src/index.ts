@@ -26,6 +26,7 @@ export { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 export { useFocusTrap } from './hooks/useFocusTrap'
 export { useOnlineStatus } from './hooks/useOnlineStatus'
 export { useNodeFocus } from './hooks/useNodeFocus'
+export { startNewMap, openLoadedMap, useDashboardEscapeToClose } from './hooks/useFileDashboard'
 
 export { renderMarkdownSimple } from './utils/markdown'
 
