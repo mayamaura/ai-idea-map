@@ -313,6 +313,8 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `claudeModel` | `string` | `claude-sonnet-5 \| claude-haiku-4-5-20251001`（旧 `aiModel` を改名。Phase 35） |
 | `ollamaModel` | `string` | Ollama の使用モデル（`/api/tags` の `name`）。未選択は `''`（Phase 35） |
 | `ollamaBaseUrl` | `string` | Ollama の接続先URL。既定値は `OllamaProvider.DEFAULT_OLLAMA_BASE_URL`（`http://localhost:11434`）（Phase 35） |
+| `webSearchApiKey` | `string` | ollama.com の Web Search APIキー（メモリ上・永続化しない、`SecretAdapter` の `webSearchApiKey` スロットに保管。Claude用の `apiKey` スロットとは別）（Phase 35 追加実装） |
+| `webSearchEnabled` | `boolean` | AIに聞く前にWeb検索するか。アイデア提案・AIチャット・マップ分析（全体分析）の3機能で共有するトグル（`persist` 対象、既定 `false`）（Phase 35 追加実装） |
 | `suggestionCount` | `number` | AI提案件数（3〜7） |
 | `autoSave` | `boolean` | 自動保存のオン/オフ |
 | `theme` | `Theme` | `light \| dark` |
@@ -328,7 +330,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 **永続化（`persist` ミドルウェア、Phase 34 で StorageAdapter 経由に変更）:**
 - `storage` は `createJSONStorage(() => ({ getItem/setItem/removeItem }))` で `getPlatform().storage` に委譲する（Web=localStorage、Desktop=`@tauri-apps/plugin-store`）
 - `skipHydration: true`。ストア生成時には自動復元されず、`stores/bootstrap.ts` の `restorePersistedState()`（§4.4）を各アプリの `main.tsx` が最初のレンダー前に `await` する
-- `partialize` で `apiKey` / `syncPassword` / ロック状態を除いた項目のみ永続化
+- `partialize` で `apiKey` / `webSearchApiKey`（Phase 35 追加実装） / `syncPassword` / ロック状態を除いた項目のみ永続化
 - `version: 2`（Phase 35。Phase 29〜34 は `version: 1`）+ `migrate`: v1→v2 で `aiModel` を `llmProvider`（常に `'claude'` で初期化）・`claudeModel`・`ollamaModel`・`ollamaBaseUrl` に分割する。`claudeModel` は `normalizeClaudeModel`（旧 `normalizeAiModel` を改名）で現行IDへ読み替える。廃止した `claude-sonnet-4-6` や未知の値は既定モデル（`claude-sonnet-5`）へ倒す。Drive から設定を読み込む `loadSettingsFromDrive` も同じ関数を通す。**Ollama の接続先URL・モデルは Drive 同期対象に含めない**（端末ローカルのサービスを指すため、他デバイスに同期しても意味がない）
 
 **APIキー管理アクション（Phase 27 / Phase 34 で `SecretAdapter.isPassphraseFree` 分岐を追加）:**
@@ -341,6 +343,11 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 **モデル選択アクション（Phase 35）:**
 - `setLlmProvider(provider)` / `setClaudeModel(model)` / `setOllamaModel(model)` / `setOllamaBaseUrl(url)`
 - `getActiveModelSelection()` — `llmProvider` に応じて `claudeModel` / `ollamaModel` のどちらかを `AIModelSelection` として返すセレクタ。`packages/core/src/llm/providerFactory.ts` の `getActiveProvider(settings)` / `isProviderReady(settings)` がこれと同じ4項目（`llmProvider` / `apiKey` / `claudeModel` / `ollamaModel` / `ollamaBaseUrl`）を使って `LLMProvider` インスタンスと準備状態を導出する（§9.0.1）
+
+**Web検索キー管理アクション（Phase 35 追加実装）:**
+- `setWebSearchApiKey(key)` — `secret.isPassphraseFree`（デスクトップ版のOSキーチェーン）のときだけ `secret.setSecret('webSearchApiKey', key)` に保管する。Web版では保管先を持たせない。キーを空にすると `webSearchEnabled` も自動で `false` に戻す
+- `setWebSearchEnabled(enabled)` — 3機能で共有するトグル
+- `initApiKey()` は `secret.isPassphraseFree` のときだけ、起動時に Claude APIキーと合わせて `webSearchApiKey` もキーチェーンから読む
 
 ### 4.4 bootstrap.ts — 永続化状態の復元（packages/core/src/stores/bootstrap.ts、Phase 34）
 
@@ -554,6 +561,24 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 - 未コミット判定は `titleInput !== node.data.title || bodyInput !== (node.data.body ?? '')`。blur 済みの変更はストアへ反映され差分にならないため、確認が出るのは「入力途中で閉じたとき」だけになる。
 - 破棄経路では `skipBlurCommit` ref を立てて `handleTitleBlur` / `handleBodyBlur` を無効化する。**確認ダイアログを開く前に立てる**のが重要で、ダイアログへフォーカスが移る際の `blur` で先に保存されてしまうのを防ぐ。キャンセル時は false に戻す。
 - 背景クリックは `onClick` ではなく `onMouseDown` で受ける。`click` まで待つと先に `blur` が走り、破棄を選ぶ前に保存されてしまうため。
+
+### 5.9 WebSearchToggle / WebSearchSources（packages/ui/src/components/common/WebSearchToggle.tsx）・useWebSearch（packages/ui/src/hooks/useWebSearch.ts、Phase 35 追加実装）
+
+`useWebSearch()` が Web検索の状態をまとめて返す共通フック。`AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` の3パネルがこれを呼ぶ。
+
+| 戻り値 | 型 | 説明 |
+|---|---|---|
+| `isAvailable` | `boolean` | トグルをUIに出してよいか。`getPlatform().http.canAccessLocalServers` を `useState` の遅延初期化で1度だけ読む |
+| `isConfigured` | `boolean` | `webSearchApiKey !== ''` |
+| `enabled` / `setEnabled` | `boolean` / `(v: boolean) => void` | `settingsStore` の `webSearchEnabled` をそのまま公開する |
+| `client` | `WebSearchClient \| undefined` | `isAvailable && isConfigured && enabled` のときだけ `OllamaWebSearchClient` を生成（`useMemo`）。それ以外は `undefined` |
+
+`WebSearchToggle` と `WebSearchSources` はどちらも `state: UseWebSearch` を受け取る表示コンポーネント。
+
+- `WebSearchToggle` — `isAvailable` が `false` なら何も描画しない（Web版では常に非表示）。`isConfigured` が `false` なら「🔎 Web検索を使うにはAPIキーの設定が必要です」というボタンを表示し、押下で `onOpenSettings` props（呼び出し元パネルを閉じて設定パネルを開く）を実行する。設定済みならチェックボックス（`state.enabled` / `state.setEnabled`）を表示する
+- `WebSearchSources` — 直近の実行で参照した `WebSearchResult[]` をタイトル＋リンクの一覧で表示する。クリックで `getPlatform().system.openExternalUrl(r.url)` を呼び既定ブラウザで開く。結果が0件なら何も描画しない
+
+各パネルは `useState<WebSearchResult[]>` で `searchSources` を持ち、`aiService.ts` に渡す `onWebSearchResults` コールバックで更新する。新しい実行を開始するたびに空配列にリセットする（§9.10）。
 
 ---
 
@@ -941,6 +966,69 @@ updateLastChatMessage: (content: string) => void
 | モデル選択 | `<select>`。各 `<option>` に `ModelInfo.label` と `description`（パラメータ数/量子化/サイズ/コンテキスト長）、`loaded` なら「⚡ロード済み」を付記 |
 
 `CommandHint`（コマンド文字列＋コピーボタン、`getPlatform().system.copyToClipboard()` 経由）と `SuggestionCountField`（AI提案数スライダー）は Claude セクションと `OllamaSection` の両方から使う共通コンポーネントとして切り出した。
+
+### 9.10 Web検索（packages/core/src/llm/webSearch.ts、Phase 35 追加実装・デスクトップ版のみ）
+
+AIに聞く前に、ollama.com の Web Search API（`docs.ollama.com/capabilities/web-search`）で最新情報を取得し、プロンプトに埋め込む。**`LLMProvider` の外側**に置いた独立機能で、Claude / Ollama どちらを使っていても利用できる（`docs/desktop/llm-abstraction.md` §2.6）。
+
+```typescript
+export interface WebSearchResult {
+  title: string
+  url: string
+  content: string
+}
+
+export interface WebSearchClient {
+  search(query: string, signal?: AbortSignal): Promise<WebSearchResult[]>
+}
+
+export class OllamaWebSearchClient implements WebSearchClient { /* POST https://ollama.com/api/web_search */ }
+
+export function formatWebSearchBlock(results: WebSearchResult[]): string
+```
+
+| 項目 | 内容 |
+|---|---|
+| エンドポイント | `POST https://ollama.com/api/web_search`。ローカルの Ollama サーバーではなく ollama.com のホスト型API。認証は `Authorization: Bearer <ollama.com APIキー>`（Claude APIキーとは別スロット、§4.3） |
+| リクエスト | `{ query, max_results: 5 }`（APIの上限は10だが本アプリでは5件に固定） |
+| レスポンス | `{ results: [{ title, url, content }] }` |
+| 取り込み量 | 1件あたり本文を600文字に切り詰める（`truncate()`）。公式ドキュメントは「検索結果は数千トークンになるためコンテキスト長32K以上を推奨」とするが、本アプリはスニペット利用に限定してローカル小型モデルでも破綻しない量に抑えている |
+| タイムアウト | 15秒。`AbortSignal.timeout()` は使わず `AbortController` ＋ `clearTimeout`（§9.1.2 と同じ理由。`tauri-plugin-http` の abort によるレスポンスボディの二重解放を避けるため） |
+| エラー分類 | HTTP 401/403 → `auth`、429 → `rateLimit`、他の非2xx → `unknown`、通信不可 → `connection`。いずれも `LLMError`（`provider: 'ollama'`）として投げ、検索失敗はAI呼び出しごと失敗させる（検索失敗を握り潰さない。ユーザーが明示的に検索をオンにしているため） |
+| HTTP呼び出し | `getPlatform().http.request()` 経由（`packages/core` から `fetch` を直接呼ばない規約に従う） |
+
+**`aiService.ts` への注入（`WebSearchOptions`）:**
+
+```typescript
+export interface WebSearchOptions {
+  webSearch?: WebSearchClient
+  /** 実際に参照した検索結果。UIの出典表示に使う */
+  onWebSearchResults?: (results: WebSearchResult[]) => void
+}
+```
+
+`generateSuggestions` / `analyzeMap` / `chatWithMap` の3関数の `*Request` インタフェースがこれを継承する（`ChatWithMapRequest` は `packages/core/src/types/index.ts` 側、他2つは `aiService.ts` 内のローカル `interface` で継承）。`webSearch` が未指定なら `buildWebContext()` が即座に空文字を返し、**プロンプトは Web検索非対応時（Phase 35 本体）と1文字も変わらない**。`suggestConnections` / `suggestClusters` は対象外（ノード間の関係・グループ化はマップ内部の構造を扱うため外部情報が効かない）。
+
+| 関数 | 検索クエリの作り方 |
+|---|---|
+| `generateSuggestions` | 起点ノードのタイトル＋ユーザーの追加指示（`[selectedNodeTitle, userInstruction].filter(Boolean).join(' ')`） |
+| `analyzeMap` | 先頭5ノードのタイトル |
+| `chatWithMap` | 直近のユーザー発言（`messages` を逆順に見て最初に見つかる `role === 'user'`） |
+
+検索結果は `formatWebSearchBlock()` で「【Web検索で取得した最新情報】」ブロックに整形し、各関数のプロンプトの他のコンテキストセクションの直後（本文セクションの前）に挿入する。ブロックには「学習データより新しい可能性があるため、内容が食い違う場合はこちらを優先してください」という指示を添える。`onWebSearchResults` には実際に参照した検索結果を渡し、呼び出し元（各パネル）が§5.9の `WebSearchSources` で出典表示に使う。
+
+### 9.11 設定UI: Web検索セクション（`SettingsPanel.tsx`、Phase 35 追加実装）
+
+`showProviderSwitch`（`canAccessLocalServers` の遅延初期化値、§9.8）が `true` のときだけ `WebSearchSection` を描画する（Web版には出さない）。`OllamaSection` と並ぶ独立したセクションで、プロバイダ選択（Claude / Ollama）とは無関係に常に表示される。
+
+| 要素 | 内容 |
+|---|---|
+| APIキー入力 | `password` 入力。保存済みキーは `••••••••••••••••` でマスク表示し、「変更」ボタンで再入力状態にする |
+| キー発行リンク | `getPlatform().system.openExternalUrl('https://ollama.com/settings/keys')` |
+| 注意書き | 「Web検索はローカルのOllamaではなく ollama.com のサービスを使います。検索クエリ（ノードのタイトルやチャットの入力）は ollama.com に送信されます」を明記 |
+| 検索テスト | `new OllamaWebSearchClient(webSearchApiKey).search('Ollama')` を実行し、成功件数またはエラーメッセージをトースト表示 |
+| キー削除 | `setWebSearchApiKey('')`。`webSearchEnabled` も自動で `false` に戻る（§4.3の `settingsStore` の挙動） |
+| 既定トグル | 「既定でWeb検索を使う」チェックボックス。`webSearchApiKey` が設定済みのときだけ表示する |
 
 ---
 
@@ -1479,7 +1567,7 @@ ai-idea-map/
 |---|---|
 | `main-window` | ウィンドウの基本操作（タイトル変更・閉じる・破棄）、`dialog`（open/save/ask/message）、クリップボード書き込み、外部URLオープン、`store` |
 | `file-access` | `fs`（読み書き・mkdir・remove・stat・exists）。`fs:scope` は `$APPCONFIG` と `$APPLOCALDATA` 配下のみに限定する |
-| `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している |
+| `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`https://ollama.com/api/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している。`https://ollama.com/api/*` は Web検索API（`/api/web_search`）向けに Phase 35 の追加実装で加えた（§9.10） |
 
 **ダイアログで選んだパスへの `fs` 許可**: `fs:scope` はアプリ専用ディレクトリだけに絞り、ユーザーが「開く/保存」ダイアログで選んだ任意のパスは `dialog` プラグインが実行時に付与する一時許可に任せる。この許可を次回起動でも有効にする（＝「最近開いたファイル」を再度開ける）ため、`tauri-plugin-persisted-scope` を依存に追加し、`lib.rs` で **`fs` プラグインより後に**登録している。任意のディレクトリを `fs:scope` に静的追加するより攻撃面が狭い（「ユーザーが一度選んだファイルだけ」に限定できる）。
 
@@ -1493,6 +1581,6 @@ ai-idea-map/
 |---|---|
 | 1. アーキテクチャ概要 | Web版/デスクトップ版の2構成に書き換え |
 | 3. プロジェクト構成 | モノレポ構成に書き換え |
-| 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9） |
+| 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9）。Web検索（`LLMProvider` の外側の独立機能）を Phase 35 の追加実装で反映（§9.10〜9.11） |
 | 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要 |
 | 12. Google Drive連携設計 | Web版専用機能である旨を明記（デスクトップ版 v1 は非対応） |

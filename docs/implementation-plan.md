@@ -1702,6 +1702,44 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 - Ollama 未起動・モデル0件・接続先URL誤りの各エラーガイダンスの実機表示
 - 旧形式 `localStorage`（`aiModel` のみ保持）での**実アプリ起動時**のマイグレーション（Node 上ではストアの migrate を直接実行して確認済み）、旧 `version: '1.0'` の Drive 設定ファイルの読み込み
 - Web版が Phase 34 以前と一致すること（プロバイダ切り替えUIが出ない・Claude で5機能が従来どおり動く）
+- **有効な ollama.com APIキーを設定したうえで**、Web検索トグルをオンにしたアイデア提案・AIチャット・マップ分析（全体分析）が検索結果を踏まえた回答を返し、参照した情報源が表示されること。設定UIとエラー分類（無効キー→401）は CDP 検証で確認済みで、残るのは検索成功時の経路のみ（下記「追加実装」参照）
+
+#### 追加実装: AIに聞く前のWeb検索（2026-08-08）
+
+**目標**: アイデア提案・AIチャット・マップ分析（全体分析）でAIに聞く前にWeb検索を選べるようにし、学習データより新しい情報を踏まえて回答させる。デスクトップ版のみ（ollama.com の Web Search API を利用するため）。
+
+> 参照: 判断の詳細は `docs/desktop/README.md` §3.1-E、Ollama Web Search API の調査結果は `docs/desktop/llm-abstraction.md` §8.3。
+
+##### タスク
+- [x] `packages/core/src/llm/webSearch.ts` を新規実装。`OllamaWebSearchClient`（`POST https://ollama.com/api/web_search` に Bearer認証）、5件・600文字切り詰め、15秒タイムアウト（`AbortController` + `clearTimeout`。`AbortSignal.timeout()` は不使用）、`formatWebSearchBlock()` でプロンプト注入用ブロックに整形
+- [x] `packages/core/src/llm/aiService.ts` に `WebSearchOptions`（`webSearch?` / `onWebSearchResults?`）を追加。`generateSuggestions` / `analyzeMap` / `chatWithMap` が受け取り、未指定なら検索を実行せずプロンプトも Phase 35 本体と1文字も変わらない
+- [x] `ChatWithMapRequest` を `WebSearchOptions` 継承に変更（`packages/core/src/types/index.ts`）
+- [x] `settingsStore` に `webSearchApiKey`（`SecretAdapter` の別スロット `webSearchApiKey`・永続化しない）・`webSearchEnabled`（persist 対象）と `setWebSearchApiKey` / `setWebSearchEnabled` を追加。`isPassphraseFree` が `false` のプラットフォーム（Web版）では保管しない
+- [x] `packages/ui/src/hooks/useWebSearch.ts` を新規実装。`isAvailable`（`HttpAdapter.canAccessLocalServers`）・`isConfigured`・`enabled`・`client` を返す共通フック
+- [x] `packages/ui/src/components/common/WebSearchToggle.tsx` を新規実装（`WebSearchToggle` トグル・`WebSearchSources` 出典表示リスト）
+- [x] `AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` にトグルと出典表示を追加。マップ分析は全体分析タブにのみ設置（つながり・グループはマップ内部の構造を扱うため外部情報が効かない）
+- [x] `SettingsPanel` に `WebSearchSection` を追加（`canAccessLocalServers` が `true` のときのみ描画）。APIキー入力・ollama.com のキー発行ページへのリンク・検索テスト・キー削除・既定オン/オフトグル・検索クエリが ollama.com に送信される旨の注意書き
+- [x] `apps/desktop/src-tauri/capabilities/ai-http.json` に `https://ollama.com/api/*` を追加
+- [x] `docs/requirements.md` / `docs/design.md` / `docs/implementation-plan.md` / `docs/desktop/README.md` / `docs/desktop/llm-abstraction.md` を更新
+
+**完了条件**: デスクトップ版の3機能（アイデア提案・AIチャット・マップ分析の全体分析）で、Web検索トグルをオンにすると ollama.com の検索結果を踏まえた回答が返り、参照した情報源がUIに表示される。オフのとき・Web版では Phase 35 本体までと挙動が変わらない。
+
+##### 裏取り済みの事実（2026-08-08実測）
+- `POST https://ollama.com/api/web_search` はキー無しで HTTP 401 `{"error":"Unauthorized"}` を返す
+- レスポンス形状は `{"results":[{"title","url","content"}]}`、リクエストは `{query, max_results}`（既定5・上限10）。`web_fetch` エンドポイントも存在するが未使用
+- APIキーは https://ollama.com/settings/keys で発行（無料アカウントが必要）
+
+##### 動作確認（デスクトップ実機・CDP 経由の自動検証・2026-08-08）
+
+有効なAPIキーが無いため、**検索が成功する経路だけは未確認**。それ以外はダミーキーを入れて確認した（確認後にキーは削除済み）。
+
+- [x]✅ 設定パネルに「Web検索」セクションが出る（デスクトップ版のみ）。APIキー入力欄があり、キー未設定のうちは「検索テスト」「キーを削除」「既定でWeb検索を使う」が出ない
+- [x]✅ キーを保存すると上記3つが出る。キーを削除すると元の状態に戻る
+- [x]✅ **無効なキーで「検索テスト」を実行すると「Web検索のAPIキーが無効です。設定画面で ollama.com のAPIキーを確認してください。」が出る。** リクエストが Rust 側 `plugin-http` から実際に ollama.com へ届き（＝`ai-http` capability の許可URLが効いている）、401 が `LLMError('auth')` に正しく分類されていることの確認になる
+- [x]✅ アイデア提案・AIチャット・マップ分析（全体分析タブ）にWeb検索トグルが出る。設定の「既定でWeb検索を使う」の状態が各パネルへ引き継がれる
+- [x]✅ マップ分析の「つながり」タブにはトグルが出ない
+- [x]✅ 全工程で console error / pageerror がゼロ
+- [ ] 有効なAPIキーでの実検索、検索結果を踏まえた回答、出典表示（ユーザーによる手動確認待ち）
 
 ---
 

@@ -3,7 +3,7 @@
 **このディレクトリは「Web版とデスクトップ版でコアを共通化しながら、ローカルLLM（Ollama）対応のデスクトップ版を作る」ための設計群です。**
 作業を始める AI エージェント・開発者は、まず本ファイルを読んでから個別ドキュメントに進んでください。
 
-最終更新: 2026-08-07
+最終更新: 2026-08-08
 
 ---
 
@@ -41,6 +41,7 @@
 | デスクトップの保存先 | **ローカルファイル中心**（`.ideamap` 拡張子、実体はJSON）。ネイティブの開く/保存ダイアログ | Ollama利用者はローカル完結志向。`MapFile` 型は Web/Desktop 共通なのでファイル交換で相互運用できる |
 | APIキーの保管 | デスクトップは **OSキーチェーン**（`keyring` crate）。マスターパスワード入力は不要になる | Stronghold 公式プラグインは非推奨化（v3で削除予定）のため不採用 |
 | 配布 | GitHub Actions で Windows(MSI/NSIS)・macOS(dmg) をビルド → GitHub Releases → `tauri-plugin-updater` で自動更新。**当面はコード署名なし** | 個人開発。署名証明書は後から導入可能な移行パスを確保 |
+| Web検索 | ollama.com の Web Search API（Bearer認証）。デスクトップ版のみ | ユーザー指定。ブラウザからは CORS で叩けず、`LLMProvider` の外側の独立機能として実装（§3.1-E） |
 
 ---
 
@@ -96,7 +97,7 @@ Phase 33 の判定条件が「移行前と同じ動作」であることを優�
 | ウィンドウの `dragDropEnabled` | `false` にする | §8 #4 の React Flow との競合が未検証。D&D を扱う Phase 37 で `true` にして検証する |
 | クリップボード | `@tauri-apps/plugin-clipboard-manager` を使う（`navigator.clipboard` は使わない） | WebView のセキュアコンテキスト判定に依存しない |
 
-### 3.1-E Ollama統合時の設計判断（Phase 35 実施済み・2026-08-07）
+### 3.1-E Ollama統合時の設計判断（Phase 35 実施済み・2026-08-07／Web検索は追加実装・2026-08-08）
 
 `llm-abstraction.md` の記述から意図的に変えた点があります。**本節が優先されます。**
 
@@ -111,8 +112,18 @@ Phase 33 の判定条件が「移行前と同じ動作」であることを優�
 | 分析3機能のキャンセルUI | `MapAnalysisPanel` に `AbortController` とキャンセルボタンを追加（`llm-abstraction.md` §7 の Phase 32 積み残しの解消） | ローカルLLMは応答が長くかかりうるため、Claude 前提だった頃より中断の必要性が高い |
 | `ai-http` capability | `http://localhost:*/*` / `http://127.0.0.1:*/*` に拡大 | 接続先URL設定でポートを変更可能にするため。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる |
 | Phase 32 の移行用アダプタ削除 | `toLegacySuggestionParseError` / `toLegacyAnalysisParseError` を削除し `LLMError` に一本化。UI の生レスポンスコピーは `LLMError.rawResponse` から取る | `llm-abstraction.md` §7 Step 6 の予告どおり |
+| バックエンド（Web検索） | ollama.com の Web Search API（ホスト型・Bearer認証） | ユーザー指定。ローカルの Ollama サーバーではなくクラウドAPIである点に注意 |
+| プロバイダ非依存（Web検索） | LLM が Claude でも Ollama でも同じように使える。設定セクションも `OllamaSection` とは分けた | 検索は単なるHTTP APIでLLM選択と直交するため |
+| Web版に出さない（Web検索） | `HttpAdapter.canAccessLocalServers` で判定 | ブラウザからは CORS 制約で ollama.com のAPIを直接叩けない |
+| 取り込み量（Web検索） | 5件×600文字に切り詰め | 公式ドキュメントは「数千トークンになるのでコンテキスト長32K以上を推奨」とするが、ローカル小型モデルでも破綻しない量に抑えるため |
+| トグルの粒度（Web検索） | 3機能（アイデア提案・AIチャット・マップ分析の全体分析タブ）で共有する1つのフラグ（`webSearchEnabled`）。設定として永続化 | 「AIに聞く前に選べる」という要求を満たしつつ、機能ごとに散らばらせない |
+| APIキーの保管（Web検索） | OSキーチェーンの `webSearchApiKey` スロット（Claude APIキーとは別スロット） | 別サービスのキーなので混ぜない |
+| タイムアウト（Web検索） | `AbortSignal.timeout()` は使わず `AbortController` + `clearTimeout` | 上表（モデル一覧取得のタイムアウト）と同じ理由（`plugin-http` のボディ二重解放。`docs/design.md` §9.1.2 参照） |
+| 検索失敗時（Web検索） | 例外を握り潰さず AI 呼び出しごと失敗させ、`LLMError`（`auth`/`rateLimit`/`connection`）としてトーストに出す | ユーザーが明示的に検索をオンにしているので、黙って検索なしで実行すると気づけない |
 
 検証した事実（Ollama 0.32.6 / Windows 11・2026-08-07）は `docs/implementation-plan.md` Phase 35 の「検証済み」「動作確認」を参照。Node から `HttpAdapter` をスタブした Provider 単体の確認に加え、`pnpm dev:desktop` で起動したデスクトップ実機に CDP でアタッチし、Rust 側 `plugin-http` 経由での Ollama 到達・AIチャット・マップ分析まで確認済み。残るのはアイデア提案／接続提案／クラスタ提案の実機確認と、日本語対応モデルの実用性評価（ユーザーの手動確認待ち）。
+
+Web検索（ollama.com の Web Search API）の裏取り（エンドポイント・リクエスト/レスポンス形状・認証・401の実測）は `docs/desktop/llm-abstraction.md` §8.3 を参照。実装は完了しているが、デスクトップ実機でのWeb検索付きAI呼び出しの動作確認はユーザーの手動確認待ち（`docs/implementation-plan.md` Phase 35「追加実装」参照）。
 
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 

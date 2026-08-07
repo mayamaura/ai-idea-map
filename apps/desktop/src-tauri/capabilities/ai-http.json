@@ -1,13 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "ai-http",
-  "description": "AIプロバイダへの通信のみ許可する（Anthropic API とローカル Ollama）",
+  "description": "AIプロバイダへの通信のみ許可する（Anthropic API・ローカル Ollama・ollama.com の Web Search）",
   "windows": ["main"],
   "permissions": [
     {
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.anthropic.com/*" },
+        { "url": "https://ollama.com/api/*" },
         { "url": "http://localhost:*/*" },
         { "url": "http://127.0.0.1:*/*" }
       ]

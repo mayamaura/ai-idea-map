@@ -1,4 +1,5 @@
 import type { LLMProvider } from '../llm/types'
+import type { WebSearchOptions } from '../llm/aiService'
 
 export interface Category {
   id: string
@@ -138,7 +139,7 @@ export interface MapContext {
   categories: { id: string; name: string }[]
 }
 
-export interface ChatWithMapRequest {
+export interface ChatWithMapRequest extends WebSearchOptions {
   /** 呼び出し側が settingsStore から解決した LLMProvider（Claude / Ollama） */
   provider: LLMProvider
   messages: ChatMessage[]

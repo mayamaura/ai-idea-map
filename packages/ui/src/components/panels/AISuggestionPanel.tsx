@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, isAbortError, type AISuggestion } from '@ideamap/core'
+import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, isAbortError, type AISuggestion, type WebSearchResult } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { WebSearchToggle, WebSearchSources } from '../common/WebSearchToggle'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
+import { useWebSearch } from '../../hooks/useWebSearch'
 
 export function AISuggestionPanel() {
   const {
@@ -45,6 +47,7 @@ export function AISuggestionPanel() {
       }))
     )
   const { provider, isReady, providerId } = useActiveProvider()
+  const webSearch = useWebSearch()
   const { fitView } = useReactFlow()
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -52,6 +55,7 @@ export function AISuggestionPanel() {
   const [userInstruction, setUserInstruction] = useState('')
   const [addMode, setAddMode] = useState<'child' | 'sibling'>('child')
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null)
+  const [searchSources, setSearchSources] = useState<WebSearchResult[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
   // 選択ノードの親ノード ID 一覧（兄弟モードの有効判定と追加処理に使用）
@@ -82,6 +86,8 @@ export function AISuggestionPanel() {
 
     return {
       provider,
+      webSearch: webSearch.client,
+      onWebSearchResults: setSearchSources,
       selectedNodeTitle: selectedNode.data.title,
       selectedNodeBody: selectedNode.data.body,
       connectedNodes: connectedNodeObjects.map((n) => ({
@@ -107,6 +113,7 @@ export function AISuggestionPanel() {
     edges,
     parentNodeIds,
     provider,
+    webSearch.client,
     suggestionCount,
     categories,
     userInstruction,
@@ -132,6 +139,7 @@ export function AISuggestionPanel() {
     setAILoading(true)
     setAISuggestions([])
     setSelected(new Set())
+    setSearchSources([])
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -368,6 +376,16 @@ export function AISuggestionPanel() {
                 </span>
               </div>
 
+              {/* Web検索トグル（デスクトップ版のみ） */}
+              <WebSearchToggle
+                state={webSearch}
+                disabled={isAILoading}
+                onOpenSettings={() => {
+                  setAIPanelOpen(false)
+                  setSettingsOpen(true)
+                }}
+              />
+
               {/* フリーテキスト指示入力 */}
               <textarea
                 value={userInstruction}
@@ -501,6 +519,8 @@ export function AISuggestionPanel() {
                   ボタンを押してAIにアイデアを提案してもらいましょう
                 </div>
               )}
+
+              {!isAILoading && <WebSearchSources results={searchSources} />}
             </div>
 
             {/* フッターボタン */}

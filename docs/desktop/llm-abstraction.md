@@ -204,6 +204,17 @@ export interface LLMProvider {
 
 `completeJson` の第2引数 `schema` を省略可能にしているのは、Claude はスキーマを渡しても使い道がなく（プロンプト内の指示文だけが効く）、Ollama 側もスキーマ無しで `format: "json"` の緩いJSONモードにフォールバックできるようにするため。呼び出し側（5つのAI機能）は原則スキーマを渡す運用にし、Claude実装側はそれを無視する。
 
+### 2.6 スコープ外: Web検索（Phase 35 追加実装・2026-08-08）
+
+AIに聞く前にWeb検索で最新情報を取得する機能（`packages/core/src/llm/webSearch.ts`）は、**本書が設計する `LLMProvider` の外側**に置いた。`LLMProvider` にメソッドを追加するのではなく、`aiService.ts` 側に `WebSearchOptions`（`webSearch?: WebSearchClient` / `onWebSearchResults?`）という独立したオプションを新設し、`generateSuggestions` / `analyzeMap` / `chatWithMap` の3関数がそれを受け取る形にしている。
+
+理由は次の2点。
+
+1. **Web検索はLLMの選択と直交する。** ollama.com の Web Search API はローカル Ollama サーバーとは別のホスト型サービスで、取得した検索結果はどのプロバイダ（Claude / Ollama）に渡すプロンプトにも同じ形で埋め込める。`LLMProvider.complete`/`completeJson`/`stream` のいずれかに検索ロジックを混ぜると、プロバイダ実装ごとに重複する。
+2. **`LLMProvider` は「APIを呼ぶ部分」と「エラー分類」だけを吸収する境界として設計した**（§0・§1）。検索クライアントも同じ形の境界（`WebSearchClient.search()`）を持たせれば、将来別の検索バックエンドに差し替える余地を保ったまま `LLMProvider` 本体を変更せずに済む。
+
+詳細設計（エンドポイント・切り詰め方針・プロンプト注入位置・クエリの作り方・エラー分類・設定UI）は `docs/design.md` §9.10〜9.11、実装判断の一覧は `docs/desktop/README.md` §3.1-E に記載している。
+
 ---
 
 ## 3. `ClaudeProvider` / `OllamaProvider` の実装方針
@@ -977,6 +988,18 @@ WebSearch / WebFetch で一次情報（Ollama公式リポジトリの `docs/api.
 - **Rakuten AI 2.0 が Ollama公式ライブラリから直接 `ollama pull` できるか**。Phase 35 では未調査のまま。調査した範囲では Hugging Face から GGUF を取得し `Modelfile` 経由で手動インポートする方法のみ確認できた。
 - **`done_reason` フィールド**（ストリーミング最終行に含まれるとされる終了理由）が全バージョンの `/api/chat` レスポンスに存在するか。**Ollama 0.32.6 では非ストリーミング応答にも存在することを確認した**（思考モデルの出力が途中で切れた際に `done_reason: 'length'` が返り、これが `think: false` を全リクエストに付与する実装のきっかけになった）。他バージョンでの存在は未確認。
 
+### 8.3 Web検索API（`/api/web_search`）調査まとめ（Phase 35 追加実装・2026-08-08）
+
+`docs.ollama.com/capabilities/web-search` を一次情報として確認し、実装前に実測でも裏取りした。§2.6 のとおり `LLMProvider` とは別の独立機能（`packages/core/src/llm/webSearch.ts`）として実装している。
+
+- **エンドポイント**: `POST https://ollama.com/api/web_search`。**ローカルの Ollama サーバー（`http://localhost:11434` 等）ではなく、ollama.com が提供するホスト型API**である点に注意（ローカルの `/api/*` エンドポイント群とは別ホスト）。
+- **認証**: `Authorization: Bearer <APIキー>`。APIキーは https://ollama.com/settings/keys で発行する（ollama.com の無料アカウントが必要）。
+- **リクエスト形式**: `{ "query": string, "max_results"?: number }`。`max_results` の既定値は5、上限は10（公式ドキュメント記載）。本アプリは常に5を指定している。
+- **レスポンス形式**: `{ "results": [{ "title": string, "url": string, "content": string }] }`。
+- **`web_fetch` エンドポイント**: 検索結果のURLから本文全体を取得する `POST https://ollama.com/api/web_fetch` も公式ドキュメントに存在するが、本アプリは「取り込み量はスニペットのみ」という方針のため未使用。
+- **未認証時の挙動（2026-08-08実測）**: APIキーを付けずに `POST https://ollama.com/api/web_search` を呼ぶと HTTP 401 `{"error":"Unauthorized"}` が返る。`OllamaWebSearchClient` の 401/403 判定（`kind: 'auth'`）はこの実測に基づく。
+- **コンテキスト長の推奨**: 公式ドキュメントは「検索結果は数千トークンになりうるため、コンテキスト長32K以上のモデルを推奨する」と明記している。本アプリは1件600文字・5件までに切り詰めることでこの制約を回避している（`docs/design.md` §9.10）。
+
 ---
 
 ## 参考資料（本ドキュメント作成にあたり参照したURL）
@@ -990,3 +1013,4 @@ WebSearch / WebFetch で一次情報（Ollama公式リポジトリの `docs/api.
 - [tauri-plugin-cors-fetch](https://github.com/idootop/tauri-plugin-cors-fetch)
 - [Ollama VRAM Requirements: Complete 2026 Guide](https://localllm.in/blog/ollama-vram-requirements-for-local-llms)
 - [2026年最新｜Ollama日本語モデル完全ガイド](https://saiteki-ai.com/basics/ai-tool/ollama/ollama-japanese-language-model/)
+- [Web Search - Ollama Docs](https://docs.ollama.com/capabilities/web-search)（Phase 35 追加実装・§2.6・§8.3で参照）

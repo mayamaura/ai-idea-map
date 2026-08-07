@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { getPlatform } from '@ideamap/platform'
-import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, isAbortError, LLMError, type ConnectionSuggestion, type ClusterSuggestion } from '@ideamap/core'
+import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, isAbortError, LLMError, type ConnectionSuggestion, type ClusterSuggestion, type WebSearchResult } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { WebSearchToggle, WebSearchSources } from '../common/WebSearchToggle'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
+import { useWebSearch } from '../../hooks/useWebSearch'
 
 type TabKey = 'analysis' | 'connections' | 'clusters'
 
@@ -64,11 +66,13 @@ export function MapAnalysisPanel() {
     }))
   )
   const { provider, isReady, providerId } = useActiveProvider()
+  const webSearch = useWebSearch()
 
   const [activeTab, setActiveTab] = useState<TabKey>('analysis')
   const [dismissedConnections, setDismissedConnections] = useState<Set<string>>(new Set())
   const [appliedClusters, setAppliedClusters] = useState<Set<number>>(new Set())
   const [rawErrorResponse, setRawErrorResponse] = useState<string | null>(null)
+  const [searchSources, setSearchSources] = useState<WebSearchResult[]>([])
   // ローカルLLMは応答が長くかかりうるので3機能とも中断できるようにする（Phase 32 からの積み残し）
   const abortRef = useRef<AbortController | null>(null)
 
@@ -88,12 +92,15 @@ export function MapAnalysisPanel() {
     setAnalysisLoading(true)
     setMapAnalysis(null)
     setRawErrorResponse(null)
+    setSearchSources([])
     const { nodes, edges } = useMapStore.getState()
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
       const result = await analyzeMap({
         provider,
+        webSearch: webSearch.client,
+        onWebSearchResults: setSearchSources,
         nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
         edges: edges.map((e) => ({ source: e.source, target: e.target })),
         categories,
@@ -107,7 +114,7 @@ export function MapAnalysisPanel() {
       setAnalysisLoading(false)
       abortRef.current = null
     }
-  }, [isReady, notReadyMessage, provider, categories, setAnalysisLoading, setMapAnalysis, addToast])
+  }, [isReady, notReadyMessage, provider, webSearch.client, categories, setAnalysisLoading, setMapAnalysis, addToast])
 
   const handleFindConnections = useCallback(async () => {
     if (!isReady) {
@@ -289,6 +296,15 @@ export function MapAnalysisPanel() {
               {/* 全体分析タブ */}
               {activeTab === 'analysis' && (
                 <div className="p-5 space-y-4">
+                  {/* Web検索は「見落としている領域」の指摘に効くので全体分析タブにだけ置く */}
+                  <WebSearchToggle
+                    state={webSearch}
+                    disabled={isAnalysisLoading}
+                    onOpenSettings={() => {
+                      setAnalysisPanelOpen(false)
+                      setSettingsOpen(true)
+                    }}
+                  />
                   <button
                     onClick={handleAnalyze}
                     disabled={isAnalysisLoading}
@@ -350,6 +366,8 @@ export function MapAnalysisPanel() {
                         </svg>
                         分析結果をコピー
                       </button>
+
+                      <WebSearchSources results={searchSources} />
                     </div>
                   )}
 

@@ -2,9 +2,31 @@ import type { AISuggestion, Category, MapAnalysis, ConnectionSuggestion, Cluster
 import type { JsonSchema, LLMProvider, LLMRequest } from './types'
 import { LLMError } from './types'
 import { AIParseError } from './jsonUtils'
+import { formatWebSearchBlock, type WebSearchClient, type WebSearchResult } from './webSearch'
 
 // 生レスポンスのコピー導線（MapAnalysisPanel）が型判定に使うため再エクスポートする
 export { AIParseError }
+
+/**
+ * AIに聞く前のWeb検索。使うかどうかは呼び出し側（各パネルのトグル）が決め、
+ * `webSearch` が未指定なら検索は一切走らずプロンプトも Phase 35 以前と同一になる。
+ */
+export interface WebSearchOptions {
+  webSearch?: WebSearchClient
+  /** 実際に参照した検索結果。UIの出典表示に使う */
+  onWebSearchResults?: (results: WebSearchResult[]) => void
+}
+
+async function buildWebContext(
+  opts: WebSearchOptions,
+  query: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!opts.webSearch) return ''
+  const results = await opts.webSearch.search(query, signal)
+  opts.onWebSearchResults?.(results)
+  return formatWebSearchBlock(results)
+}
 
 /**
  * JSON出力を要求する指示文の末尾に付けるスキーマ提示。
@@ -123,7 +145,7 @@ const CLUSTERS_SCHEMA: JsonSchema = {
   required: ['clusters'],
 }
 
-interface SuggestionRequest {
+interface SuggestionRequest extends WebSearchOptions {
   provider: LLMProvider
   selectedNodeTitle: string
   selectedNodeBody?: string
@@ -191,8 +213,15 @@ export async function generateSuggestions(req: SuggestionRequest, signal?: Abort
     .map((c) => `  "${c.id}": ${c.name}（${c.description ?? ''}）`)
     .join('\n')
 
+  // 検索クエリは「起点ノードのタイトル＋ユーザーの追加指示」。マップ全体を混ぜると焦点がぼやける
+  const webContext = await buildWebContext(
+    req,
+    [req.selectedNodeTitle, req.userInstruction].filter(Boolean).join(' '),
+    signal,
+  )
+
   const prompt = `あなたはアイデア発想を助ける専門家です。
-以下のアイデアを起点に、創造的で具体的なアイデアを${req.count}個提案してください。${connectedSection}${contextSection}${instructionSection}${excludedSection}${siblingSection}
+以下のアイデアを起点に、創造的で具体的なアイデアを${req.count}個提案してください。${connectedSection}${contextSection}${instructionSection}${excludedSection}${siblingSection}${webContext}
 
 【選択されたアイデア】
 ${req.selectedNodeTitle}${bodySection}
@@ -220,7 +249,7 @@ title は短く端的に。詳細・補足・具体例は body に記述して�
   return parsed.suggestions.slice(0, req.count)
 }
 
-interface AnalyzeMapRequest {
+interface AnalyzeMapRequest extends WebSearchOptions {
   provider: LLMProvider
   nodes: { id: string; title: string; body?: string; categoryId?: string }[]
   edges: { source: string; target: string }[]
@@ -246,13 +275,20 @@ export async function analyzeMap(req: AnalyzeMapRequest, signal?: AbortSignal): 
     })
     .join('\n')
 
+  // 検索クエリはマップの主要ノード（先頭5件）。「見落としている領域」の指摘に外部情報が効く
+  const webContext = await buildWebContext(
+    req,
+    req.nodes.slice(0, 5).map((n) => n.title).join(' '),
+    signal,
+  )
+
   const prompt = `あなたはアイデアマップ分析の専門家です。以下のアイデアマップを分析してください。
 
 【ノード一覧】
 ${nodeList}
 
 【接続関係】
-${edgeList || '（接続なし）'}
+${edgeList || '（接続なし）'}${webContext}
 
 以下の3点を分析して、JSON形式のみで回答してください：
 1. マップの主要テーマを1〜2文で要約（summary）
@@ -419,6 +455,10 @@ export async function chatWithMap(
           .join('\n')}`
       : ''
 
+  // 検索クエリは直近のユーザー発言。会話の話題がそのまま検索したい内容になる
+  const lastUserMessage = [...req.messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+  const webContext = await buildWebContext(req, lastUserMessage, signal)
+
   const systemContext = `あなたは「IdeaMap」のAIアシスタントです。ユーザーのアイデアマップを文脈として理解した上で自由に会話してください。
 
 【現在のマップ: ${req.mapContext.mapTitle}】
@@ -428,7 +468,7 @@ export async function chatWithMap(
 ${nodeList}
 
 【接続関係】
-${edgeList}${mentionedBlock}
+${edgeList}${mentionedBlock}${webContext}
 
 マップ操作を提案したい場合のみ、回答の末尾に以下のJSONブロックを含めてください（アクションがなければ省略）:
 \`\`\`actions

@@ -6,8 +6,10 @@ import type { Theme, AIModelSelection, LLMProviderId, NodeShape, EdgeStyle, Cate
 import { encryptWithPassword, decryptWithPassword } from '../crypto/passwordCrypto'
 import { DEFAULT_OLLAMA_BASE_URL } from '../llm/ollamaProvider'
 
-/** SecretAdapter に渡す秘密情報の論理キー。保管しているのは Claude APIキーの1件だけ */
+/** SecretAdapter に渡す秘密情報の論理キー */
 const API_KEY_SECRET = 'apiKey'
+/** ollama.com の Web Search API キー。Claude APIキーとは別物なので別スロットで保管する */
+const WEB_SEARCH_KEY_SECRET = 'webSearchApiKey'
 
 /** クラウド上に置くアプリ設定ファイルの中身（Web版は Drive の IdeaMap/settings.json） */
 export interface AppSettingsPayload {
@@ -70,6 +72,10 @@ interface SettingsState {
   /** Ollama の使用モデル（/api/tags の name）。未選択は '' */
   ollamaModel: string
   ollamaBaseUrl: string
+  /** ollama.com の Web Search APIキー。SecretAdapter に預けるので永続化はしない */
+  webSearchApiKey: string
+  /** AIに聞く前にWeb検索するか。3つのAI機能で共有するトグル */
+  webSearchEnabled: boolean
   suggestionCount: number
   autoSave: boolean
   theme: Theme
@@ -92,6 +98,8 @@ interface SettingsState {
   setClaudeModel: (model: string) => void
   setOllamaModel: (model: string) => void
   setOllamaBaseUrl: (url: string) => void
+  setWebSearchApiKey: (key: string) => void
+  setWebSearchEnabled: (enabled: boolean) => void
   /** llmProvider に応じて claudeModel / ollamaModel のどちらかを返す */
   getActiveModelSelection: () => AIModelSelection
   setSuggestionCount: (count: number) => void
@@ -124,6 +132,7 @@ type PersistedSettings = Pick<
   | 'claudeModel'
   | 'ollamaModel'
   | 'ollamaBaseUrl'
+  | 'webSearchEnabled'
   | 'suggestionCount'
   | 'autoSave'
   | 'theme'
@@ -142,6 +151,8 @@ export const useSettingsStore = create<SettingsState>()(
       claudeModel: DEFAULT_CLAUDE_MODEL,
       ollamaModel: '',
       ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
+      webSearchApiKey: '',
+      webSearchEnabled: false,
       suggestionCount: 4,
       autoSave: true,
       theme: 'light',
@@ -185,6 +196,18 @@ export const useSettingsStore = create<SettingsState>()(
       setClaudeModel: (model) => set({ claudeModel: model }),
       setOllamaModel: (model) => set({ ollamaModel: model }),
       setOllamaBaseUrl: (url) => set({ ollamaBaseUrl: url }),
+
+      setWebSearchApiKey: (key) => {
+        const { secret } = getPlatform()
+        set({ webSearchApiKey: key, ...(key ? {} : { webSearchEnabled: false }) })
+        // Web検索はデスクトップ版専用機能。マスターパスワード方式のプラットフォーム（Web版）では
+        // 保管先を持たせず、UIも出さない
+        if (!secret.isPassphraseFree) return
+        if (key) void secret.setSecret(WEB_SEARCH_KEY_SECRET, key)
+        else void secret.clearSecret(WEB_SEARCH_KEY_SECRET)
+      },
+
+      setWebSearchEnabled: (enabled) => set({ webSearchEnabled: enabled }),
 
       getActiveModelSelection: () => {
         const { llmProvider, claudeModel, ollamaModel } = get()
@@ -242,6 +265,9 @@ export const useSettingsStore = create<SettingsState>()(
       initApiKey: async () => {
         const { secret } = getPlatform()
         if (secret.isPassphraseFree) {
+          // Web検索キーはマスターパスワードを持たないプラットフォーム（＝OSキーチェーン）でのみ扱う
+          const searchKey = await secret.getSecret(WEB_SEARCH_KEY_SECRET)
+          if (searchKey) set({ webSearchApiKey: searchKey })
           // 解錠の概念が無いので起動時にそのまま読み出す。
           // apiKeyLock を 'locked' にしないことで MasterPasswordModal は一度も出ない
           const key = await secret.getSecret(API_KEY_SECRET)
@@ -342,6 +368,7 @@ export const useSettingsStore = create<SettingsState>()(
         claudeModel: state.claudeModel,
         ollamaModel: state.ollamaModel,
         ollamaBaseUrl: state.ollamaBaseUrl,
+        webSearchEnabled: state.webSearchEnabled,
         suggestionCount: state.suggestionCount,
         autoSave: state.autoSave,
         theme: state.theme,

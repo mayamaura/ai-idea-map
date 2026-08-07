@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuidv4 } from 'uuid'
-import { useUIStore, useMapStore, useSettingsStore, chatWithMap, toFriendlyAIError, type ChatMessage, type ChatAction, type MapContext, type IdeaNodeData } from '@ideamap/core'
+import { useUIStore, useMapStore, useSettingsStore, chatWithMap, toFriendlyAIError, type ChatMessage, type ChatAction, type MapContext, type IdeaNodeData, type WebSearchResult } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { WebSearchToggle, WebSearchSources } from '../common/WebSearchToggle'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
+import { useWebSearch } from '../../hooks/useWebSearch'
 import type { Node } from '@xyflow/react'
 
 // メンション候補を購読しないときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
@@ -76,12 +78,14 @@ export function AIChatPanel() {
     }))
   )
   const { provider, isReady, providerId } = useActiveProvider()
+  const webSearch = useWebSearch()
 
   const [input, setInput] = useState('')
   const [mentionState, setMentionState] = useState<{ query: string; startIndex: number } | null>(
     null,
   )
   const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([])
+  const [searchSources, setSearchSources] = useState<WebSearchResult[]>([])
   const [selectedMentionIdx, setSelectedMentionIdx] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -220,6 +224,8 @@ export function AIChatPanel() {
       const { content: aiContent, actions } = await chatWithMap(
         {
           provider,
+          webSearch: webSearch.client,
+          onWebSearchResults: setSearchSources,
           messages: [...chatMessages, userMsg],
           mapContext: buildMapContext(),
           mentionedNodeIds: currentMentionedIds,
@@ -461,7 +467,16 @@ export function AIChatPanel() {
           </div>
 
           {/* 入力エリア。モバイルでは画面下端に接するためセーフエリア分を足す */}
-          <div className="border-t border-gray-200 dark:border-gray-700 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3">
+          <div className="border-t border-gray-200 dark:border-gray-700 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3 space-y-2">
+            {!isChatLoading && <WebSearchSources results={searchSources} />}
+            <WebSearchToggle
+              state={webSearch}
+              disabled={isChatLoading}
+              onOpenSettings={() => {
+                setChatPanelOpen(false)
+                setSettingsOpen(true)
+              }}
+            />
             <div className="relative">
               {/* @メンション ドロップダウン */}
               {mentionState && filteredNodes.length > 0 && (
