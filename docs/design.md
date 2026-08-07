@@ -576,7 +576,15 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 `WebSearchToggle` と `WebSearchSources` はどちらも `state: UseWebSearch` を受け取る表示コンポーネント。
 
 - `WebSearchToggle` — `isAvailable` が `false` なら何も描画しない（Web版では常に非表示）。`isConfigured` が `false` なら「🔎 Web検索を使うにはAPIキーの設定が必要です」というボタンを表示し、押下で `onOpenSettings` props（呼び出し元パネルを閉じて設定パネルを開く）を実行する。設定済みならチェックボックス（`state.enabled` / `state.setEnabled`）を表示する
-- `WebSearchSources` — 直近の実行で参照した `WebSearchResult[]` をタイトル＋リンクの一覧で表示する。クリックで `getPlatform().system.openExternalUrl(r.url)` を呼び既定ブラウザで開く。結果が0件なら何も描画しない
+- `WebSearchSources` — 直近の実行で参照した `WebSearchResult[]` をタイトル＋リンクの一覧で表示する。リンクは §5.10 の `ExternalLink` を使い既定ブラウザで開く。結果が0件なら何も描画しない
+
+### 5.10 ExternalLink（packages/ui/src/components/common/ExternalLink.tsx、Phase 35 追加実装）
+
+外部サイトへのリンクは**すべてこのコンポーネントを経由する**。内部では `getPlatform().system.openExternalUrl(href)` を呼ぶ（Web版は `window.open`、デスクトップ版は `@tauri-apps/plugin-opener` の `openUrl()`）。
+
+素の `<a href="..." target="_blank">` を使ってはいけない。デスクトップ版の WebView は新規ウィンドウを開かない設定のため、クリックしても無反応になる。
+
+あわせてデスクトップ版では `main-window` capability の `opener:allow-open-url` を**スコープ付き**で書く必要がある（§18.5）。`opener:allow-open-url` は「コマンドを呼んでよい」という許可でしかなく、URLスコープが空のままだと `openUrl()` は例外を投げて全て拒否される。
 
 各パネルは `useState<WebSearchResult[]>` で `searchSources` を持ち、`aiService.ts` に渡す `onWebSearchResults` コールバックで更新する。新しい実行を開始するたびに空配列にリセットする（§9.10）。
 
@@ -1566,8 +1574,11 @@ ai-idea-map/
 | capability | 許可する権限 |
 |---|---|
 | `main-window` | ウィンドウの基本操作（タイトル変更・閉じる・破棄）、`dialog`（open/save/ask/message）、クリップボード書き込み、外部URLオープン、`store` |
+
 | `file-access` | `fs`（読み書き・mkdir・remove・stat・exists）。`fs:scope` は `$APPCONFIG` と `$APPLOCALDATA` 配下のみに限定する |
 | `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`https://ollama.com/api/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している。`https://ollama.com/api/*` は Web検索API（`/api/web_search`）向けに Phase 35 の追加実装で加えた（§9.10） |
+
+**外部URLオープンのスコープ**: `opener:allow-open-url` は文字列でそのまま並べると**URLスコープが空になり `openUrl()` が全て拒否される**。`{ "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }, { "url": "http://*" }] }` の形で書く（Phase 35 追加実装で修正。プラグインの `opener:default` は `mailto:` / `tel:` とファイルマネージャ起動も含むため、本アプリは必要な http/https だけに絞っている）。
 
 **ダイアログで選んだパスへの `fs` 許可**: `fs:scope` はアプリ専用ディレクトリだけに絞り、ユーザーが「開く/保存」ダイアログで選んだ任意のパスは `dialog` プラグインが実行時に付与する一時許可に任せる。この許可を次回起動でも有効にする（＝「最近開いたファイル」を再度開ける）ため、`tauri-plugin-persisted-scope` を依存に追加し、`lib.rs` で **`fs` プラグインより後に**登録している。任意のディレクトリを `fs:scope` に静的追加するより攻撃面が狭い（「ユーザーが一度選んだファイルだけ」に限定できる）。
 

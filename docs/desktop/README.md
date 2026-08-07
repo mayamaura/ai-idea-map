@@ -110,6 +110,8 @@ Phase 33 の判定条件が「移行前と同じ動作」であることを優�
 | `think: false` | 全リクエストで送る（400 時フォールバックあり） | 思考モデル（qwen3.6 等）は思考トークンが `num_predict` を食い、`done_reason: 'length'` で出力が途中停止することを実測で確認したため |
 | モデル一覧取得のタイムアウト | `AbortSignal.timeout()` は**使わない**。`AbortController` ＋ `setTimeout` にして、応答を読み切った時点で `clearTimeout` する | `tauri-plugin-http` は signal の abort でレスポンスボディを解放する（`fetch_cancel_body`）。読了後にタイマーが発火すると解放済みリソースを二重に解放し、`The resource id ... is invalid` の未処理例外がデスクトップ実機で出た |
 | 分析3機能のキャンセルUI | `MapAnalysisPanel` に `AbortController` とキャンセルボタンを追加（`llm-abstraction.md` §7 の Phase 32 積み残しの解消） | ローカルLLMは応答が長くかかりうるため、Claude 前提だった頃より中断の必要性が高い |
+| `opener` の URL スコープ | `main-window` capability の `opener:allow-open-url` を**スコープ付き**（`https://*` / `http://*`）に書き換えた | `opener:allow-open-url` はコマンドの許可だけで、URLスコープが空のままだと `openUrl()` が全て拒否される。Phase 34 では外部リンクを実際に押していなかったため気づけず、Web検索の出典リンクで発覚した |
+| 外部リンクの実装 | 素の `<a target="_blank">` は使わず、`ExternalLink` コンポーネント（`SystemAdapter.openExternalUrl` 経由）に統一 | デスクトップ版の WebView では `target="_blank"` が無反応になる。Web版では `window.open` に解決されるので両対応できる |
 | `ai-http` capability | `http://localhost:*/*` / `http://127.0.0.1:*/*` に拡大 | 接続先URL設定でポートを変更可能にするため。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる |
 | Phase 32 の移行用アダプタ削除 | `toLegacySuggestionParseError` / `toLegacyAnalysisParseError` を削除し `LLMError` に一本化。UI の生レスポンスコピーは `LLMError.rawResponse` から取る | `llm-abstraction.md` §7 Step 6 の予告どおり |
 | バックエンド（Web検索） | ollama.com の Web Search API（ホスト型・Bearer認証） | ユーザー指定。ローカルの Ollama サーバーではなくクラウドAPIである点に注意 |

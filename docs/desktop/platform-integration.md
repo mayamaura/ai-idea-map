@@ -177,7 +177,7 @@ Tauri v2はウィンドウレベルの `onDragDropEvent`（`getCurrentWebview().
 
 1. Google Cloud Consoleで発行するOAuthクライアントIDを、既存の「ウェブアプリケーション」用とは別に **「デスクトップアプリ」種別で新規発行**する（デスクトップアプリ種別はクライアントシークレットを埋め込む必要がなく、PKCEと組み合わせて安全に配布可能）。
 2. `tauri-plugin-oauth`（コミュニティプラグイン。ローカルループバックサーバーを起動し `start()` でポート番号を取得、`onUrl` コールバックでリダイレクトURLを受け取る設計）または同等の自前Rust実装で、ランダムな空きポートに `http://127.0.0.1:<port>` のリスナーを立てる。
-3. PKCE（`code_verifier`/`code_challenge`）を生成し、`opener` プラグインの `openUrl()`（権限識別子 `opener:allow-open-url`）でOS既定ブラウザに認可URLを開く。
+3. PKCE（`code_verifier`/`code_challenge`）を生成し、`opener` プラグインの `openUrl()` でOS既定ブラウザに認可URLを開く。**`opener:allow-open-url` はコマンドの許可だけで、URLスコープは別に指定しないと全て拒否される**（Phase 35 で実際に踏んだ。`{ "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }] }` の形で書く）。
 4. ブラウザでユーザーがログイン・許可すると `http://127.0.0.1:<port>/?code=...` にリダイレクトされ、ループバックサーバーが認可コードを受信する。
 5. 受信した認可コードを、PKCEの `code_verifier` とともにGoogleのトークンエンドポイント（`https://oauth2.googleapis.com/token`）にPOSTしてアクセストークン／リフレッシュトークンを取得する。
 6. 取得したトークンは §4 で述べるOSキーチェーンに保存し、`googleDriveService.ts` の各関数へ渡す（この部分は既存コードを流用）。
@@ -402,7 +402,7 @@ Tauri v2は権限を機能ごとの capability ファイルに分割し、`tauri
   "description": "Google OAuth ループバックフローとDrive APIアクセス",
   "windows": ["main"],
   "permissions": [
-    "opener:allow-open-url",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }] },
     {
       "identifier": "http:default",
       "allow": [

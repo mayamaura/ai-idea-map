@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getPlatform } from '@ideamap/platform'
+import { ExternalLink } from '../common/ExternalLink'
 import {
   useUIStore,
   useSettingsStore,
@@ -614,12 +615,9 @@ function WebSearchSection() {
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
             キーはこの端末のOSキーチェーンにのみ保存されます。
-            <button
-              onClick={() => void getPlatform().system.openExternalUrl('https://ollama.com/settings/keys')}
-              className="underline ml-1 hover:text-primary-600 dark:hover:text-primary-400"
-            >
+            <ExternalLink href="https://ollama.com/settings/keys" className="ml-1">
               ollama.com でキーを発行
-            </button>
+            </ExternalLink>
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
             ⚠️ Web検索はローカルのOllamaではなく ollama.com のサービスを使います。検索クエリ（ノードのタイトルやチャットの入力）は ollama.com に送信されます。
@@ -820,7 +818,7 @@ export function SettingsPanel({ accessToken, showCloudSync = true }: SettingsPan
                 </p>
                 <div className="mt-1.5 space-y-1">
                   <p className="text-xs text-gray-400 dark:text-gray-500">
-                    ⚠️ <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="underline">Anthropic Console</a> で利用上限（使用上限）を設定することを推奨します。
+                    ⚠️ <ExternalLink href="https://console.anthropic.com/">Anthropic Console</ExternalLink> で利用上限（使用上限）を設定することを推奨します。
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
                     🔑 このアプリ専用のAPIキーを発行して使うことを推奨します。
@@ -830,8 +828,7 @@ export function SettingsPanel({ accessToken, showCloudSync = true }: SettingsPan
                   <div className="mt-2 p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                     <p className="text-xs text-amber-700 dark:text-amber-300">
                       ⚠️ APIキーが未設定です。AI拡張機能を使うには
-                      <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer"
-                        className="underline ml-0.5">Anthropic Console</a>
+                      <ExternalLink href="https://console.anthropic.com/" className="ml-0.5">Anthropic Console</ExternalLink>
                       でキーを取得してください。
                     </p>
                   </div>

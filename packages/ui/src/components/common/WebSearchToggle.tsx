@@ -1,6 +1,6 @@
-import { getPlatform } from '@ideamap/platform'
 import type { WebSearchResult } from '@ideamap/core'
 import type { UseWebSearch } from '../../hooks/useWebSearch'
+import { ExternalLink } from './ExternalLink'
 
 interface WebSearchToggleProps {
   state: UseWebSearch
@@ -51,13 +51,9 @@ export function WebSearchSources({ results }: { results: WebSearchResult[] }) {
       <ul className="space-y-0.5">
         {results.map((r) => (
           <li key={r.url} className="truncate">
-            <button
-              onClick={() => void getPlatform().system.openExternalUrl(r.url)}
-              className="underline hover:text-primary-600 dark:hover:text-primary-400 truncate max-w-full text-left"
-              title={r.url}
-            >
+            <ExternalLink href={r.url} className="truncate max-w-full text-left block">
               {r.title || r.url}
-            </button>
+            </ExternalLink>
           </li>
         ))}
       </ul>
