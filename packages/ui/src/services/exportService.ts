@@ -100,10 +100,11 @@ export async function exportMapAsImage(
     const dataUrl = await toPng(viewportEl, imageOptions)
     downloadBlob(dataUrlToBlob(dataUrl), filename)
   } else {
-    // NOTE: SVG は toSvg が返すデータURL文字列をそのままファイル内容として書いている。
-    // 移行前からの挙動なので Phase 33 では変えない（要修正: 別途起票）
+    // toSvg が返すのは `data:image/svg+xml;charset=utf-8,<percent-encoded XML>` であって
+    // SVG 本体ではない。PNG と同じくデコードしてから書き出さないと、
+    // 先頭が `data:` で始まるファイルになりブラウザが XML として解析できない
     const dataUrl = await toSvg(viewportEl, imageOptions)
-    downloadText(dataUrl, filename, 'image/svg+xml')
+    downloadBlob(dataUrlToBlob(dataUrl), filename)
   }
 }
 

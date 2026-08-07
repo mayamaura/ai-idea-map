@@ -1493,7 +1493,7 @@ Anthropic API はルート傍受でモックしている。検証スクリプト
 - [x] AI拡張が Anthropic API を呼び、送信ボディの `x-api-key` / `model` / `max_tokens` / `thinking: disabled` が一致し、提案がUIに反映される
 - [x] `currentFileId` がリロードをまたいで復元される
 - [x] 全項目で console error / pageerror がゼロ（移行前ビルドも同様）
-- [x] `pnpm build` 通過。CSS 出力 46.38 kB・`ai` チャンク 144.40 kB は移行前と一致
+- [x] `pnpm build` 通過。CSS 出力 46.38 kB・`ai` チャンク 144.40 kB は移行前と一致（CSS 出力はその後 2026-08-07 のカーソル可視化修正で 48.64 kB に増加。掴むカーソルの SVG データURI 2本が増えた分。`ai` チャンクは 144.40 kB のまま不変）
 - [x] `pnpm lint` は 16 problems（移行前 17 から `storageService` の空 catch 1件が減っただけで、新規指摘ゼロ）
 - [x] 意図的な違反ファイル3件で依存方向ルールが5件すべてエラー検出することを確認（core→ui、platform→core、ui→apps の相対 import、core での `localStorage`/`fetch` 直呼び）
 
@@ -1505,9 +1505,18 @@ Playwright では確認できていないため、`pnpm dev` での手動確認�
 - [ ] Drive 保存の 401 リトライ（サイレント再認証 → 再接続トースト）
 - [ ] 別デバイスとの衝突ダイアログ（「上書き保存」「最新版を読み込む」）
 - [ ] 設定のDrive同期（`saveSettingsToDrive` / `loadSettingsFromDrive`）
-- [ ] PNG / SVG の画像エクスポート
+- [ ] PNG / SVG の画像エクスポート（SVG は出力ファイルがXMLとして解析できない不具合を 2026-08-07 に修正済み。再確認が必要。詳細は下記「実機確認で見つかった不具合の修正」を参照）
 - [ ] プレゼンテーションモード
 - [ ] GitHub Pages へのデプロイ成功（`main` へマージ後）
+
+#### 実機確認で見つかった不具合の修正（2026-08-07）
+
+上記の実機確認を進める中で2件の不具合が見つかり、修正した。コードは修正済み・ビルド確認済みだが、ユーザーによる再度の実機確認はまだ行っていないため、上の実機確認チェックリストの該当項目は `[ ]` のままにしている。
+
+- **SVG エクスポートが壊れたファイルを出力していた**（`packages/ui/src/services/exportService.ts` の `exportMapAsImage`）: `html-to-image` の `toSvg()` が返すのは SVG 本体ではなく `data:image/svg+xml;charset=utf-8,<percent-encoded XML>` というデータURL文字列だった。それをそのままファイル内容として書き出していたため、出力した `.svg` をブラウザで開くと `error on line 1 at column 1: Start tag expected, '<' not found` になっていた。PNG と同じ `dataUrlToBlob()` でデコードしてから `downloadBlob()` する実装に統一して解消した（下記「積み残し」も参照）。実際の `html-to-image` 1.11.13 を headless Chrome で動かし、修正後のファイル内容が `<svg xmlns=...` で始まり `DOMParser` の `image/svg+xml` パースが通ること、日本語も保持されること、画像としてデコードできる（400x200）ことを確認した
+- **キャンバスの「掴む」カーソルがライトモードで見えない**（`packages/ui/src/index.css`）: ブラウザ標準の `grab`/`grabbing` カーソルはフチが細く、ライトモードのキャンバス背景色 `#f9fafb` と同化して見えなかった。白い手に黒フチ（塗り `#ffffff` + フチ `#1f2937`、24×24、ホットスポット `11 12`）を回した自前の SVG カーソルを定義し、`.react-flow__pane.draggable` 等に `!important` 付きで適用して解消した（詳細は `docs/design.md` §14）。ライトでは黒フチが、ダークでは白い塗りが背景から浮くためテーマ分岐は設けていない。build 順・dev 順の両方の CSS 読み込み順で `getComputedStyle` を確認し、pane/node の grab・grabbing、`.tap-connect` の crosshair の5パターンと `.dark` 切替の挙動が期待どおりになることを確認した
+
+いずれの修正もビルド・lint には影響なし。`pnpm build` 通過（CSS 出力は前述のとおり 48.64 kB）。`pnpm lint` は 16 problems（13 errors, 3 warnings）で Phase 33 完了時と同数、新規指摘なし。
 
 #### 移行に伴う判断（設計ドキュメントからの差分）
 
@@ -1525,7 +1534,7 @@ Playwright では確認できていないため、`pnpm dev` での手動確認�
 
 #### 積み残し
 
-- SVG エクスポートは `toSvg` が返すデータURL文字列をそのままファイル内容として書き出している（移行前からのバグ）。Phase 33 の判定条件が「移行前と同じ動作」のため本フェーズでは修正していない
+- ~~SVG エクスポートは `toSvg` が返すデータURL文字列をそのままファイル内容として書き出している（移行前からのバグ）。Phase 33 の判定条件が「移行前と同じ動作」のため本フェーズでは修正していない~~ → **解消済み（2026-08-07）**。実機確認で発覚し、PNG と同じ `dataUrlToBlob()` 経由のデコードに統一して修正した（詳細は上記「実機確認で見つかった不具合の修正」を参照）
 - `packages/ui` のコンポーネントに `showCloudAuth` などデスクトップ向けの分岐を入れたが、実際の動作確認は Phase 34 で行う
 
 ---

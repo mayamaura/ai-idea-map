@@ -123,7 +123,31 @@ body,
   filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6));
 }
 
+/*
+ * キャンバスの「掴む」カーソル。
+ * ブラウザ標準の grab / grabbing はフチが細く、ライトモードの白背景に同化して見えない。
+ * 白い手に太い黒フチを回した自前のカーソルへ差し替える。
+ * ライトでは黒フチが、ダークでは白い塗りが背景から浮くのでテーマ分岐は要らない。
+ * SVG は「太い黒で1回描いてから白で描き直す」二度塗りにしている。図形ごとに stroke を
+ * 引くと指と手のひらの重なりに内側の線が出るため。指の隙間だけは黒が残り関節線になる。
+ * 24px・指幅 2.1・フチ 1px は、標準カーソル並みの細さと白背景での視認性の折衷点。
+ * これ以上フチを細くすると 24px のラスタライズでフチが灰色に潰れて見えなくなる。
+ * !important は @xyflow/react の style.css が同一詳細度かつ dev と build で読み込み順が
+ * 入れ替わる（dev は index.css が先）ため、どちらでも確実に上書きするのが目的。
+ */
+.react-flow__pane.draggable,
+.react-flow__nodesselection-rect,
+.react-flow__node.draggable {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='-1 0 24 24'%3E%3Cg fill='%231f2937' stroke='%231f2937' stroke-width='2' stroke-linejoin='round'%3E%3Crect x='7.6' y='4.3' width='2.1' height='11.2' rx='1.05'/%3E%3Crect x='10.4' y='3.2' width='2.1' height='12.3' rx='1.05'/%3E%3Crect x='13.2' y='4' width='2.1' height='11.5' rx='1.05'/%3E%3Crect x='16' y='5.8' width='2.1' height='9.7' rx='1.05'/%3E%3Crect x='7.6' y='10.5' width='10.5' height='11' rx='3.8'/%3E%3Crect x='4.35' y='11.8' width='2.3' height='7' rx='1.15' transform='rotate(-40 5.5 15.3)'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='7.6' y='4.3' width='2.1' height='11.2' rx='1.05'/%3E%3Crect x='10.4' y='3.2' width='2.1' height='12.3' rx='1.05'/%3E%3Crect x='13.2' y='4' width='2.1' height='11.5' rx='1.05'/%3E%3Crect x='16' y='5.8' width='2.1' height='9.7' rx='1.05'/%3E%3Crect x='7.6' y='10.5' width='10.5' height='11' rx='3.8'/%3E%3Crect x='4.35' y='11.8' width='2.3' height='7' rx='1.15' transform='rotate(-40 5.5 15.3)'/%3E%3C/g%3E%3C/svg%3E") 11 12, grab !important;
+}
+
+.react-flow__pane.dragging,
+.react-flow__node.draggable.dragging {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='-1 0 24 24'%3E%3Cg fill='%231f2937' stroke='%231f2937' stroke-width='2' stroke-linejoin='round'%3E%3Crect x='7.6' y='8.5' width='2.1' height='6.5' rx='1.05'/%3E%3Crect x='10.4' y='8' width='2.1' height='7' rx='1.05'/%3E%3Crect x='13.2' y='8' width='2.1' height='7' rx='1.05'/%3E%3Crect x='16' y='9' width='2.1' height='6' rx='1.05'/%3E%3Crect x='7.6' y='11' width='10.5' height='10.5' rx='3.42'/%3E%3Crect x='4.6' y='13' width='6.51' height='2.3' rx='1.15'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='7.6' y='8.5' width='2.1' height='6.5' rx='1.05'/%3E%3Crect x='10.4' y='8' width='2.1' height='7' rx='1.05'/%3E%3Crect x='13.2' y='8' width='2.1' height='7' rx='1.05'/%3E%3Crect x='16' y='9' width='2.1' height='6' rx='1.05'/%3E%3Crect x='7.6' y='11' width='10.5' height='10.5' rx='3.42'/%3E%3Crect x='4.6' y='13' width='6.51' height='2.3' rx='1.15'/%3E%3C/g%3E%3C/svg%3E") 11 12, grabbing !important;
+}
+
 /* 接続モード（Phase 26）: 候補ノードにクロスヘアカーソルを表示 */
+/* 上の掴むカーソルより後ろかつ !important でないと、同一詳細度で負けて上書きされる */
 .tap-connect .react-flow__node {
-  cursor: crosshair;
+  cursor: crosshair !important;
 }

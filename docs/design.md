@@ -1057,6 +1057,20 @@ Phase 24 の「全面化」後も `dark:` クラスが1つもないコンポー�
 
 `Toast` は彩度の高い背景色＋白文字で元からテーマ非依存のため変更不要。
 
+### Phase 33 によるキャンバスの掴むカーソル可視化（2026-08-07）
+
+ブラウザ標準の `grab`/`grabbing` カーソルはフチが細く、ライトモードのキャンバス背景色 `#f9fafb` と同化して見えない不具合があった。`packages/ui/src/index.css` で、白い手に黒フチ（塗り `#ffffff` + フチ `#1f2937`）を回した自前の SVG データURIカーソル（24×24、ホットスポット `11 12`）へ差し替えている。
+
+**テーマ分岐は設けていない。** ライトでは黒フチが、ダークでは白い塗りが背景から浮くため、1種類で両テーマとも視認できる。
+
+SVG は「黒で図形を1回描いてから、同じ図形を白で描き直す」二度塗り構成になっている。図形ごとに `stroke` を引くと指と手のひらの重なりに内側の線が出てしまうため。指と指の 0.7px の隙間だけ1回目の黒が残り、関節の区切り線として機能する。
+
+**寸法の決め方**: 指幅 2.1・フチ `stroke-width: 2`（＝外側に 1px）は、標準カーソル並みの細さと白背景での視認性の折衷点。これより太くすると手がぼってりして不格好になり、これよりフチを細くすると 24px でラスタライズしたときフチが灰色に潰れて白背景から浮かなくなる。
+
+適用先は `.react-flow__pane.draggable` / `.react-flow__nodesselection-rect` / `.react-flow__node.draggable`（grab）と `.react-flow__pane.dragging` / `.react-flow__node.draggable.dragging`（grabbing）。
+
+**`!important` を付けている理由**: `@xyflow/react/dist/style.css` の同名ルールと詳細度が同じ（0,2,0）で、しかも CSS の読み込み順が dev（`index.css` が先）と build（React Flow の CSS が先）で入れ替わるため、読み込み順に依存せず確実に上書きするには `!important` が必要になる。既存の `.tap-connect .react-flow__node { cursor: crosshair }`（[17.8 スマホ タッチ操作](#178-スマホ-タッチ操作phase-26)の接続モード）も、この掴むカーソルに詳細度で負けないよう `!important` を付けたうえで CSS 内の後方に配置している。
+
 ---
 
 ## 16. 大規模マップのパフォーマンス（Phase 24 / Phase 28）
@@ -1074,6 +1088,12 @@ Phase 24 の「全面化」後も `dark:` クラスが1つもないコンポー�
 2. React Flow が全ノードを DOM に描画するのを待つ（2フレーム分の `requestAnimationFrame` を await）
 3. `exportMapAsImage(...)` を実行
 4. `finally` ブロックで `setRenderAllNodes(false)` に戻す（成功・失敗どちらでも戻す）
+
+### 16.2.1 PNG/SVG書き出しのデータURLデコード（Phase 33 不具合修正・2026-08-07）
+
+`html-to-image` の `toPng`/`toSvg` はどちらも画像本体ではなく、`data:image/png;base64,...` または `data:image/svg+xml;charset=utf-8,<percent-encoded XML>` という**データURL文字列**を返す。`exportMapAsImage`（`packages/ui/src/services/exportService.ts`）は `dataUrlToBlob()` でこれをデコードしてバイト列の `Blob` に戻し、`getPlatform().file.exportBlob()`（`downloadBlob()` 経由）でファイルとして書き出す。
+
+SVGは移行直後この変換を行わず、`toSvg()` が返すデータURL文字列をそのままファイル内容として書き出していた。そのため出力した `.svg` の先頭が `data:image/svg+xml;charset=utf-8,` から始まり、ブラウザが XML として解析できない不具合があった（`error on line 1 at column 1: Start tag expected, '<' not found`）。PNG と同じ `dataUrlToBlob()` → `downloadBlob()` の経路に統一して解消した。
 
 ### 16.3 フォーカス表示の Context 配布（`packages/ui/src/hooks/useNodeFocus.ts`）（Phase 28）
 
@@ -1225,7 +1245,7 @@ const groupChildPairs = useMapStore(
 - `handleNodeClick` を拡張: `connectingFromNodeId` が真で別ノードをタップ → `mapStore.connectNodes(connectingFromNodeId, node.id)` → `setConnectingFromNodeId(null)` → トースト「接続しました」。同じノードをタップ → 接続モード解除のみ。
 - `handlePaneClick` で `setConnectingFromNodeId(null)` を呼び、空白タップでもキャンセル。
 - `displayNodes` の `useMemo` に分岐を追加: 接続モード中は接続元ノードに `outline: '2px solid #6366f1'` を付与。
-- 接続中だけ `<ReactFlow>` に `className="tap-connect"` を付与し、`index.css` で `.tap-connect .react-flow__node { cursor: crosshair; }` を適用。
+- 接続中だけ `<ReactFlow>` に `className="tap-connect"` を付与し、`index.css` で `.tap-connect .react-flow__node { cursor: crosshair !important; }` を適用。掴むカーソル（[14. テーマ設計](#14-テーマ設計)参照）と詳細度が同じため、`!important` かつ CSS 内で後方に配置することで優先させている（Phase 33）。
 
 #### ロングプレス起動
 
