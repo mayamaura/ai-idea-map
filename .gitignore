@@ -1,5 +1,6 @@
 .claude/*
 !.claude/settings.json
+!.claude/agents/
 
 node_modules
 dist
