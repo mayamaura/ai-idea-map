@@ -1895,7 +1895,7 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 | 1 | ループバックサーバの実装 | `tauri-plugin-oauth` を使わず自前（`oauth.rs`）。必要なのは「1本の GET のクエリを読む」ことだけで、プラグインを足すと4点セット（JS依存・Rust依存・`lib.rs` 登録・capability）の保守が増える。自作コマンドは capability の管轄外なので `keychain.rs` と同じ構成に収まる |
 | 2 | PKCE の `code_challenge` | Rust 側で計算（`sha2` + `base64` を追加）。`crypto.subtle` はセキュアコンテキストでしか使えず、Tauri の WebView でそれが保証されるかを実測していないため。`code_verifier`/`state` の生成は制約のない `crypto.getRandomValues` で JS 側 |
 | 3 | `access_type=offline` | **送らない。** Google 公式が installed app について「リフレッシュトークンは常に返る」と明記しており、認可パラメータ表にも存在しない。Web server フロー向けの知識を持ち込まない |
-| 4 | `client_secret` | 既定で送らない（PKCE 併用時は省略可。公式サンプルも送っていない）。要求される構成向けに `VITE_GOOGLE_DESKTOP_CLIENT_SECRET` を任意で受ける |
+| 4 | `client_secret` | **必須**（`VITE_GOOGLE_DESKTOP_CLIENT_SECRET`）。当初は「PKCE 併用時は省略可」と判断していたが、実機で 400 `invalid_request` "client_secret is missing." が返って覆った。公開クライアントなので機密ではなく、防御は PKCE が担う |
 | 5 | `redirect_uri` | `http://127.0.0.1:<port>`。`localhost` はファイアウォールで弾かれうると Google 公式が明記しているため使わない。ポートは毎回 OS から借りる（事前登録不要） |
 | 6 | メールアドレス | スコープに `openid email` を足し ID トークンの `email` クレームから読む。Web版のように `userinfo` を叩かないので HTTP 許可が1つ減る |
 | 7 | アップロード | `FormData`/`Blob` をやめ `multipart/related` を文字列で手組み。plugin-http への `FormData` の挙動が未検証なのに対し、文字列ボディは両アプリで同じ経路を通る。**Web版の保存経路も同時に変わる** |

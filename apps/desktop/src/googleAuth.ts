@@ -16,9 +16,12 @@ import { getPlatform } from '@ideamap/platform'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID as string | undefined
 /**
- * デスクトップアプリ種別のクライアントにも Cloud Console はシークレットを発行するが、
- * PKCE を併用するトークン交換では省略できる（Google 公式のサンプルも送っていない）。
- * シークレットを要求する構成のときだけ .env で設定する。
+ * 同じクライアントのシークレット。
+ *
+ * 実装当初は「PKCE を併用すれば省略できる」と判断していたが、実機で試すと
+ * デスクトップアプリ種別のクライアントでは 400 invalid_request
+ * "client_secret is missing." が返るため必須。公開クライアントである以上
+ * これは機密ではなく、PKCE が本来の防御になっている（RFC 8252）。
  */
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_SECRET as string | undefined
 
@@ -109,6 +112,40 @@ function requireClientId(): string {
 }
 
 /**
+ * トークンエンドポイントのエラー応答を読み解く。
+ * Google は原因を本文の `error` / `error_description` に入れて返すので、
+ * ステータスコードだけを見せると設定ミスの切り分けができない。
+ */
+async function describeTokenError(res: Response): Promise<string> {
+  const body = await res.text().catch(() => '')
+  try {
+    const parsed = JSON.parse(body) as { error?: string; error_description?: string }
+    if (parsed.error) {
+      const detail = parsed.error_description ? `: ${parsed.error_description}` : ''
+      return `${parsed.error}${detail}${hintFor(parsed.error, parsed.error_description)}`
+    }
+  } catch {
+    // JSON でない応答（プロキシのエラーページ等）はそのまま見せる
+  }
+  return body.slice(0, 200)
+}
+
+/** 設定ミスとして頻出するものだけ、次に何をすればよいかを添える */
+function hintFor(error: string, description?: string): string {
+  const text = `${error} ${description ?? ''}`
+  if (text.includes('client_secret')) {
+    return '（.env に VITE_GOOGLE_DESKTOP_CLIENT_SECRET を設定してください）'
+  }
+  if (error === 'invalid_client') {
+    return '（クライアントIDとシークレットが「デスクトップアプリ」種別のものか確認してください）'
+  }
+  if (error === 'redirect_uri_mismatch') {
+    return '（OAuth クライアントの種別が「ウェブアプリケーション」になっている可能性があります。「デスクトップアプリ」で作り直してください）'
+  }
+  return ''
+}
+
+/**
  * OS 既定ブラウザで認可画面を開き、リダイレクトを受け取ってトークンに交換する。
  * ユーザーがブラウザで許可するまで戻らない（上限5分で timeout エラー）。
  */
@@ -165,7 +202,7 @@ export async function signInWithGoogle(): Promise<GoogleTokens> {
 
     const res = await postForm(TOKEN_ENDPOINT, params)
     if (!res.ok) {
-      throw new Error(`トークンの取得に失敗しました（${res.status}）`)
+      throw new Error(`トークンの取得に失敗しました（${res.status}）${await describeTokenError(res)}`)
     }
     const token = (await res.json()) as TokenResponse
     return {
@@ -195,7 +232,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<GoogleTo
 
   const res = await postForm(TOKEN_ENDPOINT, params)
   if (!res.ok) {
-    throw new Error(`再認証に失敗しました（${res.status}）`)
+    throw new Error(`再認証に失敗しました（${res.status}）${await describeTokenError(res)}`)
   }
   const token = (await res.json()) as TokenResponse
   return {

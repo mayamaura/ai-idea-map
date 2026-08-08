@@ -225,11 +225,16 @@ Google Drive連携を使わないユーザーへの移行パス（コード署�
 1. [Google Cloud Console](https://console.cloud.google.com) で Web版と同じプロジェクトを開く（Drive API は有効化済みのはず）。
 2. 「APIとサービス」→「認証情報」→「認証情報を作成」→「OAuth クライアント ID」→ アプリケーションの種類に **「デスクトップアプリ」** を選ぶ。Web版の「ウェブアプリケーション」種別のクライアントIDは**使い回せない**。
 3. リダイレクトURIの登録は不要（デスクトップアプリ種別はループバックのポートを事前登録しない）。
-4. 発行されたクライアントIDを `apps/desktop/.env` に置く（`apps/desktop/.env.example` が雛形）。
+4. 発行されたクライアントID**とクライアントシークレットの両方**を `apps/desktop/.env` に置く（`apps/desktop/.env.example` が雛形）。
 
    ```
    VITE_GOOGLE_DESKTOP_CLIENT_ID=xxxx.apps.googleusercontent.com
+   VITE_GOOGLE_DESKTOP_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxx
    ```
+
+   **シークレットは PKCE を使っていても必要。** 省略すると認可画面までは進むが、
+   トークン交換で 400 `invalid_request` "client_secret is missing." になる（README §3.1-H #4）。
+   `.env` を書き換えたら Vite の dev サーバーを再起動する（`pnpm dev:desktop` を立て直す）。
 
 5. OAuth 同意画面のスコープに `https://www.googleapis.com/auth/drive.file` と `openid` `email` が含まれていることを確認する。`drive.file` は非機微スコープなので重い審査は不要。
 6. **公開ステータスを「本番環境」にする。** 「テスト」のままだとリフレッシュトークンが7日で失効し、1週間ごとに再サインインが必要になる。
