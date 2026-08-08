@@ -1797,22 +1797,71 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 
 ---
 
-### Phase 37: デスクトップ固有UX（約3日）
+### Phase 37: デスクトップ固有UX（約3日）🔨 実装済み（確認中）
 
 **目標**: 「ネイティブアプリらしさ」を足す。
 
-> 参照: `docs/desktop/platform-integration.md` §3.4〜3.7。
+> 参照: `docs/desktop/platform-integration.md` §3.4〜3.7。設計からの差分は `docs/desktop/README.md` §3.1-G。
 
 #### タスク
-- [ ] `.ideamap` 拡張子の OS 関連付け（`bundle.fileAssociations`）＋ `tauri-plugin-single-instance` でダブルクリック起動を既存ウィンドウに転送
-- [ ] ファイルのドラッグ&ドロップ受け入れ（`onDragDropEvent`）。**要検証**: React Flow のノード操作と競合しないか
-- [ ] `window-state` プラグインでウィンドウ位置・サイズを記憶
-- [ ] 外部でファイルが変更された場合の検知（ウィンドウ `focus` 時に `mtime` 比較 → 再読み込み確認ダイアログ）
-- [ ] アプリ内「最近開いたファイル」リスト（必須）。OSの「最近使った項目」統合は**要検証**のため任意
-- [ ] エクスポート（JSON/画像/Markdown）を `dialog.save()` ＋ `fs` 書き込みに変更
-- [ ] 共有URL機能の代替案内（「JSONファイルとして共有」への文言変更）
+- [x] `.ideamap` 拡張子の OS 関連付け（`bundle.fileAssociations`）を追加し、`tauri-plugin-single-instance` を（他プラグインより先に）登録して2つ目のプロセスの起動引数を既存ウィンドウへ `ideamap://open-map-file` イベントで転送する（`launch.rs`）。起動引数のパスへの `fs` 許可は `grant_fs_access()` が `FsExt::try_fs_scope()` と `tauri::scope::Scopes` の両方に明示的に付与する（ダイアログを介さないため Phase 34 の実行時許可の仕組みが効かないため）
+- [x]✅ 起動引数を渡した2つ目のプロセス起動での単一インスタンス化・fsスコープ付与を実機確認（下記「動作確認」参照）。**OSのファイル関連付け経由での実際のダブルクリック起動は未確認**（下記「残りの手動確認項目」参照）
+- [x] ファイルのドラッグ&ドロップ受け入れ（`FileDropOverlay.tsx`、`getCurrentWebview().onDragDropEvent`）。`dragDropEnabled` を `false` → `true` に変更
+- [x]✅ React Flow のノードドラッグ操作と競合しないことを実機確認（`docs/desktop/README.md` §5「Phase 37 で解消した項目」で #7 を解消）。ドロップハンドラの動作もイベント注入で確認したが、**OSからの実際のドロップ操作は未確認**
+- [x]✅ `tauri-plugin-window-state` でウィンドウ位置・サイズを記憶。実機でウィンドウを移動・リサイズして再起動し、復元されることを確認
+- [x]✅ 外部でファイルが変更された場合の検知（`externalChange.ts`、ウィンドウ `onFocusChanged` 時に `mtime` 比較 → 再読み込み確認ダイアログ）を実機確認
+- [x] アプリ内「最近開いたファイル」リスト（**Phase 34 で実装済み**。`FileAdapter.listRecent()` + `DesktopFileDashboard`）。OSの「最近使った項目」統合は本フェーズでも未着手のまま（任意項目）
+- [x] エクスポート（JSON/画像/Markdown）を `dialog.save()` ＋ `fs` 書き込みに変更（**Phase 34 で実装済み**。`FileAdapter.exportBlob`）
+- [x]✅ 共有URL機能の代替案内（`ExportImportPanel` の共有タブを「JSONファイルとして共有」の案内に変更。タブ自体は隠さない）を実機確認
 
 **完了条件**: エクスプローラから `.ideamap` をダブルクリックでアプリが開く。ドラッグ&ドロップでマップを読み込める。前回のウィンドウ位置・サイズで起動する。
+
+上記のうち「エクスプローラからの実際のダブルクリック起動」「エクスプローラから実際にファイルを掴んでのドロップ操作」「macOS の `RunEvent::Opened` 経路」は未実施のため、完了条件は実装面・CDPによるシミュレーション確認でのみ満たしている。詳細は「残りの手動確認項目」を参照。
+
+#### 実装時の判断（設計ドキュメントからの差分）
+
+`docs/desktop/README.md` §3.1-G に表としてまとめた。要点のみ再掲する。
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | `.ideamap` 関連付け + single-instance | `bundle.fileAssociations` で `.ideamap` を登録。`tauri-plugin-single-instance` を**最初に**登録し、2つ目のプロセスの引数を既存ウィンドウへ転送する。`launch.rs` が起動引数からマップファイルらしきパス（`.ideamap`/`.json`、`-` 始まりのオプションは除外、先頭の実行ファイル自身は飛ばす）を1つ選び `PendingLaunchFile` に保持し、フロントは `take_launch_file` コマンドで1回だけ取り出す。2つ目のインスタンスからは `ideamap://open-map-file` イベントで届く。macOS は起動引数ではなく `RunEvent::Opened` で届くため、`run(context)` ではなく `build()` + `run(closure)` に変更した（**macOS 実機は未検証**） |
+| 2 | 起動引数のパスへの fs スコープ付与 | capabilities の `fs:scope` はアプリ専用ディレクトリのみで、ユーザーが選んだパスは dialog プラグインが実行時に許可を足す設計（Phase 34 の裁定）。**ダブルクリック起動は dialog を通らないため**、`launch.rs` の `grant_fs_access()` が `FsExt::try_fs_scope()` と `tauri::scope::Scopes` の両方に `allow_file()` を明示的に呼ぶ。これが無いと `forbidden path` で読み込みに失敗する。**ドラッグ&ドロップは Tauri 本体が Drop イベント処理の中で同じ許可を出すため不要**（`tauri` 2.11.5 の `manager/webview.rs` の `DragDropEvent::Drop` 分岐で確認済み） |
+| 3 | ドラッグ&ドロップ | `dragDropEnabled` を `false` → `true` に変更。`FileDropOverlay.tsx` が `onDragDropEvent` を購読し、ドラッグ中はオーバーレイを表示。`.ideamap`/`.json` 以外は案内トースト、未保存の変更があるときは確認ダイアログを挟む |
+| 4 | ウィンドウ状態の記憶 | `tauri-plugin-window-state` を追加。Rust側だけで完結し JS からは呼ばないため capability の追加は不要。`WindowEvent::CloseRequested`/`Moved`/`Resized` と `RunEvent::Exit` で保存する。`SystemAdapter.onBeforeExit` の `window.destroy()` 経路でも `RunEvent::Exit` は発火するため保存される |
+| 5 | 外部ファイル変更の検知 | `externalChange.ts` が `onFocusChanged` を購読し、前面復帰時に `FileAdapter.getMetadata()` で mtime を取り直す。**初回は基準の記録のみでダイアログを出さない**（開いた直後の誤検知防止）。基準は `max(記録した mtime, uiStore.lastSavedAt)` に `MTIME_TOLERANCE_MS`（2000ms）を足したもの。超えたときだけ確認ダイアログを出し、未保存の変更があれば文言を変え `danger: true` にする。**「キャンセル」を選んでも基準を進め、同じ内容で繰り返し尋ねない**。ファイルシステム監視（`notify` crate）は初期リリースにはオーバースペックとして見送り（`platform-integration.md` §3.7） |
+| 6 | 共有URLの代替案内 | `ExportImportPanel` は `onGenerateShareUrl` が未指定でも「共有」タブ自体は隠さず、「JSONファイルとして共有」の案内（JSON書き出しボタン＋なぜ共有URLが無いかの説明）を表示する。Web版の表示は変わらない |
+
+#### 動作確認（デスクトップ実機・CDP + PowerShell・2026-08-08）
+
+`pnpm dev:desktop` を `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` 付きで起動し、Playwright を CDP でアタッチして検証した。検証スクリプトは確認後に削除済み。
+
+- [x]✅ React Flow のノードドラッグが `dragDropEnabled: true` でも効く（140,84 px 移動）
+- [x]✅ WebView 内の HTML5 `dragstart` が発火する（`PresentationOrderPanel` の並べ替えが依存している）
+- [x]✅ `.ideamap` を引数に付けて2つ目のプロセスを起動 → プロセスは増えず（single-instance が効いている）、動作中のインスタンスがそのファイルを開いた（タイトル「起動引数テスト用マップ」・ノード3件）。このファイルは `fs:scope` の外にあり dialog も通していないため、`grant_fs_access()` が効いていることの確認になる
+- [x]✅ ウィンドウを (200,120) 1180x760 に動かして閉じ、再起動すると同じ位置・サイズで復元された
+- [x]✅ 外部ファイル変更の検知: ①1回目のフォーカス復帰ではダイアログが出ない（基準の記録のみ）②外部からファイルを書き換えて2回目のフォーカス復帰で「ファイルが外部で変更されています」ダイアログが出る ③「読み込み直す」でタイトルとノード数が更新される（3件→4件）④3回目のフォーカス復帰では再度尋ねない
+- [x]✅ ドロップ処理: Tauri の drag-drop イベントを webview に注入して `FileDropOverlay` のハンドラを検証。ドラッグ中にオーバーレイが出て、ドロップで消える。対象外の拡張子では案内トーストが出る。fs スコープ済みのファイルをドロップするとそのマップが開く。**ただし OS からの実ドロップ経路（実際にエクスプローラからファイルを掴んで落とす）は CDP から再現できないため未検証**
+- [x]✅ 設定パネルの「アプリ情報」にバージョン 0.1.0 が出て、「更新を確認」が結果を返す（リリース未公開のため「更新の確認に失敗しました: Could not fetch a valid release JSON from the remote」。これは想定どおり）
+- [x]✅ 共有タブが「JSONファイルとして共有」の案内になっている
+- [x]✅ 全工程で console error / pageerror がゼロ
+- [x]✅ `cargo test`（`launch.rs`）— 引数パースのユニットテスト4件が通過
+- [x]✅ `pnpm typecheck` 通過。`pnpm lint` は 16 problems（13 errors・3 warnings）で Phase 36 と同数・すべて既存ファイル由来
+
+#### Web版に影響が出ていないことの確認（`pnpm dev` + Edge・2026-08-08）
+
+`ExportImportPanel` は Web版と共通のコンポーネントなので、共有タブの変更が Web版の挙動を変えていないことを別途確認した。
+
+- [x]✅ 共有タブに従来どおり「共有リンクを生成」が出る（「JSONファイルとして共有」の代替案内は出ない）
+- [x]✅ 「共有リンクを生成」で実際に `?map=...` 付きの共有URLが生成される
+- [x]✅ 設定パネルに「アプリ情報」セクションが出ない（`settingsExtraSections` はデスクトップ版のみ）
+- [x]✅ console error / pageerror がゼロ
+
+#### 残りの手動確認項目
+
+- エクスプローラから実際に `.ideamap` をダブルクリックしての起動（インストーラを入れて拡張子を OS に登録する必要があるため、`pnpm dev:desktop` では確認できない）
+- エクスプローラから実際にファイルを掴んでウィンドウへドロップする操作
+- macOS の `RunEvent::Opened` 経路（macOS 実機が未入手）
+- OSの「最近使った項目」「ジャンプリスト」統合（未解決事項 #8・任意項目のため未着手）
 
 ---
 

@@ -42,6 +42,7 @@
 | APIキーの保管 | デスクトップは **OSキーチェーン**（`keyring` crate）。マスターパスワード入力は不要になる | Stronghold 公式プラグインは非推奨化（v3で削除予定）のため不採用 |
 | 配布 | GitHub Actions で Windows(MSI/NSIS)・macOS(dmg) をビルド → GitHub Releases → `tauri-plugin-updater` で自動更新。**当面はコード署名なし** | 個人開発。署名証明書は後から導入可能な移行パスを確保 |
 | Web検索 | ollama.com の Web Search API（Bearer認証）。デスクトップ版のみ | ユーザー指定。ブラウザからは CORS で叩けず、`LLMProvider` の外側の独立機能として実装（§3.1-E） |
+| デスクトップのネイティブUX | `.ideamap` 関連付け＋`single-instance`、D&D受け入れ、ウィンドウ状態記憶、外部変更検知。共有URLはJSON書き出しで代替 | 「ネイティブアプリらしさ」を実装。OSの「最近使った項目」統合は任意機能として見送り（§3.1-G） |
 
 ---
 
@@ -141,6 +142,19 @@ Web検索（ollama.com の Web Search API）の裏取り（エンドポイント
 
 署名鍵（公開鍵は `tauri.conf.json` にコミット済み。秘密鍵とパスワードはリポジトリ外に保管）と無署名配布時の案内（README「初回起動時の警告について」節、SHA256チェックサム）の詳細は `docs/implementation-plan.md` Phase 36 を参照。GitHub Secrets への署名鍵登録・タグを打っての実ビルド・開発機以外での実機確認は未実施。
 
+### 3.1-G デスクトップ固有UX実装時の設計判断（Phase 37 実施済み・2026-08-08）
+
+`platform-integration.md` §3.4〜3.7 の記述から意図的に変えた点、または実装時に確定した詳細です。**本節が優先されます。**
+
+| 事項 | 判断 | 理由 |
+|---|---|---|
+| `.ideamap` 関連付け + single-instance | `bundle.fileAssociations` で `.ideamap` を登録。`tauri-plugin-single-instance` を**最初に**登録し、2つ目のプロセスの引数を既存ウィンドウへ転送する。`launch.rs` が起動引数からマップファイルらしきパス（`.ideamap`/`.json`、`-` 始まりのオプションは除外、先頭の実行ファイル自身は飛ばす）を1つ選び `PendingLaunchFile` に保持し、フロントは `take_launch_file` コマンドで1回だけ取り出す。2つ目のインスタンスからは `ideamap://open-map-file` イベントで届く | macOS は起動引数ではなく `RunEvent::Opened` で届くため、`run(context)` ではなく `build()` + `run(closure)` に変更した（**macOS 実機は未検証**） |
+| 起動引数のパスへの fs スコープ付与 | capabilities の `fs:scope` はアプリ専用ディレクトリのみで、ユーザーが選んだパスは dialog プラグインが実行時に許可を足す設計（Phase 34 の裁定）。**ダブルクリック起動は dialog を通らないため**、`launch.rs` の `grant_fs_access()` が `FsExt::try_fs_scope()` と `tauri::scope::Scopes` の両方に `allow_file()` を明示的に呼ぶ | これが無いと起動引数のファイルの読み込みが `forbidden path` で失敗する。**ドラッグ&ドロップは Tauri 本体が Drop イベント処理の中で同じ許可を出すため不要**（`tauri` 2.11.5 の `manager/webview.rs` の `DragDropEvent::Drop` 分岐で確認済み） |
+| ドラッグ&ドロップ | `dragDropEnabled` を `false` → `true` に変更。`FileDropOverlay.tsx` が `onDragDropEvent` を購読し、ドラッグ中はオーバーレイを表示。`.ideamap`/`.json` 以外は案内トースト、未保存の変更があるときは確認ダイアログを挟む | React Flow のノード操作と競合しないことは実機確認済み（§5「Phase 37 で解消した項目」） |
+| ウィンドウ状態の記憶 | `tauri-plugin-window-state` を追加。Rust側だけで完結し、JSから呼ばないため capability の追加は不要。`WindowEvent::CloseRequested`/`Moved`/`Resized` と `RunEvent::Exit` で保存する | `SystemAdapter.onBeforeExit` が `window.destroy()` で閉じる経路でも `RunEvent::Exit` は発火するため保存される |
+| 外部ファイル変更の検知 | `externalChange.ts` が `onFocusChanged` を購読し、前面復帰時に `FileAdapter.getMetadata()` で mtime を取り直す。**初回は基準を記録するだけでダイアログを出さない**。基準は `max(記録した mtime, uiStore.lastSavedAt)` に `MTIME_TOLERANCE_MS`（2000ms）を足したもの。超えたときだけ確認ダイアログを出し、未保存の変更があれば `danger: true` にする。**「キャンセル」でも基準を進め、同じ内容を繰り返し尋ねない** | ファイルを開いた直後の誤検知を避け、自分の保存を外部変更と誤検知しないため。ファイルシステム監視（`notify` crate）は初期リリースにはオーバースペックとして見送った（`platform-integration.md` §3.7） |
+| 共有URLの代替案内 | `ExportImportPanel` は `onGenerateShareUrl` が未指定でも「共有」タブ自体は隠さず、「JSONファイルとして共有」の案内（JSON書き出しボタン＋説明文）を表示する | これまでは未指定時にタブごと非表示にしていた。Web版（`onGenerateShareUrl` あり）の表示は変わらない |
+
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 
 `platform-integration.md` §3.2 は「`import.meta.env` や `'__TAURI__' in window` 判定でエントリポイントを分ける」と書いていますが、これは `architecture.md` §3.5 で**明示的に却下された案C**です。
@@ -175,7 +189,7 @@ graph LR
     P33 --> P34["Phase 34 ✅<br/>Tauri骨格<br/>ローカルファイル保存"]
     P34 --> P35["Phase 35 🔨<br/>Ollama統合<br/>★主目的達成（実機確認待ち）"]
     P35 --> P36["Phase 36 🔨<br/>ビルド・配布・自動更新<br/>（タグ実走・実機確認待ち）"]
-    P36 --> P37["Phase 37<br/>デスクトップ固有UX"]
+    P36 --> P37["Phase 37 🔨<br/>デスクトップ固有UX<br/>（実機確認一部待ち）"]
     P36 -.任意.-> P38["Phase 38<br/>Drive連携<br/>（PKCE）"]
 ```
 
@@ -186,7 +200,7 @@ graph LR
 | 34 ✅ | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる（Windows 実機で確認済み。設計からの差分は §3.1-D） |
 | 35 🔨 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成**（実装済み。デスクトップ実機でのAI機能5種の動作確認と日本語モデルの実用性確認が未了。差分は §3.1-E） |
 | 36 🔨 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | GitHub Actions によるビルド・下書きリリース公開・自動更新の仕組みは実装済み（`cargo check`・`pnpm typecheck`・`pnpm lint` 通過）。タグを打っての実ビルド・GitHub Secrets登録・開発機以外での実機確認が未了。差分は §3.1-F |
-| 37 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・最近使った項目） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」 |
+| 37 🔨 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・外部変更検知・共有URL代替） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」。実装済み・CDP+PowerShellでの実機確認済み。エクスプローラでの実ダブルクリック起動・実ドロップ操作・macOS実機は未確認。差分は §3.1-G |
 | 38 | （任意）デスクトップ版 Google Drive 連携 | 3日 | platform-integration §3.8 | Web版とのクラウド同期 |
 
 ### 4.1 順序についての判断
@@ -208,7 +222,6 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | # | 事項 | 検証フェーズ | 出典 |
 |---|---|---|---|
 | 3 | `format` に JSON Schema オブジェクトを渡す機能の Ollama 最低バージョン。**Ollama 0.32.6 では動作を確認済み**（2026-08-07実測、`docs/implementation-plan.md` Phase 35「検証済み」参照）だが、「どのバージョンから」の下限は未確定のまま | 35 | llm-abstraction §8.2 |
-| 7 | Tauri のドラッグ&ドロップと React Flow のノード操作が競合しないか | 37 | platform-integration §8 |
 | 8 | OSの「最近使った項目」「ジャンプリスト」統合が公式プラグインだけで完結するか | 37 | platform-integration §8 |
 | 10 | macOS（WKWebView）でのレンダリング差異・日本語IME・描画性能。Windows では解消済みだが macOS 実機が未入手 | 36 | adr-001 §4 |
 
@@ -238,6 +251,14 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | 9 | **解消。** `tauri.conf.json` の `version` に `package.json` への相対パス文字列（`"../../../package.json"`）を指定できることを実測で確認した。`cargo check`（tauri-build）と `pnpm --filter @ideamap/desktop exec tauri inspect wix-upgrade-code`（tauri CLI）の両方が成功し、存在しないパス（`"../../nonexistent-package.json"`）を指定すると両方とも「`tauri.conf.json > version` must be a semver string」で失敗することから、パスとして解決されていることを確認した。**両者とも `src-tauri` を基準に解決する。** ただし本プロジェクトでは `apps/web/package.json` と `Cargo.toml` も揃える必要があり同期スクリプトがどのみち要るため、仕組みを二重に持たない判断で `tauri.conf.json` も数値で持つ方式を採用した（採用理由の詳細は §3.1-F） |
 
 番号は元の表のものを維持している（#9 は上の表から削除済み）。
+
+#### Phase 37 で解消した項目（2026-08-08）
+
+| # | 結果 |
+|---|---|
+| 7 | **解消。** `dragDropEnabled: true` の状態で、デスクトップ実機（`pnpm dev:desktop` + CDP アタッチ）にて ①React Flow のノードをポインタ操作でドラッグして 140,84 px 移動できること ②WebView 内の HTML5 `dragstart` が発火すること（`PresentationOrderPanel` の並べ替えが依存している）を確認した。React Flow のノード操作は HTML5 drag&drop ではなくポインタイベント（d3-drag）で実装されているため競合しない |
+
+番号は元の表のものを維持している（#7 は上の表から削除済み）。
 
 ---
 

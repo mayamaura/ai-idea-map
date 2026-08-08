@@ -165,19 +165,23 @@ ai-idea-map/
         ├── package.json
         ├── vite.config.ts           # devUrl 用に固定ポート 5174・strictPort（Tauri のウィンドウが空白になるのを防ぐ）
         ├── src-tauri/
-        │   ├── tauri.conf.json      # ウィンドウ設定・CSP・capabilities・plugins.updater の割り当て（Phase 36 で updater 追加）
-        │   ├── Cargo.toml           # updater/process は cfg(not(android/ios)) の対象外ターゲットに限定（Phase 36）
-        │   ├── capabilities/        # main-window / file-access / ai-http / updater の4ファイル（§18.5、updater は Phase 36）
+        │   ├── tauri.conf.json      # ウィンドウ設定・CSP・capabilities・plugins.updater の割り当て・bundle.fileAssociations（Phase 36 で updater、Phase 37 で fileAssociations・dragDropEnabled: true）
+        │   ├── Cargo.toml           # updater/process/single-instance/window-state は cfg(not(android/ios)) の対象外ターゲットに限定（Phase 36・Phase 37）
+        │   ├── capabilities/        # main-window / file-access / ai-http / updater の4ファイル（§18.5、updater は Phase 36。single-instance/window-state はJSから呼ばないためcapability不要）
         │   └── src/
-        │       ├── lib.rs           # プラグイン登録・invoke_handler（updater/process は #[cfg(desktop)]、Phase 36）
-        │       └── keychain.rs      # OSキーチェーン操作（has/get/set/clear_secret コマンド）
+        │       ├── lib.rs           # プラグイン登録・invoke_handler（updater/process は #[cfg(desktop)]、Phase 36）。single-instance を最初に登録し `build()` + `run(closure)` 形式に変更（Phase 37）
+        │       ├── keychain.rs      # OSキーチェーン操作（has/get/set/clear_secret コマンド）
+        │       └── launch.rs        # `.ideamap` 起動引数の取り出し・2つ目インスタンスへの転送・fs スコープ付与（Phase 37、§18.8）
         └── src/
             ├── main.tsx             # setPlatform → restorePersistedState() を await → render
-            ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）
+            ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）、起動引数ファイルの取り込みと外部変更検知の購読（Phase 37）
             ├── openMap.ts           # ファイルを開く共通処理（ダッシュボードと Ctrl+O が共用）
+            ├── launchFile.ts        # `.ideamap` ダブルクリック起動・2つ目インスタンスからのイベントの受け入れ（Phase 37）
+            ├── externalChange.ts    # 外部でのファイル変更検知（フォーカス復帰時に mtime 比較、Phase 37）
             ├── updater.ts           # 自動更新のチェック・ダウンロード・適用（Phase 36）
             ├── components/
             │   ├── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰）
+            │   ├── FileDropOverlay.tsx      # ファイルドラッグ&ドロップ受け入れのオーバーレイ（Phase 37）
             │   └── UpdaterSection.tsx       # 設定パネル末尾の「アプリ情報」セクション（バージョン表示・手動更新チェック、Phase 36）
             └── platform/            # Adapter の Desktop 実装
                 ├── index.ts
@@ -378,7 +382,7 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 | `autoSave` | 自動保存の可否とエラー時の扱い | アクセストークンと 401 リトライ方針 |
 | `mapListSlot` | クラウドのマップ一覧パネル | `<MapListPanel>` |
 | `dashboardSlot` | 起動時のファイル選択画面 | `<FileOpenDashboard>` |
-| `onGenerateShareUrl` | 共有URL生成。未指定なら共有タブを出さない | `generateShareUrl` |
+| `onGenerateShareUrl` | 共有URL生成。未指定でも「共有」タブは出るが、「JSONファイルとして共有」の代替案内になる（Phase 37） | `generateShareUrl` |
 | `settingsExtraSections`（Phase 36） | 設定パネル末尾に足すプラットフォーム固有セクション。未指定なら何も描画しない | （Web版は渡さない） |
 
 `cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播し、デスクトップ版では設定パネルの「Google Driveと同期」セクションを描画しない（Phase 34）。`settingsExtraSections` は `SettingsPanel` に `extraSections` props としてそのまま渡り、設定パネル最後尾（「保存」セクションの後）に描画される。`packages/ui` からプラットフォーム実装への依存を避けるための注入口で、デスクトップ版は `<UpdaterSection>`（バージョン表示・更新チェック、Phase 36）を渡す（§18.7）。
@@ -1589,7 +1593,7 @@ ai-idea-map/
 
 **CSP**: `default-src 'self'; script-src 'self'` を基本とし、`img-src` はデータURL・Blob・`asset:`（Tauri のアセットプロトコル）を許可、`connect-src` は `ipc:` と `http://ipc.localhost`（Tauri の内部通信）に加えデータURL・Blobを許可する。開発時（`devCsp`）のみ Vite の HMR 用に `script-src 'unsafe-inline'` と `ws://localhost:5174` / `http://localhost:5174` を追加で許可する。
 
-ウィンドウは `dragDropEnabled: false`（React Flow との競合が未検証のため。D&D は Phase 37 で検証）、クリップボードは `navigator.clipboard` ではなく `@tauri-apps/plugin-clipboard-manager` を使う（WebView のセキュアコンテキスト判定に依存しないため）。
+ウィンドウは `dragDropEnabled: true`（Phase 34 時点は `false` で様子見していたが、Phase 37 で React Flow との非競合を実機確認したうえで有効化した。§18.8）、クリップボードは `navigator.clipboard` ではなく `@tauri-apps/plugin-clipboard-manager` を使う（WebView のセキュアコンテキスト判定に依存しないため）。
 
 ### 18.6 本書の既存章への影響
 
@@ -1615,5 +1619,23 @@ ai-idea-map/
 | 手動チェック | 設定パネルの `UpdaterSection`（`checkForUpdate(false)`） | 結果を必ずトースト/ダイアログで返す |
 
 更新が見つかると `ask()` でユーザーに確認し、承諾されたら `flushPendingSave()` でデバウンス待ちの自動保存（`uiStore.saveStatus`）を最大10秒待って確定させてから `update.downloadAndInstall()` → `relaunch()` する。更新パッケージの署名検証は Rust 側（`tauri-plugin-updater`）が公開鍵（`tauri.conf.json` の `plugins.updater.pubkey`）で行うため、コード署名証明書が無くても配布後の改ざんは検出できる。更新の取得自体は Rust 側（reqwest）が行うため、WebView の CSP（`csp`/`devCsp`）には関係せず、Phase 36 で変更していない。
+
+### 18.8 デスクトップ固有UX（`apps/desktop`、Phase 37）
+
+**ファイル関連付け + 多重起動防止**: `tauri.conf.json` の `bundle.fileAssociations` で `.ideamap` を OS に登録し、`tauri-plugin-single-instance` を他のプラグインより先に登録する（2つ目のプロセスの引数を既存ウィンドウへ転送するため）。`apps/desktop/src-tauri/src/launch.rs` が起動引数からマップファイルらしきパス（`.ideamap`/`.json`、`-` 始まりのオプションは除外）を1つ選び `PendingLaunchFile` に保持し、フロントは `take_launch_file` コマンド（`apps/desktop/src/launchFile.ts`）で1回だけ取り出す。2つ目のインスタンスからは `ideamap://open-map-file` イベントで届く。macOS は起動引数ではなく `RunEvent::Opened` でファイルパスを受け取るため、`lib.rs` は `tauri::Builder::run(context)` ではなく `build(context)` → `app.run(closure)` の形に変更している（macOS 実機は未検証）。
+
+**起動引数のパスへの `fs` 許可**: §18.5 のとおり `fs:scope` はアプリ専用ディレクトリのみで、ユーザーが選んだパスは `dialog` プラグインが実行時に許可を足す設計（Phase 34）。ダブルクリック起動は `dialog` を通らないため、`launch.rs` の `grant_fs_access()` が `FsExt::try_fs_scope()` と `tauri::scope::Scopes` の両方に `allow_file()` を明示的に呼ぶ。これが無いと `forbidden path` で読み込みに失敗する。一方ドラッグ&ドロップは Tauri 本体が Drop イベント処理の中で同じ許可を出すため不要（`tauri` 2.11.5 の `DragDropEvent::Drop` 分岐で確認済み）。
+
+**ドラッグ&ドロップ**: `app.windows[].dragDropEnabled` を `false` → `true` に変更。`apps/desktop/src/components/FileDropOverlay.tsx` が `getCurrentWebview().onDragDropEvent` を購読し、ドラッグ中はオーバーレイを表示、`.ideamap`/`.json` 以外は案内トーストを出す。未保存の変更があるときは確認ダイアログを挟む。React Flow のノード操作は HTML5 の drag&drop ではなくポインタイベント（d3-drag）で実装されているため、OSレベルのファイルドロップとは競合しない（実機確認済み。`docs/desktop/README.md` §5「Phase 37 で解消した項目」）。
+
+**ウィンドウ状態の記憶**: `tauri-plugin-window-state` を追加。Rust 側だけで完結し JS からは呼ばないため capability の追加は不要。`WindowEvent::CloseRequested`/`Moved`/`Resized` と `RunEvent::Exit` で保存し、`SystemAdapter.onBeforeExit` の `window.destroy()` 経路でも `RunEvent::Exit` は発火するため保存される。
+
+**外部でのファイル変更検知**: `apps/desktop/src/externalChange.ts` が `getCurrentWindow().onFocusChanged` を購読し、前面に戻ったときに `FileAdapter.getMetadata()` で mtime を取り直す。同じファイルについて初回は基準を記録するだけでダイアログを出さない（開いた直後の誤検知防止）。基準は `max(記録した mtime, uiStore.lastSavedAt)` に `MTIME_TOLERANCE_MS`（2000ms）の余裕を足したもの。超えたときだけ確認ダイアログを出し、未保存の変更があれば文言を変えて `danger: true` にする。「キャンセル」を選んだ場合も基準を進め、同じ内容を繰り返し尋ねない。ファイルシステム監視（`notify` crate）は初期リリースにはオーバースペックと判断し見送った。
+
+**共有URLの代替**: `ExportImportPanel`（`packages/ui`）は `onGenerateShareUrl` が未指定でも「共有」タブ自体は隠さず、「JSONファイルとして共有」の案内（JSON書き出しボタン＋共有URLが無い理由の説明）を表示する（§5.1）。Web版（`onGenerateShareUrl` あり）の表示は変わらない。
+
+**アプリ内「最近開いたファイル」リスト**（Phase 34 で実装済み）: `FileAdapter.listRecent()` と `DesktopFileDashboard` が既に提供している（§5.1.2）。OSの「最近使った項目」「ジャンプリスト」への統合は任意機能として未着手（`docs/desktop/platform-integration.md` §8）。
+
+設計からの差分・実機確認の詳細は `docs/desktop/README.md` §3.1-G、`docs/implementation-plan.md` Phase 37 を参照。
 
 設計ドキュメントからの差分は `docs/desktop/README.md` §3.1-F、実装・検証状況は `docs/implementation-plan.md` Phase 36 を参照。

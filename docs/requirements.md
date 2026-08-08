@@ -514,6 +514,7 @@ AIに聞く前に、最新情報をWeb検索で取得してから回答させる
 | D-16 | AIプロバイダへの通信はブラウザの `fetch` ではなく Rust側（tauri-plugin-http）経由で行う。到達先は Anthropic API とローカル Ollama のみに制限する | 34 |
 | D-17 | 起動画面から新規作成・ファイルを開く・最近開いたファイルの選択ができる。Google Drive のマップ一覧とサインインUIは表示しない | 34 |
 | D-18 | AIに聞く前にWeb検索を使うかを選べる。対象はアイデア提案・AIチャット・マップ分析（全体分析タブ）の3機能。バックエンドは ollama.com の Web Search API（Bearer認証、Claude APIキーとは別のAPIキー）。検索結果はスニペットのみ取り込み、参照した情報源をUIに表示する。デスクトップ版のみ（`HttpAdapter.canAccessLocalServers` で判定）。検索クエリが ollama.com に送信される旨を設定画面に明記する | 35（追加実装） |
+| D-19 | 共有URLに対応しないプラットフォーム（デスクトップ版）では、「共有」タブを隠さずに「JSONファイルとして共有」の代替手段（JSON書き出しボタンと理由の説明）を案内する | 37 |
 
 > **Phase 32（完了）はユーザーから見える変更を含みません。** D-1〜D-5 の土台となる `LLMProvider` 抽象化（Claude のみ）を Web版に導入し、AI機能5種の入出力・エラー文言・送信リクエストを Phase 31 以前と完全に同一に保っています。
 >
@@ -524,6 +525,8 @@ AIに聞く前に、最新情報をWeb検索で取得してから回答させる
 > **Phase 35 への追加実装（2026-08-08）** で D-18（Web検索）を実装しました。デスクトップ実機で、有効な ollama.com APIキーを使ったアイデア提案での実検索・出典表示まで確認済みです。AIチャットとマップ分析での実検索はユーザーによる手動確認待ちです（`docs/implementation-plan.md` Phase 35 参照）。
 >
 > **Phase 36（ビルド・配布・自動更新、2026-08-08）** で D-11 を実装しました。GitHub Actions ワークフロー（`.github/workflows/release-desktop.yml`）・バージョン同期スクリプト（`scripts/sync-version.mjs`）・自動更新（`tauri-plugin-updater`）はコード実装・`cargo check`・`pnpm typecheck`・`pnpm lint` まで確認済みですが、タグを打っての実ビルド・GitHub Secretsへの署名鍵登録・開発機以外での実機確認（インストール〜起動〜自動更新）はまだ行っていません（`docs/implementation-plan.md` Phase 36 参照）。
+>
+> **Phase 37（デスクトップ固有UX、2026-08-08）** で D-12〜D-15・D-19 を実装しました。デスクトップ実機（`pnpm dev:desktop` を CDP + PowerShell で操作）で、起動引数を渡した2つ目のプロセス起動での単一インスタンス化とfsスコープ付与、React Flowのノード操作とファイルドロップの非競合、ウィンドウ位置・サイズの記憶、外部でのファイル変更検知（初回は基準記録のみ・2回目以降で検知・キャンセル時も基準を進める）、共有タブの代替案内までは確認済みです。**エクスプローラからの実際のダブルクリック起動・実際にファイルを掴んでのドロップ操作・macOSの `RunEvent::Opened` 経路は未確認です**（`docs/implementation-plan.md` Phase 37 参照）。
 
 ### 5-B.3 Web版との差異
 
@@ -534,9 +537,9 @@ AIに聞く前に、最新情報をWeb検索で取得してから回答させる
 | Claude API | 対応 | 対応（Phase 34 で実装済み。Rust側 tauri-plugin-http 経由） |
 | 保存先 | Google Drive 中心 + localStorage | ローカルファイル中心（Phase 34 で実装済み） |
 | Google Drive 同期 | 対応 | **非対応**（Phase 38 で任意追加を検討） |
-| 共有URL | 対応 | 非対応（JSONファイル共有で代替） |
+| 共有URL | 対応 | 非対応（共有タブに「JSONファイルとして共有」の案内を表示。Phase 37 で実装済み） |
 | APIキー保管 | マスターパスワード方式 | OSキーチェーン・パスワード入力不要（Phase 34 で実装済み） |
-| ウィンドウ状態の記憶 | 概念なし | 対応予定（Phase 37） |
+| ウィンドウ状態の記憶 | 概念なし | **対応**（Phase 37 で実装済み） |
 
 Web版で作成したマップは JSON エクスポート → デスクトップ版で「開く」で持ち込めます（`MapFile` 型が共通のため変換不要）。
 

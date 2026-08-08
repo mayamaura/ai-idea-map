@@ -18,7 +18,7 @@
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ],
     "security": {
@@ -37,7 +37,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": ["ideamap"],
+        "name": "IdeaMap マップファイル",
+        "description": "IdeaMap で作成したアイデアマップ",
+        "role": "Editor",
+        "mimeType": "application/json"
+      }
+    ]
   },
   "plugins": {
     "updater": {

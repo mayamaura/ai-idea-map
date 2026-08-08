@@ -144,20 +144,37 @@ if (savePath) {
 
 エクスプローラ／Finderで `.ideamap` ファイルをダブルクリックした際、TauriはOSから渡される起動引数（Windows）やmacOSの `open` イベントとしてファイルパスを受け取ります。これを拾うために `tauri-plugin-single-instance`（同じアプリの多重起動を防ぎ、2つ目の起動をイベントとして既存ウィンドウに転送する）と組み合わせるのが定石です。中身はJSON（既存の `MapFile` 型）のままにして良く、拡張子だけ変えることで「他のJSONビューアに関連付けを奪われない」実利があります。
 
+**実装（Phase 37）**: `apps/desktop/src-tauri/src/launch.rs` が起動引数からマップファイルらしきパス（`.ideamap`/`.json`、`-` 始まりのオプションと先頭の実行ファイル自身は除外）を1つ選び `PendingLaunchFile` に保持する。フロントエンド（`apps/desktop/src/launchFile.ts`）は `take_launch_file` コマンドで起動直後に1回だけ取り出す。`tauri-plugin-single-instance` は他のプラグインより先に登録し、2つ目のプロセスの引数は `ideamap://open-map-file` イベントとして既存ウィンドウへ転送する。macOS は起動引数ではなく `RunEvent::Opened` でファイルパスを受け取るため、`lib.rs` は `tauri::Builder::run(context)` ではなく `build(context)` → `app.run(closure)` の形に変更している（**macOS 実機は未検証**）。
+
+**起動引数のパスへの `fs` 許可（重要）**: §5.4／§18.5 のとおり `fs:scope` はアプリ専用ディレクトリのみに絞ってあり、ユーザーが選んだパスは `dialog` プラグインが実行時に許可を足す設計になっている。**ダブルクリック起動は `dialog` を通らないため、この仕組みが効かない。** そのため `launch.rs` の `grant_fs_access()` が `tauri_plugin_fs::FsExt::try_fs_scope()` と `tauri::scope::Scopes` の両方に対して明示的に `allow_file()` を呼ぶ。これが無いと `take_launch_file` で取得したパスの読み込みが `forbidden path` で失敗する。一方、後述のドラッグ&ドロップ（§3.6）は Tauri 本体が Drop イベント処理の中で同じ許可を出しているため、この明示的な呼び出しは不要（`tauri` 2.11.5 の `src/manager/webview.rs` の `DragDropEvent::Drop` 分岐で確認済み）。
+
 ### 3.5 OSの「最近使った項目」連携
 
 - Windows: `opener` プラグイン経由、またはRust側で `SHAddToRecentDocs` 相当のAPIを呼ぶ必要があります（ジャンプリストへの登録は追加のRustコードが必要になる可能性が高く、**未確認** — Tauri公式プラグインだけで完結するか検証が必要です）。
 - macOS: `NSDocumentController.shared.noteNewRecentDocumentURL` 相当の処理が必要で、これもTauri公式プラグインの範囲外である可能性が高く **未確認**。
 - 確実に実装できる代替として、アプリ内の「最近開いたファイル」リストを `store` プラグインで保持し、ファイルダッシュボード（`FileOpenDashboard.tsx` の後継）に表示する方式を必須ラインとし、OSネイティブな「最近使った項目」への統合は Phase を分けて追加検証する任意機能とします。
 
+**実装（Phase 34）**: アプリ内の「最近開いたファイル」リストは `FileAdapter.listRecent()`（`apps/desktop/src/platform/file.desktop.ts`。パスを主キーに `store` プラグインへ保存し、移動・削除されたファイルは一覧から自動的に除外する）と `DesktopFileDashboard.tsx` で実装済み。**OSネイティブの「最近使った項目」「ジャンプリスト」統合は Phase 37 でも着手していない。** 任意機能のまま未解決（§8 #3）。
+
 ### 3.6 ファイルのドラッグ&ドロップ受け入れ
 
 Tauri v2はウィンドウレベルの `onDragDropEvent`（`getCurrentWebview().onDragDropEvent`）でOSからのファイルドロップを検知できます。`tauri.conf.json` の `app.windows[].dragDropEnabled`（既定 `true`）を有効にしたうえで、ドロップされたファイルパスの拡張子が `.ideamap`/`.json` であれば読み込む処理を `App.tsx` 相当の初期化処理に追加します。ブラウザ標準の `ondrop` イベントと共存できるかは実装時に要検証（Tauriのドラッグ&ドロップは既定でOS側イベントを優先し、HTML5の `dragover`/`drop` を奪う場合があるため、React Flow のノードドラッグ操作と競合しないか確認が必要）。
+
+**実装・実測結果（Phase 37）**: `dragDropEnabled` を `false` → `true` に変更し、`apps/desktop/src/components/FileDropOverlay.tsx` が `getCurrentWebview().onDragDropEvent` を購読する。ドラッグ中はオーバーレイを表示し、`.ideamap`/`.json` 以外がドロップされたときは案内トーストを出す。未保存の変更があるときは開く前に確認ダイアログを挟む。**競合の懸念は実測で解消した。** デスクトップ実機（`pnpm dev:desktop` + CDP アタッチ）で、`dragDropEnabled: true` の状態のまま ①React Flow のノードをポインタ操作で 140,84 px ドラッグ移動できること ②WebView 内の HTML5 `dragstart`（`PresentationOrderPanel` の並べ替えが依存している）が発火することを確認した。React Flow のノード操作は HTML5 の drag&drop ではなくポインタイベント（d3-drag）で実装されているため、OSレベルのファイルドロップとは競合しない。ただし **OSから実際にファイルを掴んでウィンドウへドロップする操作**（イベント注入ではなく本物のドラッグ操作）は CDP からは再現できず未検証のまま。
 
 ### 3.7 外部でファイルが変更された場合の扱い
 
 - 最小実装: ウィンドウが `focus` イベントで前面に戻ったタイミングで、開いているファイルの `mtime`（更新日時）を `fs.stat` 相当のAPIで再取得し、アプリが最後に書き込んだ時刻より新しければ「外部で変更されています。再読み込みしますか？」の確認ダイアログを出す（`useAutoSave.ts` の `hiddenAtRef`/`FOCUS_RECHECK_MS` によるバックグラウンド復帰検知パターンを踏襲できる）。
 - 発展形としてファイルシステム監視（`notify` crateベースのウォッチャ、`fs` プラグインには現状ウォッチAPIが含まれないため別途Rust実装が必要）でリアルタイム検知する案もあるが、初期リリースではオーバーエンジニアリングと判断し見送る。
+
+**実装したアルゴリズム（Phase 37、`apps/desktop/src/externalChange.ts`）**: `getCurrentWindow().onFocusChanged` を購読し、前面に戻ったときだけ `FileAdapter.getMetadata()` で mtime を取り直す。
+
+1. 開いているファイルについて、まだ基準（baseline）を記録していない場合（起動直後・別ファイルへの切り替え直後）は、取得した mtime をそのまま基準として記録するだけでダイアログは出さない。ファイルを開いた直後の1回目のフォーカス復帰で誤検知しないための措置。
+2. 基準がある場合は `既知の時刻 = max(記録した baseline.mtime, uiStore.lastSavedAt)` に `MTIME_TOLERANCE_MS`（2000ms）の余裕を足したものと比較する。保存直後は自分が書いた mtime が `lastSavedAt` よりわずかに新しくなりうるため、この余裕が無いと自分の保存を外部変更と誤検知する。
+3. 取得した mtime がこの許容範囲を超えたときだけ「ファイルが外部で変更されています」の確認ダイアログを出す。未保存の変更がある場合は文言を変え `danger: true` にする。同じ mtime に対しては1回しか尋ねない（`promptedMtime` で記録）。
+4. 「読み込み直す」を選ぶと `openMapFile()` で再読み込みし、読み込めた時点の mtime を新しい基準にする。**「キャンセル」（開いたままにする）を選んだ場合も基準をその mtime まで進める。** そうしないと次のフォーカス復帰のたびに同じ確認が繰り返し出てしまう。
+
+ファイルシステム監視（`notify` crate）は上記の判断どおり、初期リリースにはオーバースペックとして Phase 37 でも見送った。
 
 ### 3.8 Google Drive連携をデスクトップ版でも残すか
 
@@ -658,9 +675,9 @@ await fetch('http://localhost:11434/api/tags').then(r => r.json())
 |---|---|---|---|
 | 1 | `version` フィールドへのパッケージ相対パス指定 | `tauri.conf.json` の `version` に `package.json` へのパスを直接渡せるかは未確認 | **Phase 36 で解消（2026-08-08）。** `"../../../package.json"` のような相対パスを指定でき、`cargo check`（tauri-build）と `tauri inspect`（tauri CLI）の両方が `src-tauri` を基準に解決することを実測で確認した。ただし `apps/web/package.json` と `Cargo.toml` も揃える必要がありどのみち同期スクリプトが要るため、本プロジェクトでは採用せず §6.4 の `scripts/sync-version.mjs` による数値同期方式を採用した |
 | 2 | `dialog` で選択した任意パスへの `fs` 書き込み許可の実際の挙動 | `fs:scope` の外にあるユーザー選択パスへの書き込みがdialog-fs連携で自動的に許可されるか未確認 | **Phase 34 で解消（2026-08-07）。** ダイアログで選んだパスは `fs:scope` の外でも読み書きできることを実機確認した（`dialog` プラグインが実行時にスコープを付与する）。あわせて、ダイアログを通していない `fs:scope` 外のパス（`~/Documents` 直下の直読み）は `forbidden path` で拒否されることも確認済み＝スコープは意図どおり最小に効いている。したがって `$HOME/Documents/**` の明示追加は不要。次回起動への引き継ぎには `tauri-plugin-persisted-scope` を採用している |
-| 3 | OSの「最近使った項目」（ジャンプリスト／macOS最近使った項目）へのネイティブ統合 | Tauri公式プラグインの範囲内で完結するか未確認。追加のRust実装が必要な可能性 | 初期リリースはアプリ内リストのみとし、OSネイティブ統合は別Phaseで検証 |
-| 4 | Tauriのドラッグ&ドロップイベントと React Flow のノードドラッグ操作の競合可能性 | `dragDropEnabled` がHTML5標準の `dragover`/`drop` を奪う場合、React Flow内のノードD&D操作に影響する懸念 | **Phase 34 では `dragDropEnabled: false` にして競合そのものを回避した。** D&D 受け入れを実装する Phase 37 で `true` にし、React Flowキャンバス上でのドラッグ操作を回帰テストする |
-| 5 | ファイルシステム監視（外部変更のリアルタイム検知） | `fs` プラグインに監視APIがなく、`notify` crateの自前実装が必要 | 初期リリースはフォーカス復帰時のポーリング検知のみとし、リアルタイム監視は見送り |
+| 3 | OSの「最近使った項目」（ジャンプリスト／macOS最近使った項目）へのネイティブ統合 | Tauri公式プラグインの範囲内で完結するか未確認。追加のRust実装が必要な可能性 | 初期リリースはアプリ内リストのみとし（Phase 34 で実装済み）、OSネイティブ統合は Phase 37 でも着手せず見送った。必要になった段階で別途検証する任意機能のまま |
+| 4 | Tauriのドラッグ&ドロップイベントと React Flow のノードドラッグ操作の競合可能性 | `dragDropEnabled` がHTML5標準の `dragover`/`drop` を奪う場合、React Flow内のノードD&D操作に影響する懸念 | **Phase 37 で解消（2026-08-08）。** `dragDropEnabled: true` の状態で、デスクトップ実機（CDPアタッチ）にて React Flow のノードをポインタ操作で140,84px移動できること、WebView内のHTML5 `dragstart` が発火することを確認した。React Flowのノード操作はHTML5 drag&dropではなくポインタイベント（d3-drag）で実装されているため競合しない。詳細は `docs/desktop/README.md` §5「Phase 37 で解消した項目」・§3.6 |
+| 5 | ファイルシステム監視（外部変更のリアルタイム検知） | `fs` プラグインに監視APIがなく、`notify` crateの自前実装が必要 | **Phase 37 で実装・確定。** フォーカス復帰時の mtime 比較方式（`apps/desktop/src/externalChange.ts`）を採用し、リアルタイム監視（`notify` crate）は初期リリースでは見送った。実機で「初回は誤検知しない」「2回目以降は検知する」「キャンセル時も基準を進めて繰り返し尋ねない」ことを確認済み（§3.7） |
 | 6 | Google OAuthループバックサーバーのポート固定可否 | 固定ポートにするとCSPを絞れる一方、ポート競合時に失敗しうる。動的ポート採番との両立方針は未検証 | 実装時に `tauri-plugin-oauth` 等の挙動を確認し、フォールバック戦略を決める |
 | 7 | Windowsジャンプリストへのカスタムタスク登録・macOS Dockメニュー拡張 | 未着手・未調査 | Phase外。ユーザー要望が出た段階で再検討 |
 | 8 | `keyring` crateのLinux（libsecret）環境依存 | 配布優先度はWindows/macOSだが、将来Linux対応時にlibsecretが未インストールな環境でのフォールバック挙動が未確認 | Linux対応は本書のスコープ外。着手時に別途調査 |

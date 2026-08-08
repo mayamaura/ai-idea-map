@@ -1,9 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import { App } from '@ideamap/ui'
 import { DesktopFileDashboard } from './components/DesktopFileDashboard'
+import { FileDropOverlay } from './components/FileDropOverlay'
 import { UpdaterSection } from './components/UpdaterSection'
 import { openMapFile } from './openMap'
 import { scheduleStartupUpdateCheck } from './updater'
+import { listenForLaunchFile } from './launchFile'
+import { watchExternalFileChanges } from './externalChange'
 
 /**
  * デスクトップ版のシェル。ローカルファイル中心の保存モデルと、その導線だけを足す。
@@ -26,13 +29,18 @@ export function DesktopApp() {
 
   useOpenFileShortcut()
   useEffect(scheduleStartupUpdateCheck, [])
+  useEffect(listenForLaunchFile, [])
+  useEffect(watchExternalFileChanges, [])
 
   return (
-    <App
-      autoSave={autoSave}
-      dashboardSlot={<DesktopFileDashboard />}
-      settingsExtraSections={<UpdaterSection />}
-    />
+    <>
+      <App
+        autoSave={autoSave}
+        dashboardSlot={<DesktopFileDashboard />}
+        settingsExtraSections={<UpdaterSection />}
+      />
+      <FileDropOverlay />
+    </>
   )
 }
 

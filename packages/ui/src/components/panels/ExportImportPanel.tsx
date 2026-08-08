@@ -16,7 +16,7 @@ type Tab = 'export' | 'import' | 'share'
 export interface ExportImportPanelProps {
   /**
    * 共有URLの生成。ブラウザのURLバー前提の Web版専用機能なので実装は apps/web が渡す。
-   * 未指定のプラットフォーム（デスクトップ版）では「共有」タブ自体を出さない。
+   * 未指定のプラットフォーム（デスクトップ版）では、共有タブが代替手段（JSONファイル）の案内になる。
    */
   onGenerateShareUrl?: (mapFile: MapFile) => { url: string; tooLarge: boolean }
 }
@@ -141,7 +141,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
     })
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = ([
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     {
       id: 'export',
       label: 'エクスポート',
@@ -163,7 +163,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
       ),
     },
     {
-      id: 'share' as const,
+      id: 'share',
       label: '共有',
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -172,7 +172,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
         </svg>
       ),
     },
-  ] as const).filter((t) => t.id !== 'share' || onGenerateShareUrl != null)
+  ]
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center">
@@ -394,8 +394,38 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
             </>
           )}
 
-          {/* ─── 共有タブ ─── */}
-          {tab === 'share' && (
+          {/* ─── 共有タブ（共有URL非対応のプラットフォームは代替手段を案内する） ─── */}
+          {tab === 'share' && !onGenerateShareUrl && (
+            <>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  JSONファイルとして共有
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  マップを .json ファイルとして書き出し、メールやチャットで渡してください。
+                  受け取った人は「インポート」タブから読み込めます。Web版で開くこともできます。
+                </p>
+                <button
+                  onClick={handleJsonExport}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  JSONファイルとして書き出す
+                </button>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 dark:bg-gray-700/50 p-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                <p className="font-medium">共有URLについて</p>
+                <p>• デスクトップ版には共有URLがありません。URLを開く先のブラウザが必要になるためです</p>
+                <p>• ファイル形式は Web版と共通なので、書き出したJSONはどちらでも開けます</p>
+              </div>
+            </>
+          )}
+
+          {tab === 'share' && onGenerateShareUrl && (
             <>
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
