@@ -15,7 +15,8 @@ export async function openMapFile(ref?: FileRef): Promise<boolean> {
     openLoadedMap(
       opened.content as MapFile,
       opened.ref.id,
-      opened.ref.name.replace(/\.[^.]+$/, '')
+      opened.ref.name.replace(/\.[^.]+$/, ''),
+      opened.ref.origin
     )
     return true
   } catch {

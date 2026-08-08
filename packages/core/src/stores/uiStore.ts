@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import { getPlatform } from '@ideamap/platform'
+import { getPlatform, type FileRef } from '@ideamap/platform'
 import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatMessage } from '../types'
 
 /** 開いている Drive ファイルIDの永続化キー（リロード後も同じファイルへ保存を継続するため） */
 const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
+/** 開いているファイルの保存先種別の永続化キー。fileId と必ず対で読み書きする */
+const FILE_ORIGIN_KEY = 'ideamap-file-origin'
 
 export interface Toast {
   id: string
@@ -74,6 +76,12 @@ interface UIState {
   mapTitle: string
   /** 現在開いている Drive ファイルの ID（null=未保存の新規/インポート）。fileId の単一の真実源 */
   currentFileId: string | null
+  /**
+   * currentFileId が指す保存先の種別。デスクトップ版が Google Drive 上のマップと
+   * ローカルファイルを同じ自動保存経路で扱うために必要（Web版は常に 'cloud'）。
+   * currentFileId が null のときだけ null になる。
+   */
+  currentFileOrigin: FileRef['origin'] | null
   /** 現在開いているマップの論理 ID（JSON 内 mapId と同値）。セッション内メモリのみ、localStorage 不要 */
   currentMapId: string | null
   toasts: Toast[]
@@ -125,7 +133,10 @@ interface UIState {
   requestSave: () => void
   setLastSavedAt: (iso: string) => void
   setMapTitle: (title: string) => void
-  setCurrentFileId: (id: string | null) => void
+  /**
+   * @param origin 保存先の種別。省略時は FileAdapter の既定（Web=cloud / Desktop=local）を使う
+   */
+  setCurrentFileId: (id: string | null, origin?: FileRef['origin']) => void
   /**
    * 永続化した currentFileId を復元する。StorageAdapter が非同期のため
    * ストア生成時には読めない。各アプリの main.tsx が最初のレンダー前に await する。
@@ -196,6 +207,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapTitle: '新しいマップ',
   // 復元は非同期の restoreCurrentFileId() が担う（main.tsx が初回レンダー前に呼ぶ）
   currentFileId: null,
+  currentFileOrigin: null,
   currentMapId: null,
   toasts: [],
   contextMenu: null,
@@ -245,14 +257,27 @@ export const useUIStore = create<UIState>((set) => ({
   setMapTitle: (title) => set({ mapTitle: title }),
   // fileId は永続化領域と常に一致させる（更新を1アクションに集約し同期漏れを防ぐ）。
   // 書き込みは待たずに state を更新する（旧実装の localStorage 直書きと同じ同期性を保つため）
-  setCurrentFileId: (id) => {
-    const { storage } = getPlatform()
+  setCurrentFileId: (id, origin) => {
+    const { storage, file } = getPlatform()
+    // origin 未指定は「このアプリの既定の保存先」の意。fileId と対で永続化しないと、
+    // リロード後にデスクトップ版が Drive のファイルIDをローカルパスとして扱ってしまう
+    const nextOrigin = id ? (origin ?? file.origin) : null
     void (id ? storage.setItem(DRIVE_FILE_ID_KEY, id) : storage.removeItem(DRIVE_FILE_ID_KEY))
-    set({ currentFileId: id })
+    void (nextOrigin
+      ? storage.setItem(FILE_ORIGIN_KEY, nextOrigin)
+      : storage.removeItem(FILE_ORIGIN_KEY))
+    set({ currentFileId: id, currentFileOrigin: nextOrigin })
   },
   restoreCurrentFileId: async () => {
-    const id = await getPlatform().storage.getItem(DRIVE_FILE_ID_KEY)
-    set({ currentFileId: id })
+    const { storage, file } = getPlatform()
+    const id = await storage.getItem(DRIVE_FILE_ID_KEY)
+    const origin = await storage.getItem(FILE_ORIGIN_KEY)
+    set({
+      currentFileId: id,
+      // Phase 38 より前に保存された値には origin が無い。当時は保存先が
+      // アプリごとに1つだけだったので、Adapter の既定に寄せるのが正しい復元になる
+      currentFileOrigin: !id ? null : origin === 'cloud' || origin === 'local' ? origin : file.origin,
+    })
   },
   setCurrentMapId: (id) => set({ currentMapId: id }),
   addToast: (message, type, action?) => {

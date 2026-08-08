@@ -10,16 +10,37 @@ import {
   writeTextFile,
 } from '@tauri-apps/plugin-fs'
 import type { FileAdapter, FileRef, RecentFileEntry } from '@ideamap/platform'
+import { saveMap, loadMap, deleteMap, fetchMapAppProperties } from '@ideamap/core'
 import { appStore } from './store.desktop'
 
 /**
- * デスクトップ版のファイル入出力。マップの主保存先はローカルの `.ideamap`
+ * デスクトップ版のファイル入出力。マップの既定の保存先はローカルの `.ideamap`
  * （実体は Web版と同じ MapFile 形式の JSON）で、`FileRef.id` は絶対パスになる。
  *
  * ダイアログで選んだパスは dialog プラグインが実行時に fs スコープへ追加する。
  * それを次回起動へ引き継ぐのが Rust 側の persisted-scope プラグインで、
  * capabilities の fs:scope 自体はアプリ専用ディレクトリだけに絞っている。
+ *
+ * Phase 38 以降は Google Drive 上のマップも扱う。どちらを相手にするかは
+ * `FileRef.origin` で決まり、Web版と同じ core の driveService を呼ぶ。
+ * `origin` プロパティが 'local' のままなのは「保存先未指定のときの既定」を表すため。
  */
+
+let driveAccessToken: string | null = null
+
+/** Drive のアクセストークンを流し込む。useDesktopGoogleAuth の結果を DesktopApp が渡す */
+export function setDriveAccessToken(token: string | null): void {
+  driveAccessToken = token
+}
+
+function requireDriveToken(): string {
+  if (!driveAccessToken) throw new Error('Googleドライブにサインインしていません')
+  return driveAccessToken
+}
+
+function toDriveRef(id: string, name: string): FileRef {
+  return { id, name, origin: 'cloud', updatedAt: new Date().toISOString() }
+}
 
 const MAP_FILTERS = [{ name: 'IdeaMap マップ', extensions: ['ideamap', 'json'] }]
 const RECENT_KEY = 'recent-files'
@@ -100,6 +121,9 @@ export const desktopFileAdapter: FileAdapter = {
   },
 
   async openFile(ref) {
+    if (ref?.origin === 'cloud') {
+      return { ref, content: await loadMap(requireDriveToken(), ref.id) }
+    }
     const path = ref?.id ?? (await open({ multiple: false, directory: false, filters: MAP_FILTERS }))
     if (typeof path !== 'string') return null
     const text = await readTextFile(path)
@@ -111,6 +135,16 @@ export const desktopFileAdapter: FileAdapter = {
   },
 
   async saveFile(ref, content) {
+    if (ref.origin === 'cloud') {
+      const id = await saveMap(
+        requireDriveToken(),
+        ref.name,
+        content,
+        ref.id,
+        readMapId(content)
+      )
+      return toDriveRef(id, ref.name)
+    }
     await writeTextFile(ref.id, JSON.stringify(content, null, 2))
     await recordRecent(ref.id, readTitle(content))
     return toRef(ref.id, new Date().toISOString())
@@ -128,6 +162,10 @@ export const desktopFileAdapter: FileAdapter = {
   },
 
   async deleteFile(ref) {
+    if (ref.origin === 'cloud') {
+      await deleteMap(requireDriveToken(), ref.id)
+      return
+    }
     await remove(ref.id)
     const rest = (await loadRecent()).filter((r) => r.path !== ref.id)
     await appStore.set(RECENT_KEY, rest)
@@ -135,6 +173,11 @@ export const desktopFileAdapter: FileAdapter = {
   },
 
   async getMetadata(ref) {
+    if (ref.origin === 'cloud') {
+      // Drive は Web版と同じく appProperties だけを取る軽量照合。更新時刻は使わない
+      const { mapId } = await fetchMapAppProperties(requireDriveToken(), ref.id)
+      return { mapId, updatedAt: '' }
+    }
     try {
       const info = await stat(ref.id)
       // 衝突判定は Web版と同じくファイル内 mapId の一致で行うため中身まで読む。

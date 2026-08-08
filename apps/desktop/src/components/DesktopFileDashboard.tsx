@@ -5,13 +5,22 @@ import { useUIStore, type MapFile } from '@ideamap/core'
 import { openLoadedMap, startNewMap, useDashboardEscapeToClose } from '@ideamap/ui'
 import { loadLastAutosave } from '../platform'
 import { openMapFile } from '../openMap'
+import { DriveSection } from './DriveSection'
+import type { useDesktopGoogleAuth } from '../hooks/useDesktopGoogleAuth'
 
 /**
  * デスクトップ版の起動画面。Web版の FileOpenDashboard に相当するが、
- * 保存先が Google Drive ではなくローカルファイルなので中身は別物になる
+ * 既定の保存先がローカルファイルなので中身は別物になる
  * （ネイティブの「開く」ダイアログ・パスベースの最近使ったファイル・自動保存からの復旧）。
+ *
+ * Phase 38 以降は Google ドライブ欄も並ぶ。ローカルとドライブのどちらから開いたかは
+ * FileRef.origin として記録され、以後の自動保存の向き先になる。
  */
-export function DesktopFileDashboard() {
+interface DesktopFileDashboardProps {
+  cloudAuth: ReturnType<typeof useDesktopGoogleAuth>
+}
+
+export function DesktopFileDashboard({ cloudAuth }: DesktopFileDashboardProps) {
   const { isFileDashboardOpen, setFileDashboardOpen, hasActiveMap } = useUIStore()
 
   const [recent, setRecent] = useState<{ ref: FileRef; title: string }[]>([])
@@ -90,7 +99,8 @@ export function DesktopFileDashboard() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">どのマップを開きますか？</p>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[calc(90vh-180px)]">
+        {/* Drive 欄が加わって縦に伸びるため、カード全体をスクロールさせる */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-y-auto flex flex-col max-h-[calc(90vh-180px)]">
           {autosaved && (
             <div className="px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-700">
               <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
@@ -119,6 +129,8 @@ export function DesktopFileDashboard() {
               </button>
             </div>
           )}
+
+          <DriveSection auth={cloudAuth} onBusyChange={setIsBusy} />
 
           <div className="px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-700">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">

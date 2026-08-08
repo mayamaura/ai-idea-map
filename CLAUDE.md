@@ -95,6 +95,11 @@ pnpm build:desktop # デスクトップ版のインストーラをビルド
 VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ```
 
+デスクトップ版の Google Drive 連携を使う場合は `apps/desktop/.env` にも設定する（雛形は `apps/desktop/.env.example`）。**Web版とは別に「デスクトップアプリ」種別のクライアントIDを発行する必要がある**（手順は `docs/desktop/platform-integration.md` §3.8）。未設定でもアプリは動く。
+```
+VITE_GOOGLE_DESKTOP_CLIENT_ID=xxxx.apps.googleusercontent.com
+```
+
 デスクトップ版のビルドには Rust ツールチェーン（`stable-msvc`）・Visual Studio Build Tools 2022 の C++ ワークロード・WebView2 ランタイムが必要（手順は `docs/desktop/platform-integration.md` §7）。
 
 ---
@@ -129,8 +134,10 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 - メニュー表示中はキーボードショートカットを抑制する（`uiStore.contextMenu` チェック）。
 
 ### Google Drive
-- `apps/web/src/services/googleDriveService.ts` の `folderIdCache` はプロセス内メモリキャッシュ。アクセストークンが変わった場合は `clearDriveCache()` を呼ぶ。
-- ファイル保存は既存 fileId があれば `PATCH`、なければ `POST`（マルチパートアップロード）。
+- 実体は `packages/core/src/services/driveService.ts`（Web版・デスクトップ版の共通）。通信は `getPlatform().http.request` 経由で、`fetch` を直接呼ばない。
+- `folderIdCache` / `settingsFileIdCache` はプロセス内メモリキャッシュ。アクセストークンが変わった場合は `clearDriveCache()` を呼ぶ（両方まとめて消える）。
+- ファイル保存は既存 fileId があれば `PATCH`、なければ `POST`（マルチパートアップロード）。ボディは `FormData` ではなく `multipart/related` を文字列で手組みする（Tauri の plugin-http で `FormData` の挙動が未検証なため）。
+- アクセストークンは Adapter の引数に現れないため、各アプリが `setDriveAccessToken()` で `FileAdapter` に流し込む。
 
 ---
 
@@ -143,8 +150,8 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 | `packages/core` | 型定義、Zustandストア、レイアウト計算、`LLMProvider` 実装などの純粋ロジック | `.tsx` のUI、`localStorage`/`window`/`document`/`fetch` の直接呼び出し |
 | `packages/ui` | Reactコンポーネント、UI hooks | 特定プラットフォームの外部サービス依存、`localStorage` 等の直接呼び出し |
 | `packages/platform` | Adapter の**型定義**と `setPlatform`/`getPlatform` レジストリのみ | Adapter の実装、`@tauri-apps/*` や `window.google` への依存 |
-| `apps/web` | Web版シェル、Adapter Web実装、Google Drive同期、GIS認証、共有URL | `packages/*` に置くべき汎用ロジックの重複実装 |
-| `apps/desktop` | Tauri シェル、Adapter Desktop実装、`src-tauri` | Web専用機能（Drive同期・GIS認証・共有URL）の持ち込み |
+| `apps/web` | Web版シェル、Adapter Web実装、GIS認証、共有URL | `packages/*` に置くべき汎用ロジックの重複実装 |
+| `apps/desktop` | Tauri シェル、Adapter Desktop実装、`src-tauri`、ループバック+PKCE の Google 認証 | Web専用機能（GIS認証・共有URL）の持ち込み |
 
 ### 守るべきルール
 
@@ -163,14 +170,17 @@ VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ### デスクトップ版（`apps/desktop`）で気をつけること
 
 - Tauri プラグインを追加したら、JS 側の依存（`apps/desktop/package.json`）・Rust 側の依存（`src-tauri/Cargo.toml`）・`lib.rs` への登録・`capabilities/*.json` への権限追加の**4点を揃える**。どれか1つでも欠けると実行時に権限エラーになる。
-- `capabilities/*.json` は機能単位で分ける（`main-window` / `file-access` / `ai-http`）。`fs:scope` はアプリ専用ディレクトリ（`$APPCONFIG` / `$APPLOCALDATA`）のみで、ユーザーが選んだパスは dialog プラグインの実行時許可 ＋ `tauri-plugin-persisted-scope` に任せる。安易に `$HOME/**` を足さない。
-- CSP は `tauri.conf.json` の `csp`（本番）と `devCsp`（開発）の両方にある。片方だけ直すと本番ビルドで壊れる。
+- `capabilities/*.json` は機能単位で分ける（`main-window` / `file-access` / `ai-http` / `google-drive` / `updater`）。`fs:scope` はアプリ専用ディレクトリ（`$APPCONFIG` / `$APPLOCALDATA`）のみで、ユーザーが選んだパスは dialog プラグインの実行時許可 ＋ `tauri-plugin-persisted-scope` に任せる。安易に `$HOME/**` を足さない。新しい通信先を許すときは、既存 capability の説明文に合わないなら新しいファイルを作る。
+- `#[tauri::command]` で自作したコマンド（`keychain` / `launch` / `oauth`）は capability の管轄外で、`lib.rs` の `generate_handler!` に登録するだけで呼べる。権限追加が要るのはプラグインのコマンドだけ。
+- CSP は `tauri.conf.json` の `csp`（本番）と `devCsp`（開発）の両方にある。片方だけ直すと本番ビルドで壊れる。ただし `HttpAdapter` 経由の通信は Rust 側の plugin-http が発行するため CSP を通らない（許可は capability 側で行う）。
 - `src-tauri` は Vite の watch から除外してある（`vite.config.ts`）。cargo が書き込み中の DLL を監視すると EBUSY で dev サーバーごと落ちるため、外さないこと。
 
 ### Web専用として `apps/web` に残っているもの
 
-`useGoogleAuth`（GIS認証）・`MapListPanel`／`FileOpenDashboard`（Drive一覧・起動画面）・`googleDriveService`・`storageService`・`shareUrl`（共有URL）・`encryption`（APIキーの保存先）。
-これらを `packages/ui` から使いたくなったら、直接 import せず `App` の props（`cloudAuth` / `mapListSlot` / `dashboardSlot` / `onGenerateShareUrl`）で渡す。
+`useGoogleAuth`（GIS認証）・`MapListPanel`／`FileOpenDashboard`（Drive一覧・起動画面）・`storageService`・`shareUrl`（共有URL）・`encryption`（APIキーの保存先）。
+これらを `packages/ui` から使いたくなったら、直接 import せず `App` の props（`cloudAuth` / `mapListSlot` / `dashboardSlot` / `onGenerateShareUrl` / `settingsExtraSections`）で渡す。
+
+Drive の REST 呼び出し（`driveService`）は Phase 38 で `packages/core` に移り、**Web専用ではなくなった**。Web版とデスクトップ版で認証方式だけが異なる（GIS のトークンモデル / ループバック+PKCE）。
 
 ---
 

@@ -13,4 +13,4 @@ export const desktopPlatform: Platform = {
   system: desktopSystemAdapter,
 }
 
-export { loadLastAutosave } from './file.desktop'
+export { loadLastAutosave, setDriveAccessToken } from './file.desktop'

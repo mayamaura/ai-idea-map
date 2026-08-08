@@ -206,6 +206,36 @@ Google Drive連携を使わないユーザーへの移行パス（コード署�
 - 初回起動時のオンボーディングで「Web版からマップを引き継ぎますか？」と案内し、Web版の「JSONエクスポート」機能（`exportAsJson`、変更不要）で書き出したファイルを、デスクトップ版の「開く」ダイアログでそのまま読み込ませる（`MapFile` の型はWeb/デスクトップで共通のため変換不要）。
 - Drive連携を設定しないユーザーは完全にローカルファイルのみで運用でき、OAuth関連コードのロードすら不要（遅延importで初期バンドルからも分離する）。
 
+#### Phase 38 での実装結果（2026-08-09）
+
+上記の設計は概ねそのまま実装したが、**5点で判断を変えている。裁定は [README.md](README.md) §3.1-H が優先される。**
+
+| 上記の記述 | 実際の実装 |
+|---|---|
+| 「`tauri-plugin-oauth` または同等の自前Rust実装」 | **自前実装を採用**（`src-tauri/src/oauth.rs`、`std::net::TcpListener`）。プラグインを足すと4点セットの保守が増えるのに対し、必要なのは1本の GET のクエリを読むことだけだった |
+| 「`googleDriveService.ts` の関数はそのまま流用可能」 | **`fetch` → `HttpAdapter.request` の書き換えと、`FormData`/`Blob` → `multipart/related` 手組みへの変更が必要だった。** 前者は `packages/core` の規約、後者は plugin-http での `FormData` の挙動が未検証なため。実体は `packages/core/src/services/driveService.ts` |
+| 「CSPの `connect-src` に `https://www.googleapis.com` を追加することだけ」 | **CSP は変更不要だった。** `HttpAdapter` 経由の通信は Rust 側の plugin-http が発行するため WebView の CSP を通らない。必要だったのは capability（`capabilities/google-drive.json`）だけ |
+| PKCE の生成場所 | `code_challenge`（SHA-256）は **Rust 側**で計算する。`crypto.subtle` はセキュアコンテキストでしか使えず、Tauri の WebView でそれが保証されるか未実測のため |
+| `access_type=offline` | **送らない。** installed app には常にリフレッシュトークンが返るため（Google 公式）。これは Web server フローとの重要な差 |
+
+#### Google Cloud Console 側の設定手順（開発者の手作業）
+
+デスクトップ版の Drive 連携を実際に動かすには、以下をユーザー（開発者）が行う必要がある。**コードだけでは完結しない。**
+
+1. [Google Cloud Console](https://console.cloud.google.com) で Web版と同じプロジェクトを開く（Drive API は有効化済みのはず）。
+2. 「APIとサービス」→「認証情報」→「認証情報を作成」→「OAuth クライアント ID」→ アプリケーションの種類に **「デスクトップアプリ」** を選ぶ。Web版の「ウェブアプリケーション」種別のクライアントIDは**使い回せない**。
+3. リダイレクトURIの登録は不要（デスクトップアプリ種別はループバックのポートを事前登録しない）。
+4. 発行されたクライアントIDを `apps/desktop/.env` に置く（`apps/desktop/.env.example` が雛形）。
+
+   ```
+   VITE_GOOGLE_DESKTOP_CLIENT_ID=xxxx.apps.googleusercontent.com
+   ```
+
+5. OAuth 同意画面のスコープに `https://www.googleapis.com/auth/drive.file` と `openid` `email` が含まれていることを確認する。`drive.file` は非機微スコープなので重い審査は不要。
+6. **公開ステータスを「本番環境」にする。** 「テスト」のままだとリフレッシュトークンが7日で失効し、1週間ごとに再サインインが必要になる。
+
+未設定のままでもアプリは動く（起動画面のドライブ欄が「未設定」の案内になるだけ）。
+
 ---
 
 ## 4. 秘密情報の保管設計

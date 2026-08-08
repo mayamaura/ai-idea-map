@@ -860,8 +860,11 @@ export function SettingsPanel({ accessToken, showCloudSync = true, extraSections
           {/* Web検索（ブラウザからは CORS で叩けないためデスクトップ版のみ） */}
           {showProviderSwitch && <WebSearchSection />}
 
-          {/* Drive同期（マスターパスワード設定を兼ねるため Web版でのみ表示する） */}
-          {showCloudSync && <DriveSyncSection accessToken={accessToken} />}
+          {/* 設定のDrive同期。マスターパスワード設定を兼ねるので、キーチェーンに載せていて
+              パスワードの概念がない環境（デスクトップ版）では出さない。
+              デスクトップ版は cloudAuth を渡すようになった（Phase 38）が、
+              設定同期そのものはスコープ外のまま（docs/desktop/README.md §3.1-H #12） */}
+          {showCloudSync && !isKeychainBacked && <DriveSyncSection accessToken={accessToken} />}
 
           {/* カテゴリ管理 */}
           <section>

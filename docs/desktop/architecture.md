@@ -5,7 +5,7 @@
 **対象**: Web版（既存 `ideamap/`）とデスクトップ版（Tauri v2、新規）のコード共通化
 
 > **先に [README.md](README.md) を読んでください。** ドキュメント間で結論が食い違う箇所は README §3 の裁定が優先されます。本書に関係する裁定は次の2点です。
-> - デスクトップ版 v1 は Google Drive 非対応。本書 §1.6・§3.4 の「Web専用として `apps/web` に閉じ込める」方針が正です（Phase 38 で任意機能として追加検討）。
+> - **Phase 38（2026-08-09）でデスクトップ版も Google Drive に対応しました。** 本書 §1.6・§3.4 の「`googleDriveService.ts` を Web専用として `apps/web` に閉じ込める」という記述は**もう有効ではありません**（実体は `packages/core/src/services/driveService.ts` に移り、`HttpAdapter` 経由で両アプリから使います）。ただし GIS認証（`useGoogleAuth`）・共有URL・`MapListPanel`／`FileOpenDashboard` を `apps/web` 専用とする方針は有効なままです。デスクトップ版の認証はループバック＋PKCE の別実装で、§8 の「Google認証はAdapterで吸収しない」という判断は変わっていません。詳細は README §3.1 と §3.1-H。
 > - `LLMProvider`（`ClaudeProvider`/`OllamaProvider`）は `packages/core/src/llm/` に置き、HTTP 呼び出しは必ず `getPlatform().http`（`HttpAdapter`）経由にします。**Ollama の CORS 問題はこの1箇所で解決します。** 詳細は [llm-abstraction.md](llm-abstraction.md)。
 
 ---

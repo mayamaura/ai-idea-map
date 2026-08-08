@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import type { FileRef } from '@ideamap/platform'
 import { useMapStore, useUIStore, type MapFile } from '@ideamap/core'
 
 /**
@@ -25,12 +26,19 @@ export function startNewMap(): void {
  *
  * @param fileId 保存先の識別子（Web=Drive の fileId、Desktop=絶対パス）。
  *   null は「保存先が未確定」で、以後の保存で新規作成 or 保存ダイアログに進む
+ * @param origin 保存先の種別。省略時は FileAdapter の既定。デスクトップ版が Drive 上の
+ *   マップを開いたときだけ 'cloud' を明示し、以後の保存を Drive へ向ける
  */
-export function openLoadedMap(data: MapFile, fileId: string | null, fallbackTitle: string): void {
+export function openLoadedMap(
+  data: MapFile,
+  fileId: string | null,
+  fallbackTitle: string,
+  origin?: FileRef['origin']
+): void {
   const ui = useUIStore.getState()
   useMapStore.getState().loadFromSerialized(data.nodes, data.edges)
   ui.setMapTitle(data.title || fallbackTitle)
-  ui.setCurrentFileId(fileId)
+  ui.setCurrentFileId(fileId, origin)
   ui.setCurrentMapId(data.mapId ?? null)
   ui.setPresentationNodeIds(data.presentationNodeIds ?? [])
   ui.setSaveStatus(fileId ? 'saved' : 'unsaved')

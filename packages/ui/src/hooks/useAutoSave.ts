@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import { useMapStore, useUIStore, useSettingsStore, type MapFile } from '@ideamap/core'
+import { useMapStore, useUIStore, useSettingsStore, buildMapFile, type MapFile } from '@ideamap/core'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
@@ -101,9 +101,8 @@ export function useAutoSave(options: AutoSaveOptions) {
     if (!useUIStore.getState().hasActiveMap) return
 
     const file = getPlatform().file
-    const { getSerializedNodes, getSerializedEdges } = useMapStore.getState()
     // fileId・mapId・mapTitle はクロージャに固定せず都度読む
-    const { mapTitle, currentFileId, currentMapId, setCurrentFileId, setCurrentMapId, openConfirmDialog, setSaveStatus: setSS, presentationNodeIds } = useUIStore.getState()
+    const { mapTitle, currentFileId, currentFileOrigin, currentMapId, setCurrentFileId, setCurrentMapId, openConfirmDialog, setSaveStatus: setSS } = useUIStore.getState()
     const { loadFromSerialized } = useMapStore.getState()
 
     // 新規保存の場合は mapId を確定する
@@ -111,21 +110,14 @@ export function useAutoSave(options: AutoSaveOptions) {
       ? (currentMapId ?? null)
       : (currentMapId ?? uuidv4())
 
-    const mapFile: MapFile = {
-      version: '1.0',
-      mapId: effectiveMapId ?? uuidv4(),
-      title: mapTitle,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      nodes: getSerializedNodes(),
-      edges: getSerializedEdges(),
-      presentationNodeIds: presentationNodeIds.length > 0 ? presentationNodeIds : undefined,
-    }
+    const mapFile: MapFile = buildMapFile(effectiveMapId ?? uuidv4())
 
     await file.saveLocalMirror(mapFile)
 
+    // 保存先の種別は開いたときに記録した値を優先する。デスクトップ版は Drive のマップと
+    // ローカルファイルの両方を扱うため、Adapter の既定 origin だけでは判別できない
     const ref: FileRef | null = currentFileId
-      ? { id: currentFileId, name: mapTitle, origin: file.origin, updatedAt: '' }
+      ? { id: currentFileId, name: mapTitle, origin: currentFileOrigin ?? file.origin, updatedAt: '' }
       : null
     // 保存先未確定 + 新規作成が許されていないデバウンス保存は、ローカル控えだけで完了とする
     const canPersist = remoteReady && (ref !== null || isExplicit || createNewFileOnSave)
@@ -193,7 +185,7 @@ export function useAutoSave(options: AutoSaveOptions) {
         if (isMountedRef.current) {
           if (!ref) {
             // 新規保存で採番された id と mapId を確定
-            setCurrentFileId(savedRef.id)
+            setCurrentFileId(savedRef.id, savedRef.origin)
             setCurrentMapId(mapFile.mapId)
             hasCheckedThisSessionRef.current = true
           }

@@ -32,12 +32,13 @@ export function Header({
   onGoogleSignOut,
 }: HeaderProps) {
   // AI ストリーミング中の chatMessages 更新などで再描画されないよう、必要な値だけを購読する
-  const { mapTitle, setMapTitle, saveStatus, currentFileId, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
+  const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
     useShallow((s) => ({
       mapTitle: s.mapTitle,
       setMapTitle: s.setMapTitle,
       saveStatus: s.saveStatus,
       currentFileId: s.currentFileId,
+      currentFileOrigin: s.currentFileOrigin,
       lastSavedAt: s.lastSavedAt,
       requestSave: s.requestSave,
       setSettingsOpen: s.setSettingsOpen,
@@ -71,7 +72,10 @@ export function Header({
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
-  const saveTarget = isSignedIn && currentFileId ? 'Drive' : 'ローカル'
+  // デスクトップ版はサインイン中でもローカルファイルを開いていることがあるため、
+  // サインイン状態だけでなく「今開いているファイルの保存先」まで見て判定する
+  const saveTarget =
+    isSignedIn && currentFileId && currentFileOrigin === 'cloud' ? 'Drive' : 'ローカル'
   const lastSavedTime = lastSavedAt
     ? new Date(lastSavedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : null

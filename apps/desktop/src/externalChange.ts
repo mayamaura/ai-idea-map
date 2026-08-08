@@ -29,11 +29,19 @@ export function watchExternalFileChanges(): () => void {
     const ui = useUIStore.getState()
     // ダイアログが出ている最中に別のダイアログで上書きしない
     if (!ui.hasActiveMap || !ui.currentFileId || ui.confirmDialog) return
+    // Drive 上のマップは mtime を持たない（Drive の getMetadata は mapId だけを返す）。
+    // ここでの外部変更検知はローカルファイルに限る
+    if (ui.currentFileOrigin === 'cloud') return
 
     isChecking = true
     try {
       const file = getPlatform().file
-      const ref = { id: ui.currentFileId, name: ui.mapTitle, origin: file.origin, updatedAt: '' }
+      const ref = {
+        id: ui.currentFileId,
+        name: ui.mapTitle,
+        origin: ui.currentFileOrigin ?? getPlatform().file.origin,
+        updatedAt: '',
+      }
       const meta = await file.getMetadata(ref)
       if (!meta?.updatedAt) return
 

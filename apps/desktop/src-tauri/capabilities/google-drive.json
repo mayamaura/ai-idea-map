@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "google-drive",
+  "description": "Google Drive 連携への通信のみ許可する（OAuth のトークン交換・失効と Drive API）。認可画面自体は opener で OS 既定ブラウザに出すため、accounts.google.com はここに含めない",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://oauth2.googleapis.com/*" },
+        { "url": "https://www.googleapis.com/*" }
+      ]
+    }
+  ]
+}

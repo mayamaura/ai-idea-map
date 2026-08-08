@@ -1,5 +1,6 @@
 mod keychain;
 mod launch;
+mod oauth;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,12 +27,15 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         // fs のスコープを復元するプラグインなので、必ず fs プラグインより後に登録する
         .plugin(tauri_plugin_persisted_scope::init())
+        .manage(oauth::OauthServer::default())
         .invoke_handler(tauri::generate_handler![
             keychain::has_secret,
             keychain::get_secret,
             keychain::set_secret,
             keychain::clear_secret,
             launch::take_launch_file,
+            oauth::start_oauth_loopback,
+            oauth::cancel_oauth_loopback,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

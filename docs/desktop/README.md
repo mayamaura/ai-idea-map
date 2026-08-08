@@ -3,7 +3,7 @@
 **このディレクトリは「Web版とデスクトップ版でコアを共通化しながら、ローカルLLM（Ollama）対応のデスクトップ版を作る」ための設計群です。**
 作業を始める AI エージェント・開発者は、まず本ファイルを読んでから個別ドキュメントに進んでください。
 
-最終更新: 2026-08-08
+最終更新: 2026-08-09
 
 ---
 
@@ -43,6 +43,7 @@
 | 配布 | GitHub Actions で Windows(MSI/NSIS)・macOS(dmg) をビルド → GitHub Releases → `tauri-plugin-updater` で自動更新。**当面はコード署名なし** | 個人開発。署名証明書は後から導入可能な移行パスを確保 |
 | Web検索 | ollama.com の Web Search API（Bearer認証）。デスクトップ版のみ | ユーザー指定。ブラウザからは CORS で叩けず、`LLMProvider` の外側の独立機能として実装（§3.1-E） |
 | デスクトップのネイティブUX | `.ideamap` 関連付け＋`single-instance`、D&D受け入れ、ウィンドウ状態記憶、外部変更検知。共有URLはJSON書き出しで代替 | 「ネイティブアプリらしさ」を実装。OSの「最近使った項目」統合は任意機能として見送り（§3.1-G） |
+| デスクトップの Google Drive 連携 | **Phase 38 で対応**。ループバック（`http://127.0.0.1:<port>`）＋PKCE で認可し、リフレッシュトークンは OSキーチェーンへ。Drive はローカルファイルと並ぶ「もう一つの保存先」で、既定はローカルのまま | Web版で作ったマップをそのまま開ける導線が要る。GIS のポップアップは組み込みWebViewでは Google に拒否されるため方式ごと作り直した（§3.1-H） |
 
 ---
 
@@ -50,16 +51,39 @@
 
 4本のドキュメントは並行して書かれたため、以下3点で結論が食い違っています。**本節の裁定が優先されます。**
 
-### 3.1 デスクトップ版の Google Drive 連携 → **v1 では非対応。将来フェーズで任意機能として追加**
+### 3.1 デスクトップ版の Google Drive 連携 → **Phase 38 で対応済み（2026-08-09）**
 
 - `architecture.md` §1.6・§3.4 は「Drive同期・GIS認証は Web専用として `apps/web` に閉じ込める」
 - `platform-integration.md` §3.8 は「残す（オプションに格下げ、PKCEループバックで再実装）」
 
-**裁定:** デスクトップ版 v1（Phase 34〜36）は **Drive 非対応**とし、`architecture.md` の配置方針（`apps/web` に閉じ込め）に従います。Web版で作ったマップは JSON エクスポート → デスクトップ版で「開く」で持ち込みます（`MapFile` 型が共通なので変換不要）。
+**裁定（Phase 38 で更新）:** デスクトップ版 v1（Phase 34〜37）は Drive 非対応でしたが、**Phase 38 で `platform-integration.md` §3.8 の方針を採用し、デスクトップ版も Drive に対応しました。**
 
-理由は、Google の embedded WebView OAuth ブロック（`disallowed_useragent`）を回避するには「デスクトップアプリ種別のクライアントID発行＋ループバックサーバ＋PKCE」という新規実装が丸ごと必要で、Ollama対応という主目的から見て明らかにスコープ外だからです。
+`architecture.md` §1.6・§3.4 の「Drive同期は `apps/web` に閉じ込める」という記述は、**Drive の REST 呼び出しについてはもう有効ではありません。** `googleDriveService.ts` は `packages/core/src/services/driveService.ts` に移り、Web版・デスクトップ版の両方から使います。ただし **GIS 認証（`useGoogleAuth`）・共有URL・`MapListPanel`／`FileOpenDashboard` は引き続き `apps/web` 専用**で、この部分の記述は有効なままです。
 
-`platform-integration.md` §3.8 の設計は**破棄せず、Phase 38 の設計として有効**です。着手時にそこから読み始めてください。
+認証方式は Web版とデスクトップ版で別物になります。Google は組み込み WebView からの認可リクエストを `disallowed_useragent` で拒否するため、GIS のポップアップはデスクトップ版では使えません。詳細は §3.1-H。
+
+Phase 34〜37 の移行パス（JSON エクスポート → デスクトップ版で「開く」）も引き続き使えます。
+
+### 3.1-H デスクトップ版 Drive 連携の設計判断（Phase 38 実施済み・2026-08-09）
+
+`platform-integration.md` §3.8 の記述から意図的に変えた点と、実装時に確定した詳細です。**本節が優先されます。**
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | `tauri-plugin-oauth` を使うか | **使わない。** 自前の Rust モジュール（`src-tauri/src/oauth.rs`）で `std::net::TcpListener` を使って実装した。必要なのは「1本の GET のクエリを読む」ことだけで、プラグインを足すと JS依存・Rust依存・`lib.rs` 登録・capability の4点を揃える保守コストが増える。自前コマンドなら capability の追加が不要（Tauri v2 でアプリ自身のコマンドは capability の管轄外）で、`keychain.rs` と同じ構成に揃う |
+| 2 | PKCE の `code_challenge` の計算場所 | **Rust 側**（`sha2` + `base64` クレート）。`crypto.subtle` はセキュアコンテキストでしか使えず、Tauri の WebView でそれが保証されるかを実測していないため。`code_verifier` と `state` の生成は JS の `crypto.getRandomValues`（セキュアコンテキストの制約を受けない）で行い、verifier を Rust に渡してチャレンジだけ返してもらう |
+| 3 | `access_type=offline` | **送らない。** Google 公式の「OAuth 2.0 for Mobile & Desktop Apps」は installed app について "refresh tokens are always returned for installed applications" と明記しており、認可リクエストのパラメータ表にも `access_type` が無い。Web server フロー向けの知識をそのまま持ち込まない |
+| 4 | `client_secret` | **既定では送らない。** PKCE 併用時は省略でき、Google 公式のサンプルリクエストも送っていない。デスクトップアプリ種別のクライアントにもシークレットは発行されるため、要求される構成のときだけ `VITE_GOOGLE_DESKTOP_CLIENT_SECRET` で渡せるようにしてある（任意） |
+| 5 | `redirect_uri` | `http://127.0.0.1:<port>`。`localhost` はファイアウォールで弾かれうると Google 公式が明記しているため使わない。ポートは毎回 OS から借りる（デスクトップアプリ種別は redirect URI の事前登録が不要） |
+| 6 | メールアドレスの取得 | スコープに `openid email` を足し、**ID トークン（JWT）の `email` クレーム**から読む。Web版のように `userinfo` エンドポイントを叩かないので、HTTP 許可が1つ減り往復も1回減る。トークンエンドポイントから TLS で直接受け取ったものなので署名検証は不要 |
+| 7 | トークンの保管 | リフレッシュトークンは **OSキーチェーン**（`SecretAdapter` の `googleRefreshToken` スロット）。アクセストークンはメモリのみ。メールアドレスは表示用なので `StorageAdapter`。Web版の `sessionStorage` 方式とは別物 |
+| 8 | アップロードの組み立て | `FormData`/`Blob` をやめ、**`multipart/related` を文字列で手組み**する方式に変えた（`driveService.ts` の `buildMultipartBody`）。Tauri の plugin-http へ `FormData` を渡したときの挙動が未検証なのに対し、文字列ボディは Web版・デスクトップ版のどちらでも同じ経路で通るため。Web版の挙動も同時に変わる点に注意 |
+| 9 | 保存先の判別 | `uiStore` に `currentFileOrigin`（`'cloud' \| 'local'`）を追加し、`currentFileId` と対で永続化する。`useAutoSave` はこれを見て `FileRef.origin` を決める。**デスクトップ版は1つの `FileAdapter` が両方を扱う複合アダプタ**になり、`FileAdapter.origin` の意味が「この Adapter が扱う唯一の保存先」から「保存先未指定のときの既定」に変わった |
+| 10 | 既定の保存先 | **ローカルのまま。** `saveFileAs`（Ctrl+S での新規保存）はネイティブの保存ダイアログに進む。Drive へ上げるのは起動画面の「いま開いているマップをドライブに保存」からの明示操作だけ。Ollama利用者のローカル完結志向（§2）を崩さないため |
+| 11 | CSP | **変更しない。** Drive・トークンエンドポイントへの通信は `HttpAdapter` 経由＝Rust 側の plugin-http が発行するため WebView の CSP を通らない。Phase 35 の Anthropic API・ollama.com が `connect-src` に無いまま動いている実績がその裏付け。許可は capability（`google-drive.json`）側だけで足りる |
+| 12 | 設定（`settings.json`）の Drive 同期 | **スコープ外。** デスクトップ版は APIキーを OSキーチェーンに置きマスターパスワードを持たない（§2）一方、Drive の `settings.json` はマスターパスワード暗号化が前提。`setAppSettingsSync()` はデスクトップ版では未注入のままにしてある。同期したくなったら `platform-integration.md` §4.4 の「同期のためだけの一時暗号化」から設計を起こす |
+| 13 | 設定パネルの `DriveSyncSection` の表示条件 | `showCloudSync`（＝`cloudAuth` の有無）だけでは足りなくなったため、`SecretAdapter.isPassphraseFree` が false のときだけ出すよう条件を足した。**これが無いとデスクトップ版に「マスターパスワード & Drive同期」欄が現れ、押すと `setAppSettingsSync` 未注入で失敗する。** #12 と対で必要な変更 |
+| 14 | ヘッダーの保存先表示 | `isSignedIn && currentFileId` という判定に `currentFileOrigin === 'cloud'` を足した。**デスクトップ版はサインイン中にローカルファイルを開いている状態がありえ、そのままだと「Drive」と誤表示する。** あわせて `restoreCurrentFileId()` は、origin が保存されていない（Phase 38 以前の）値を読んだとき `FileAdapter` の既定 origin に寄せる。当時は保存先がアプリごとに1つだけだったので、これが正しい復元になる |
 
 ### 3.1-B `LLMProvider` 実装時の4つの変更（Phase 32 実施済み・2026-08-05）
 
@@ -190,7 +214,7 @@ graph LR
     P34 --> P35["Phase 35 🔨<br/>Ollama統合<br/>★主目的達成（実機確認待ち）"]
     P35 --> P36["Phase 36 🔨<br/>ビルド・配布・自動更新<br/>（タグ実走・実機確認待ち）"]
     P36 --> P37["Phase 37 🔨<br/>デスクトップ固有UX<br/>（実機確認一部待ち）"]
-    P36 -.任意.-> P38["Phase 38<br/>Drive連携<br/>（PKCE）"]
+    P37 --> P38["Phase 38 🔨<br/>Drive連携（PKCE）<br/>（実機確認待ち）"]
 ```
 
 | Phase | 内容 | 目安 | 主参照 | 完了時に得られるもの |
@@ -201,7 +225,7 @@ graph LR
 | 35 🔨 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成**（実装済み。デスクトップ実機でのAI機能5種の動作確認と日本語モデルの実用性確認が未了。差分は §3.1-E） |
 | 36 🔨 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | GitHub Actions によるビルド・下書きリリース公開・自動更新の仕組みは実装済み（`cargo check`・`pnpm typecheck`・`pnpm lint` 通過）。タグを打っての実ビルド・GitHub Secrets登録・開発機以外での実機確認が未了。差分は §3.1-F |
 | 37 🔨 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・外部変更検知・共有URL代替） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」。実装済み・CDP+PowerShellでの実機確認済み。エクスプローラでの実ダブルクリック起動・実ドロップ操作・macOS実機は未確認。差分は §3.1-G |
-| 38 | （任意）デスクトップ版 Google Drive 連携 | 3日 | platform-integration §3.8 | Web版とのクラウド同期 |
+| 38 🔨 | デスクトップ版 Google Drive 連携（ループバック + PKCE） | 3日 | platform-integration §3.8 | Web版とのクラウド同期。実装・型検査・Rustテスト（13件）は通過済み。**Google Cloud Console でのデスクトップ用クライアントID発行と、実機での認可〜Drive読み書きの確認が未了**。差分は §3.1-H |
 
 ### 4.1 順序についての判断
 
@@ -224,6 +248,9 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | 3 | `format` に JSON Schema オブジェクトを渡す機能の Ollama 最低バージョン。**Ollama 0.32.6 では動作を確認済み**（2026-08-07実測、`docs/implementation-plan.md` Phase 35「検証済み」参照）だが、「どのバージョンから」の下限は未確定のまま | 35 | llm-abstraction §8.2 |
 | 8 | OSの「最近使った項目」「ジャンプリスト」統合が公式プラグインだけで完結するか | 37 | platform-integration §8 |
 | 10 | macOS（WKWebView）でのレンダリング差異・日本語IME・描画性能。Windows では解消済みだが macOS 実機が未入手 | 36 | adr-001 §4 |
+| 11 | `multipart/related` を文字列で手組みしたアップロードを Google Drive API が受け付けるか（`FormData` からの置き換え）。**Web版・デスクトップ版の両方の保存経路が変わるため、どちらでも実機確認が要る** | 38 | README §3.1-H #8 |
+| 12 | Tauri の WebView で `crypto.subtle` が使えるか（＝セキュアコンテキストか）。使えるなら PKCE のチャレンジ計算を Rust に置く必要はなくなる。現状は Rust 側で計算して回避している | 38 | README §3.1-H #2 |
+| 13 | OAuth 同意画面の公開ステータスが「Testing」の間はリフレッシュトークンが7日で失効する。実運用では「In production」への変更が必要 | 38 | README §3.1-H #7 |
 
 #### Phase 34 で解消した項目（2026-08-07・Windows 11 実機）
 

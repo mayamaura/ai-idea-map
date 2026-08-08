@@ -100,8 +100,9 @@ ai-idea-map/
 │   │       │   │   ├── edgeSlice.ts # エッジ作成・向き変更・ラベル・削除
 │   │       │   │   ├── groupSlice.ts   # グループ作成・所属変更・押し出し
 │   │       │   │   └── documentSlice.ts # ロード・シリアライズ・リセット
-│   │       │   ├── uiStore.ts       # UI状態。currentFileId の永続化は StorageAdapter 経由
-│   │       │   └── settingsStore.ts # 設定状態。APIキーは SecretAdapter、Drive 同期は注入
+│   │       │   ├── uiStore.ts       # UI状態。currentFileId・currentFileOrigin の永続化は StorageAdapter 経由
+│   │       │   ├── settingsStore.ts # 設定状態。APIキーは SecretAdapter、Drive 同期は注入
+│   │       │   └── mapSnapshot.ts   # buildMapFile(mapId) — 保存用スナップショットの組み立て（Phase 38）
 │   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動 → Phase 35 で Ollama 追加）
 │   │       │   ├── types.ts         # LLMProvider / LLMRequest / LLMError / isAbortError ほか
 │   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / AIParseError
@@ -109,6 +110,7 @@ ai-idea-map/
 │   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
 │   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35）
 │   │       │   └── aiService.ts     # AI機能5関数（旧 claudeService.ts）
+│   │       ├── services/driveService.ts # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
 │   │       ├── layout/
 │   │       │   ├── mapLayout.ts     # ノード自動配置ロジック（dagre・円形配置）
 │   │       │   └── groupGeometry.ts # グループとノードの当たり判定・押し出し計算
@@ -154,8 +156,7 @@ ai-idea-map/
     │       │   ├── panels/MapListPanel.tsx      # Drive のマップ一覧（Web専用）
     │       │   └── screens/FileOpenDashboard.tsx # 起動時のファイル選択（Web専用）
     │       ├── hooks/useGoogleAuth.ts   # GIS 認証（Web専用）
-    │       ├── services/
-    │       │   ├── googleDriveService.ts # Google Drive API操作
+    │       ├── services/                # googleDriveService.ts は Phase 38 で packages/core/src/services/driveService.ts へ移設
     │       │   ├── storageService.ts     # localStorage のラッパー
     │       │   └── shareUrl.ts           # 共有URLの生成・解析（Web専用）
     │       ├── utils/encryption.ts       # APIキーの保存先（暗号化本体は core）
@@ -167,27 +168,31 @@ ai-idea-map/
         ├── src-tauri/
         │   ├── tauri.conf.json      # ウィンドウ設定・CSP・capabilities・plugins.updater の割り当て・bundle.fileAssociations（Phase 36 で updater、Phase 37 で fileAssociations・dragDropEnabled: true）
         │   ├── Cargo.toml           # updater/process/single-instance/window-state は cfg(not(android/ios)) の対象外ターゲットに限定（Phase 36・Phase 37）
-        │   ├── capabilities/        # main-window / file-access / ai-http / updater の4ファイル（§18.5、updater は Phase 36。single-instance/window-state はJSから呼ばないためcapability不要）
+        │   ├── capabilities/        # main-window / file-access / ai-http / google-drive / updater の5ファイル（§18.5、google-drive は Phase 38、updater は Phase 36。single-instance/window-state はJSから呼ばないためcapability不要）
         │   └── src/
-        │       ├── lib.rs           # プラグイン登録・invoke_handler（updater/process は #[cfg(desktop)]、Phase 36）。single-instance を最初に登録し `build()` + `run(closure)` 形式に変更（Phase 37）
+        │       ├── lib.rs           # プラグイン登録・invoke_handler（updater/process は #[cfg(desktop)]、Phase 36）。single-instance を最初に登録し `build()` + `run(closure)` 形式に変更（Phase 37）。`oauth::OauthServer` を `.manage()` し oauth コマンド2本を登録（Phase 38）
         │       ├── keychain.rs      # OSキーチェーン操作（has/get/set/clear_secret コマンド）
-        │       └── launch.rs        # `.ideamap` 起動引数の取り出し・2つ目インスタンスへの転送・fs スコープ付与（Phase 37、§18.8）
+        │       ├── launch.rs        # `.ideamap` 起動引数の取り出し・2つ目インスタンスへの転送・fs スコープ付与（Phase 37、§18.8）
+        │       └── oauth.rs         # Google OAuth ループバックサーバ（`start_oauth_loopback` / `cancel_oauth_loopback`、Phase 38、§18.9）
         └── src/
             ├── main.tsx             # setPlatform → restorePersistedState() を await → render
-            ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）、起動引数ファイルの取り込みと外部変更検知の購読（Phase 37）
+            ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）、起動引数ファイルの取り込みと外部変更検知の購読（Phase 37）、Drive アクセストークンを FileAdapter へ流し込む配線（Phase 38）
             ├── openMap.ts           # ファイルを開く共通処理（ダッシュボードと Ctrl+O が共用）
             ├── launchFile.ts        # `.ideamap` ダブルクリック起動・2つ目インスタンスからのイベントの受け入れ（Phase 37）
-            ├── externalChange.ts    # 外部でのファイル変更検知（フォーカス復帰時に mtime 比較、Phase 37）
+            ├── externalChange.ts    # 外部でのファイル変更検知（フォーカス復帰時に mtime 比較、Phase 37。Drive 上のマップは mtime を持たないため対象外、Phase 38）
             ├── updater.ts           # 自動更新のチェック・ダウンロード・適用（Phase 36）
+            ├── googleAuth.ts        # ループバック + PKCE の認可フロー（signInWithGoogle / refreshAccessToken / revokeGoogleToken、Phase 38、§18.9）
+            ├── hooks/useDesktopGoogleAuth.ts # Drive 認証状態フック。Web版 useGoogleAuth と同じ形の状態を返す（Phase 38）
             ├── components/
-            │   ├── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰）
+            │   ├── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰・Googleドライブ欄、Phase 38 で DriveSection を追加）
+            │   ├── DriveSection.tsx         # 起動画面の Google ドライブ欄（サインイン・一覧・開く・Driveへ保存、Phase 38）
             │   ├── FileDropOverlay.tsx      # ファイルドラッグ&ドロップ受け入れのオーバーレイ（Phase 37）
             │   └── UpdaterSection.tsx       # 設定パネル末尾の「アプリ情報」セクション（バージョン表示・手動更新チェック、Phase 36）
             └── platform/            # Adapter の Desktop 実装
                 ├── index.ts
                 ├── store.desktop.ts   # tauri-plugin-store の LazyStore 共有インスタンス（$APPCONFIG/app-data.json）
                 ├── storage.desktop.ts # StorageAdapter
-                ├── file.desktop.ts    # FileAdapter（ローカルファイル + 自動保存 + 最近開いたファイル）
+                ├── file.desktop.ts    # FileAdapter。`FileRef.origin` で分岐する複合アダプタ（ローカルファイル + 自動保存 + 最近開いたファイル、'cloud' は core の driveService 経由、Phase 38）
                 ├── secret.desktop.ts  # SecretAdapter（OSキーチェーン、isPassphraseFree: true）
                 ├── http.desktop.ts    # HttpAdapter（tauri-plugin-http）
                 └── system.desktop.ts  # SystemAdapter（クリップボード・外部URL・終了前確認）
@@ -198,13 +203,15 @@ ai-idea-map/
 | パッケージ | 置くもの | 置いてはいけないもの |
 |---|---|---|
 | `packages/platform` | Adapter の型定義と `setPlatform`/`getPlatform` | Adapter の実装、他パッケージへの依存 |
-| `packages/core` | 型・ストア・レイアウト計算・暗号化・`LLMProvider` | `.tsx` のUI、`localStorage`/`fetch` の直接呼び出し |
+| `packages/core` | 型・ストア・レイアウト計算・暗号化・`LLMProvider`・Google Drive REST（`driveService.ts`、Phase 38） | `.tsx` のUI、`localStorage`/`fetch` の直接呼び出し |
 | `packages/ui` | React コンポーネント・UI hooks | Google Drive / GIS 認証など特定プラットフォーム依存 |
-| `apps/web` | Web版シェル、Adapter Web実装、Drive同期、GIS認証、共有URL | `packages/*` に置くべき汎用ロジックの重複実装 |
-| `apps/desktop` | Tauri シェル、Adapter Desktop実装、`src-tauri`（Phase 34 で追加） | Web専用機能（Drive同期・GIS認証・共有URL）の持ち込み |
+| `apps/web` | Web版シェル、Adapter Web実装、GIS認証、共有URL | `packages/*` に置くべき汎用ロジックの重複実装 |
+| `apps/desktop` | Tauri シェル、Adapter Desktop実装、`src-tauri`（Phase 34 で追加）、ループバック+PKCE認証（Phase 38） | Web専用機能（GIS認証・共有URL）の持ち込み |
 
 依存方向は `apps/* → packages/ui → packages/core → packages/platform` の一方向のみ。
 ESLint の `import/no-restricted-paths`・`no-restricted-imports`・`no-restricted-globals` で機械的に検出する。
+
+**Phase 38 での変更**: Google Drive の REST 呼び出し自体（`googleDriveService.ts`）は `packages/core/src/services/driveService.ts` へ移り、Web版・デスクトップ版の両方から使う。一方、認証（Web版=GIS のポップアップ、デスクトップ版=ループバック+PKCE）とマップ一覧UI（`MapListPanel`/`FileOpenDashboard` と `DriveSection`/`DesktopFileDashboard`）は別実装のまま各 `apps/*` に残る（`docs/desktop/README.md` §3.1・§3.1-H）。
 
 `getPlatform()` はモジュールのトップレベルではなく必ず関数の内部で呼ぶ
 （`setPlatform()` より先に評価されるのを防ぐため）。
@@ -267,7 +274,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 
 ### 4.2 uiStore（packages/core/src/stores/uiStore.ts）
 
-UIの表示状態と、現在開いているマップのメタ情報（タイトル・fileId）を管理する。原則副作用なしだが、例外として `setCurrentFileId` のみ fileId を `StorageAdapter`（キー `ideamap-drive-fileid`）と同期する。起動時の復元は非同期の `restoreCurrentFileId()` が担い、各アプリの `main.tsx` が最初のレンダー前に呼ぶ（`stores/bootstrap.ts` の `restorePersistedState()`、§4.4、Phase 34）。
+UIの表示状態と、現在開いているマップのメタ情報（タイトル・fileId）を管理する。原則副作用なしだが、例外として `setCurrentFileId(id, origin?)` のみ fileId を `StorageAdapter`（キー `ideamap-drive-fileid`）と、保存先の種別（`origin`）を同じく `StorageAdapter`（キー `ideamap-file-origin`、Phase 38）と同期する。起動時の復元は非同期の `restoreCurrentFileId()` が担い、各アプリの `main.tsx` が最初のレンダー前に呼ぶ（`stores/bootstrap.ts` の `restorePersistedState()`、§4.4、Phase 34）。
 
 | 状態 | 型 | 説明 |
 |------|-----|------|
@@ -285,7 +292,8 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `lastSavedAt` | `string \| null` | 最後に保存が成功した時刻（ISO文字列）。ヘッダーの保存ステータスのツールチップに表示（Phase 20） |
 | `hasActiveMap` | `boolean` | このセッションでマップを開いた/作成したことがあるか。ダッシュボードの「キャンバスに戻る」ボタン・Esc閉じの表示判定に使用。`setFileDashboardOpen(false)` 時に自動で true になる（閉じる経路はマップ選択後のみのため）（Phase 20） |
 | `mapTitle` | `string` | 現在のマップタイトル |
-| `currentFileId` | `string \| null` | 現在開いているファイルの ID（Web=Drive の fileId、Desktop=絶対パス、null=未保存の新規/インポート）。fileId の単一の真実源。`setCurrentFileId` で `StorageAdapter` と同期 |
+| `currentFileId` | `string \| null` | 現在開いているファイルの ID（Web=Drive の fileId、Desktop=Drive の fileId またはローカル絶対パス、null=未保存の新規/インポート）。fileId の単一の真実源。`setCurrentFileId` で `StorageAdapter` と同期 |
+| `currentFileOrigin` | `FileRef['origin'] \| null`（`'cloud' \| 'local'`） | `currentFileId` が指す保存先の種別（Phase 38）。デスクトップ版が Drive 上のマップとローカルファイルを同じ `useAutoSave` 経由で扱うために追加した。Web版は常に `'cloud'`。`currentFileId` が `null` のときだけ `null` になる。Phase 38 より前に永続化された値には origin が無いため、`restoreCurrentFileId()` はそれを読んだとき `FileAdapter.origin`（既定値）に寄せる（当時は保存先がアプリごとに1つだけだったので、これが正しい復元になる） |
 | `toasts` | `Toast[]` | トースト通知リスト（4秒後自動削除） |
 | `contextMenu` | `ContextMenuState \| null` | 右クリックメニューの表示状態 |
 | `confirmDialog` | `ConfirmDialogState \| null` | 確認ダイアログの表示状態 |
@@ -385,7 +393,11 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 | `onGenerateShareUrl` | 共有URL生成。未指定でも「共有」タブは出るが、「JSONファイルとして共有」の代替案内になる（Phase 37） | `generateShareUrl` |
 | `settingsExtraSections`（Phase 36） | 設定パネル末尾に足すプラットフォーム固有セクション。未指定なら何も描画しない | （Web版は渡さない） |
 
-`cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播し、デスクトップ版では設定パネルの「Google Driveと同期」セクションを描画しない（Phase 34）。`settingsExtraSections` は `SettingsPanel` に `extraSections` props としてそのまま渡り、設定パネル最後尾（「保存」セクションの後）に描画される。`packages/ui` からプラットフォーム実装への依存を避けるための注入口で、デスクトップ版は `<UpdaterSection>`（バージョン表示・更新チェック、Phase 36）を渡す（§18.7）。
+`cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播する（Phase 34）。**Phase 38 でデスクトップ版も `cloudAuth` を渡すようになったため、この条件だけでは足りなくなった。** `SettingsPanel` は `showCloudSync` に加えて `isKeychainBacked`（`SecretAdapter.isPassphraseFree`）が false であることも条件にし、`DriveSyncSection`（マスターパスワード設定を兼ねた設定の Drive 同期）を Web版でだけ描画する。デスクトップ版はマスターパスワードを持たず `setAppSettingsSync()` も未注入のため、出してしまうと押した時点で失敗する（`docs/desktop/README.md` §3.1-H #12・#13）。
+
+ヘッダーの保存先表示（`saveTarget`）も同じ理由で条件を足した。`isSignedIn && currentFileId` だけだと、デスクトップ版でサインイン中にローカルファイルを開いている状態を「Drive」と誤表示するため、`currentFileOrigin === 'cloud'` を加えている（Phase 38、§4.2）。
+
+`settingsExtraSections` は `SettingsPanel` に `extraSections` props としてそのまま渡り、設定パネル最後尾（「保存」セクションの後）に描画される。`packages/ui` からプラットフォーム実装への依存を避けるための注入口で、デスクトップ版は `<UpdaterSection>`（バージョン表示・更新チェック、Phase 36）を渡す（§18.7）。
 
 終了前確認は `SystemAdapter.onBeforeExit`、ウェルカム表示フラグは `StorageAdapter` 経由。
 
@@ -406,12 +418,12 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 
 ### 5.1.2 ファイルダッシュボードの共通化（packages/ui/src/hooks/useFileDashboard.ts、Phase 34）
 
-起動画面（ダッシュボード）は保存先が Web版=Google Drive、デスクトップ版=ローカルファイルで異なるため、コンポーネント自体は別物のまま（`apps/web/src/components/screens/FileOpenDashboard.tsx` と `apps/desktop/src/components/DesktopFileDashboard.tsx`）だが、「マップを決めてキャンバスに入る」までのストア操作は同一なので `useFileDashboard.ts` に集約している。
+起動画面（ダッシュボード）は保存先の既定が Web版=Google Drive、デスクトップ版=ローカルファイルで異なるため、コンポーネント自体は別物のまま（`apps/web/src/components/screens/FileOpenDashboard.tsx` と `apps/desktop/src/components/DesktopFileDashboard.tsx`）だが、「マップを決めてキャンバスに入る」までのストア操作は同一なので `useFileDashboard.ts` に集約している。デスクトップ版は Phase 38 で `DesktopFileDashboard.tsx` に Google ドライブ欄（`DriveSection.tsx`、§18.9）を追加し、ローカルファイルと Drive のどちらからも開けるようになった。
 
 | エクスポート | 用途 |
 |---|---|
 | `startNewMap()` | 新規マップを作ってキャンバスに入る（`mapStore.reset()` → タイトル・`currentFileId`・`currentMapId`・発表順序・保存状態を初期化 → ダッシュボードを閉じる） |
-| `openLoadedMap(data, fileId, fallbackTitle)` | 読み込んだ `MapFile` をストアへ反映してキャンバスに入る。`fileId`（Web=Drive の fileId、Desktop=絶対パス）が `null` のときは保存先未確定を意味し、以後の保存は新規作成 or 保存ダイアログに進む |
+| `openLoadedMap(data, fileId, fallbackTitle, origin?)` | 読み込んだ `MapFile` をストアへ反映してキャンバスに入る。`fileId`（Web=Drive の fileId、Desktop=Drive の fileId またはローカル絶対パス）が `null` のときは保存先未確定を意味し、以後の保存は新規作成 or 保存ダイアログに進む。`origin`（Phase 38）は `setCurrentFileId` にそのまま渡り、以後の自動保存の向き先を決める。省略時は `FileAdapter` の既定に従う |
 | `useDashboardEscapeToClose()` | マップを開いた後の再表示時のみ `Esc` でダッシュボードを閉じるキーハンドラ（`hasActiveMap` かつ確認ダイアログ非表示のときだけ発火） |
 
 `DesktopFileDashboard` はマウント時に `getPlatform().file.listRecent()` で最近開いたファイル一覧を、`loadLastAutosave()`（`apps/desktop/src/platform/file.desktop.ts` が named export）で自動保存の控えを取得して「前回の作業を再開」カードに表示する。ファイルを開く経路（一覧クリック・「ファイルを開く」ボタン）は `apps/desktop/src/openMap.ts` の `openMapFile()` に集約し、`Ctrl+O`（`DesktopApp.tsx`）とダッシュボードの両方から同じ関数を呼ぶことで状態遷移を一本化している。
@@ -1150,6 +1162,8 @@ export interface WebSearchOptions {
 
 ## 12. Google Drive連携設計
 
+本章は Web版の実装（GIS 認証・`MapListPanel`/`FileOpenDashboard`）を記述する。REST 呼び出しの実体（§12.2・§12.3）は Phase 38 で `packages/core/src/services/driveService.ts` に移り、デスクトップ版もここを共有している。デスクトップ版固有の認証フロー（ループバック+PKCE）と起動画面の Drive UI（`DriveSection`）は §18.9 を参照。
+
 ### 12.1 認証（GIS Token モデル）
 
 - Google Identity Services (GIS) の Token モデルを採用
@@ -1178,27 +1192,31 @@ export interface WebSearchOptions {
 - `friendlyAuthError(type: string): string | null` を `useGoogleAuth.ts` 内に定義し `error_callback` で使用
 - `popup_closed` → `null`（表示しない） / `popup_failed_to_open` → ポップアップブロック案内 / `access_denied` → アクセス拒否案内 / 他 → 「Google認証でエラーが発生しました（{type}）」
 
-### 12.2 フォルダ管理
+### 12.2 フォルダ管理（packages/core/src/services/driveService.ts、Phase 38 で apps/web から移設）
 
 - フォルダ名: `IdeaMap`（存在しない場合は自動作成）
-- フォルダIDはプロセス内メモリキャッシュ（`folderIdCache`）で再取得を防ぐ
+- フォルダIDはプロセス内メモリキャッシュ（`folderIdCache`）で再取得を防ぐ。`settings.json` の fileId も同様に `settingsFileIdCache` でキャッシュする
+- `clearDriveCache()` はアクセストークンが変わったとき（サインアウト・アカウント切替）に呼ぶ。Phase 38 で `settingsFileIdCache` も一緒に破棄するようになった（同じ Drive アカウントに紐づくため）
 
 ### 12.3 ファイル保存戦略
 
 ```
 Google Drive/
 └── IdeaMap/
-    └── {title}.json      # マルチパートアップロード（PATCH/POST）
+    └── {title}.json      # multipart/related アップロード（PATCH/POST）
 ```
 
 - 既存ファイル（fileId あり）: `PATCH` で上書き
 - 新規ファイル: `POST` でマルチパートアップロード
-- fileId は `uiStore.currentFileId` を単一の真実源とし、`setCurrentFileId` 経由で localStorage（`ideamap-drive-fileid`）に同期する。ロード／新規作成／インポート／保存後／サインアウトはすべてこのアクションを通すため、新規作成時に前マップの fileId が残って別ファイルを上書き消失させる事故を構造的に防ぐ
+- **アップロードの組み立て（Phase 38 で変更）**: `FormData`/`Blob` ではなく `uploadType=multipart` の `multipart/related` ボディを文字列で手組みする（`buildMultipartBody`）。`packages/core` は通信を `HttpAdapter.request` 経由で行う必要があり、Tauri の `plugin-http` へ `FormData` を渡したときの挙動が未検証だったため、Web版・デスクトップ版のどちらでも同じ経路で通る文字列ボディに統一した。**この変更は Web版の保存経路にも及ぶ**
+- fileId は `uiStore.currentFileId` を単一の真実源とし、`setCurrentFileId` 経由で `StorageAdapter`（キー `ideamap-drive-fileid`）に同期する。ロード／新規作成／インポート／保存後／サインアウトはすべてこのアクションを通すため、新規作成時に前マップの fileId が残って別ファイルを上書き消失させる事故を構造的に防ぐ
 - 保存時は Drive ファイルの `appProperties: { mapId }` も更新する。`appProperties` は JSON 内容をダウンロードせずに照合できる軽量なメタデータとして衝突チェックに使用
 
 ### 12.4 自動保存（packages/ui/src/hooks/useAutoSave.ts）
 
 Phase 33 で `packages/ui` に汎用化され、Web版・デスクトップ版が同じフックを共有する。保存先の実体は `FileAdapter` に委ねているため、以下は Web版目線の記述だが、デスクトップ版は「Google Drive」を「ローカルファイル」、「`accessToken` あり」を「常に true（`remoteReady`）」に読み替える。
+
+**Phase 38 以降のデスクトップ版**: デスクトップ版は Drive とローカルの両方を扱えるようになったため、保存先の判別は `accessToken` の有無ではなく `uiStore.currentFileOrigin`（§4.2）で行う。`useAutoSave` は `currentFileId` から組み立てる `FileRef.origin` に `currentFileOrigin ?? file.origin` を使う（マップを開いたときに記録した値を優先し、無ければ `FileAdapter` の既定＝ローカルにフォールバック）。`remoteReady` はローカルファイルシステムが常に使えるため常に `true` を渡し、Drive 側の 401 は `AutoSaveOptions.onSaveError` が `currentFileOrigin === 'cloud'` のときだけキーチェーンでの再認証にルーティングする（`apps/desktop/src/DesktopApp.tsx`）。
 
 - `useMapStore.subscribe()`（ノード・エッジ変更）に加え、`useUIStore.subscribe()` で `mapTitle` 変更も監視（差分比較で mapTitle のみ拾い、パネル開閉等の他UI状態変更では保存しない）。両者は同一デバウンスタイマーを共有
 - デバウンス: 変更から **3000ms** 後に保存実行
@@ -1561,7 +1579,7 @@ ai-idea-map/
 | Adapter | 責務 | Web実装 | Desktop実装（`apps/desktop/src/platform/*.desktop.ts`） |
 |---|---|---|---|
 | `StorageAdapter` | Key-Value 永続化 | `localStorage` | `@tauri-apps/plugin-store`（`LazyStore('app-data.json')`、`$APPCONFIG` 配下） |
-| `FileAdapter` | マップファイルの読み書き | Google Drive API / ブラウザダウンロード | `@tauri-apps/plugin-dialog`（開く/保存ダイアログ）+ `@tauri-apps/plugin-fs`（読み書き・自動保存領域） |
+| `FileAdapter` | マップファイルの読み書き | Google Drive API / ブラウザダウンロード | `@tauri-apps/plugin-dialog`（開く/保存ダイアログ）+ `@tauri-apps/plugin-fs`（読み書き・自動保存領域）+ `'cloud'` origin は `packages/core` の `driveService`（Web版と共通、Phase 38） |
 | `SecretAdapter` | APIキー等の秘密情報 | WebCrypto（PBKDF2+AES-GCM）+ localStorage | OSキーチェーン。Rust 側の `keyring` crate（`src-tauri/src/keychain.rs`）を4つの Tauri コマンドでラップし `invoke()` から呼ぶ |
 | `HttpAdapter` | HTTP 呼び出し | `fetch` | `@tauri-apps/plugin-http` の `fetch`（Rust の reqwest から発行するため CORS 制約を受けない） |
 | `SystemAdapter` | クリップボード・外部URL・終了前確認・通知 | ブラウザAPI（`navigator.clipboard`・`beforeunload`） | `@tauri-apps/plugin-clipboard-manager`（クリップボード）/ `@tauri-apps/plugin-opener`（外部URL）/ `@tauri-apps/api/window` の `onCloseRequested` + `@tauri-apps/plugin-dialog` の `ask()`（終了前確認） |
@@ -1570,7 +1588,7 @@ ai-idea-map/
 
 **`HttpAdapter.canAccessLocalServers`（Phase 35 で追加）**: Web=`false` / Desktop=`true` の読み取り専用プロパティ。`SettingsPanel` がプロバイダ切り替えUIを描画するかどうかの判定に使う（§9.8）。
 
-**`FileAdapter.origin`（Phase 34 で追加）**: Adapter が扱う保存先の種別を `'cloud' | 'local'` で公開する読み取り専用プロパティ。`useAutoSave` が `currentFileId` から `FileRef` を組み立てる際に `origin` を決め打ちできないため追加した。Web実装は常に `'cloud'`、Desktop実装は常に `'local'` を返す。
+**`FileAdapter.origin`（Phase 34 で追加）**: Adapter が扱う保存先の種別を `'cloud' | 'local'` で公開する読み取り専用プロパティ。`useAutoSave` が `currentFileId` から `FileRef` を組み立てる際に `origin` を決め打ちできないため追加した。Web実装は常に `'cloud'`、Desktop実装は常に `'local'` を返す。**Phase 38 でこの値の意味が変わった**: デスクトップ版の `desktopFileAdapter` は Drive とローカルの両方を扱う複合アダプタになり、`origin` は「この Adapter が扱う唯一の保存先」ではなく「保存先が未指定のときの既定（＝ローカル）」を表す。実際にどちらを使うかは呼び出し側が渡す `FileRef.origin`（`'cloud' | 'local'`）で都度決まる（§4.2 `currentFileOrigin`）。
 
 **`SecretAdapter.isPassphraseFree`**（Phase 33 で追加・Phase 34 で初めて `true` の実装が入った）: Desktop実装は常に `true` を返し、`SettingsPanel` はこの値を起動時に一度だけ読んで「キーはこの端末のOSキーチェーンにのみ保存されます」／「キーはこのブラウザにのみ保存されます」の文言を出し分ける。
 
@@ -1578,7 +1596,7 @@ ai-idea-map/
 
 ### 18.5 Tauri の capabilities と CSP（`apps/desktop/src-tauri`、Phase 34）
 
-権限は `main-window` / `file-access` / `ai-http` の3つの capability ファイル（`src-tauri/capabilities/*.json`）に分割し、`tauri.conf.json` の `app.security.capabilities` で読み込む。
+権限は `main-window` / `file-access` / `ai-http` / `google-drive`（Phase 38）の4つの capability ファイル（`src-tauri/capabilities/*.json`）に分割し、`tauri.conf.json` の `app.security.capabilities` で読み込む。
 
 | capability | 許可する権限 |
 |---|---|
@@ -1586,12 +1604,13 @@ ai-idea-map/
 
 | `file-access` | `fs`（読み書き・mkdir・remove・stat・exists）。`fs:scope` は `$APPCONFIG` と `$APPLOCALDATA` 配下のみに限定する |
 | `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`https://ollama.com/api/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している。`https://ollama.com/api/*` は Web検索API（`/api/web_search`）向けに Phase 35 の追加実装で加えた（§9.10） |
+| `google-drive`（Phase 38） | `http:default` に `https://oauth2.googleapis.com/*`（トークン交換・失効）・`https://www.googleapis.com/*`（Drive API）のみ許可。認可画面自体は `opener` で OS 既定ブラウザに出すため `accounts.google.com` はここに含めない（§18.9） |
 
 **外部URLオープンのスコープ**: `opener:allow-open-url` は文字列でそのまま並べると**URLスコープが空になり `openUrl()` が全て拒否される**。`{ "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }, { "url": "http://*" }] }` の形で書く（Phase 35 追加実装で修正。プラグインの `opener:default` は `mailto:` / `tel:` とファイルマネージャ起動も含むため、本アプリは必要な http/https だけに絞っている）。
 
 **ダイアログで選んだパスへの `fs` 許可**: `fs:scope` はアプリ専用ディレクトリだけに絞り、ユーザーが「開く/保存」ダイアログで選んだ任意のパスは `dialog` プラグインが実行時に付与する一時許可に任せる。この許可を次回起動でも有効にする（＝「最近開いたファイル」を再度開ける）ため、`tauri-plugin-persisted-scope` を依存に追加し、`lib.rs` で **`fs` プラグインより後に**登録している。任意のディレクトリを `fs:scope` に静的追加するより攻撃面が狭い（「ユーザーが一度選んだファイルだけ」に限定できる）。
 
-**CSP**: `default-src 'self'; script-src 'self'` を基本とし、`img-src` はデータURL・Blob・`asset:`（Tauri のアセットプロトコル）を許可、`connect-src` は `ipc:` と `http://ipc.localhost`（Tauri の内部通信）に加えデータURL・Blobを許可する。開発時（`devCsp`）のみ Vite の HMR 用に `script-src 'unsafe-inline'` と `ws://localhost:5174` / `http://localhost:5174` を追加で許可する。
+**CSP**: `default-src 'self'; script-src 'self'` を基本とし、`img-src` はデータURL・Blob・`asset:`（Tauri のアセットプロトコル）を許可、`connect-src` は `ipc:` と `http://ipc.localhost`（Tauri の内部通信）に加えデータURL・Blobを許可する。開発時（`devCsp`）のみ Vite の HMR 用に `script-src 'unsafe-inline'` と `ws://localhost:5174` / `http://localhost:5174` を追加で許可する。**Phase 38 で Google Drive・トークンエンドポイントへの通信を追加したが、`csp`/`devCsp` は変更していない**。これらの通信は `HttpAdapter.request` 経由＝Rust 側の `plugin-http` が発行するため WebView の CSP を通らず、許可は capability（`google-drive`）側だけで足りる。Phase 35 の Anthropic API・ollama.com が `connect-src` に無いまま動いている実績が同じ理屈の裏付けになっている。
 
 ウィンドウは `dragDropEnabled: true`（Phase 34 時点は `false` で様子見していたが、Phase 37 で React Flow との非競合を実機確認したうえで有効化した。§18.8）、クリップボードは `navigator.clipboard` ではなく `@tauri-apps/plugin-clipboard-manager` を使う（WebView のセキュアコンテキスト判定に依存しないため）。
 
@@ -1603,7 +1622,7 @@ ai-idea-map/
 | 3. プロジェクト構成 | モノレポ構成に書き換え |
 | 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9）。Web検索（`LLMProvider` の外側の独立機能）を Phase 35 の追加実装で反映（§9.10〜9.11） |
 | 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要 |
-| 12. Google Drive連携設計 | Web版専用機能である旨を明記（デスクトップ版 v1 は非対応） |
+| 12. Google Drive連携設計 | REST 呼び出し（§12.2・§12.3）は Phase 38 で `packages/core` に共通化。認証・UIは Web版が本章、デスクトップ版が §18.9 に別記 |
 
 ### 18.7 ビルド・配布・自動更新（`apps/desktop`、Phase 36）
 
@@ -1630,7 +1649,7 @@ ai-idea-map/
 
 **ウィンドウ状態の記憶**: `tauri-plugin-window-state` を追加。Rust 側だけで完結し JS からは呼ばないため capability の追加は不要。`WindowEvent::CloseRequested`/`Moved`/`Resized` と `RunEvent::Exit` で保存し、`SystemAdapter.onBeforeExit` の `window.destroy()` 経路でも `RunEvent::Exit` は発火するため保存される。
 
-**外部でのファイル変更検知**: `apps/desktop/src/externalChange.ts` が `getCurrentWindow().onFocusChanged` を購読し、前面に戻ったときに `FileAdapter.getMetadata()` で mtime を取り直す。同じファイルについて初回は基準を記録するだけでダイアログを出さない（開いた直後の誤検知防止）。基準は `max(記録した mtime, uiStore.lastSavedAt)` に `MTIME_TOLERANCE_MS`（2000ms）の余裕を足したもの。超えたときだけ確認ダイアログを出し、未保存の変更があれば文言を変えて `danger: true` にする。「キャンセル」を選んだ場合も基準を進め、同じ内容を繰り返し尋ねない。ファイルシステム監視（`notify` crate）は初期リリースにはオーバースペックと判断し見送った。
+**外部でのファイル変更検知**: `apps/desktop/src/externalChange.ts` が `getCurrentWindow().onFocusChanged` を購読し、前面に戻ったときに `FileAdapter.getMetadata()` で mtime を取り直す。同じファイルについて初回は基準を記録するだけでダイアログを出さない（開いた直後の誤検知防止）。基準は `max(記録した mtime, uiStore.lastSavedAt)` に `MTIME_TOLERANCE_MS`（2000ms）の余裕を足したもの。超えたときだけ確認ダイアログを出し、未保存の変更があれば文言を変えて `danger: true` にする。「キャンセル」を選んだ場合も基準を進め、同じ内容を繰り返し尋ねない。ファイルシステム監視（`notify` crate）は初期リリースにはオーバースペックと判断し見送った。**Phase 38 で `currentFileOrigin === 'cloud'` のときは検知対象から外した**（Drive の `getMetadata` は `appProperties.mapId` のみを返し mtime を持たないため）。
 
 **共有URLの代替**: `ExportImportPanel`（`packages/ui`）は `onGenerateShareUrl` が未指定でも「共有」タブ自体は隠さず、「JSONファイルとして共有」の案内（JSON書き出しボタン＋共有URLが無い理由の説明）を表示する（§5.1）。Web版（`onGenerateShareUrl` あり）の表示は変わらない。
 
@@ -1639,3 +1658,33 @@ ai-idea-map/
 設計からの差分・実機確認の詳細は `docs/desktop/README.md` §3.1-G、`docs/implementation-plan.md` Phase 37 を参照。
 
 設計ドキュメントからの差分は `docs/desktop/README.md` §3.1-F、実装・検証状況は `docs/implementation-plan.md` Phase 36 を参照。
+
+### 18.9 デスクトップ版 Google Drive 連携（`apps/desktop`、Phase 38）
+
+Web版で作ったマップをデスクトップ版からもそのまま開けるようにする機能。既定の保存先はローカルファイルのままで（§18.1〜18.3）、Drive は起動画面から明示的に選ぶ「もう一つの保存先」として並ぶ。
+
+**認証がWeb版と別方式になる理由**: Google は組み込み WebView からの認可リクエストを `disallowed_useragent` で拒否するため、Web版の GIS ポップアップはデスクトップ版では使えない。代わりに認可画面を OS 既定ブラウザで開き、ループバック（`http://127.0.0.1:<port>`）+ PKCE（RFC 8252）で受け取る方式にした。
+
+**フロント側（`apps/desktop/src/googleAuth.ts`）**:
+- クライアントIDは `VITE_GOOGLE_DESKTOP_CLIENT_ID`（Google Cloud Console で「デスクトップアプリ」種別として発行。Web版の `VITE_GOOGLE_CLIENT_ID` とは別物で使い回せない）。未設定でもアプリは動き、起動画面のドライブ欄が案内表示になるだけ（`isDesktopClientIdMissing`）
+- スコープは `https://www.googleapis.com/auth/drive.file openid email`。`openid email` は接続アカウントのメールアドレス取得用で、Web版のように `userinfo` エンドポイントは叩かず、トークンエンドポイントが返す ID トークン（JWT）の `email` クレームをデコードして読む（TLS 経由で直接受け取ったものなので署名検証は省略）
+- PKCE の `code_verifier` / `state` は `crypto.getRandomValues`（セキュアコンテキストの制約を受けない）で生成し、`code_challenge`（S256）は Rust 側の `start_oauth_loopback` コマンドに `code_verifier` を渡して計算してもらう。`crypto.subtle` は Tauri の WebView でセキュアコンテキストとして使えるか未実測なため、使わずに済む設計にしてある
+- `redirect_uri` は `http://127.0.0.1:<port>`（`localhost` はファイアウォールで弾かれうるとGoogle公式が明記しているため使わない）。ポートは `start_oauth_loopback` が毎回 OS から借りる（デスクトップアプリ種別は redirect URI の事前登録が不要）
+- `access_type=offline` は送らない（installed app は常にリフレッシュトークンが返るとGoogle公式が明記）。`client_secret` も既定では送らず、要求される構成のときだけ `VITE_GOOGLE_DESKTOP_CLIENT_SECRET`（任意）で渡す
+- ブラウザは `@tauri-apps/plugin-opener` の `openUrl()` で開く。認可結果は `ideamap://oauth-callback` イベントで1回だけ届く（購読はブラウザを開く前に張る）
+
+**Rust側（`apps/desktop/src-tauri/src/oauth.rs`）**: `tauri-plugin-oauth` は使わず、`std::net::TcpListener` を使った自前のループバックサーバ。理由は「1本の GET のクエリを読む」だけで足り、プラグインを増やすと JS依存・Rust依存・`lib.rs` 登録・capability の4点を揃える保守コストが増えるため。自前コマンド（`start_oauth_loopback` / `cancel_oauth_loopback`）はアプリ自身のコマンドなので capability の管轄外で、`keychain.rs` と同じ構成に揃う。`code_challenge_s256` は `sha2` + `base64` クレートで計算し、RFC 7636 Appendix B の検証ベクタと一致することをユニットテストで確認している。待ち受けは最大 `LISTEN_TIMEOUT`（300秒）で打ち切り、`state` 不一致・`/favicon.ico` へのアクセス・ユーザーの拒否（`error=access_denied`）をそれぞれ区別してフロントへ通知する。`lib.rs` は `OauthServer`（起動中サーバの停止フラグ）を `.manage()` し、2本のコマンドを `invoke_handler` に登録する。
+
+**トークンの保管**: リフレッシュトークンは `SecretAdapter` の `googleRefreshToken` スロット（OSキーチェーン）。アクセストークンはメモリのみ（`useDesktopGoogleAuth` の state）。メールアドレスは表示用なので `StorageAdapter`（キー `ideamap-google-email`）に置く。アクセストークンは有効期限の300秒前（`REFRESH_MARGIN_SEC`）に自動更新をスケジュールし、起動時はキーチェーンにリフレッシュトークンが残っていれば自動でサインイン状態を復元する。リフレッシュに失敗した場合（Testing 公開ステータスの7日制限・ユーザーによる取り消し）は黙ってサインアウト状態に戻す。
+
+**`useDesktopGoogleAuth`（`apps/desktop/src/hooks/useDesktopGoogleAuth.ts`）**: Web版 `useGoogleAuth` と同じ形の状態（`isSignedIn` / `accessToken` / `isLoading` / `error` / `userEmail` / `signIn` / `signOut` / `silentReauth`）を返し、`App` の `cloudAuth` prop・`useAutoSave` の 401 リトライから見て等価に扱えるようにしている。中身は別物（GIS のポップアップではなくループバック+PKCE）。サインアウト時は Google 側のトークンを失効させ、キーチェーンとメールアドレスの永続化を消し、`clearDriveCache()` を呼ぶ。**Drive 上のマップを開いたままサインアウトした場合は `uiStore.currentFileOrigin === 'cloud'` を見て `currentFileId` をクリアする**（ローカルファイルを開いている場合は保存先を保つため触らない）。
+
+**起動画面の Drive UI（`apps/desktop/src/components/DriveSection.tsx`）**: `DesktopFileDashboard`（§5.1.2）に組み込まれる。サインイン前は接続ボタンと案内文、サインイン後は `listMaps()`（`packages/core` の `driveService`）で取得した一覧・開くボタン・「いま開いているマップをドライブに保存」ボタンを表示する。アップロードは `buildMapFile(mapId)`（§4章 stores/mapSnapshot.ts）でスナップショットを組み立て、`saveMap(token, title, content, null, mapId)` で新規作成し、成功したら `setCurrentFileId(fileId, 'cloud')` で以後の自動保存を Drive に向ける。
+
+**`desktopFileAdapter`（`apps/desktop/src/platform/file.desktop.ts`）**: `setDriveAccessToken(token)` でモジュール内変数にトークンを流し込む（`DesktopApp.tsx` が `accessToken` の変化を `useEffect` で反映する、Web版の `googleDriveService` と同じ形）。`openFile` / `saveFile` / `deleteFile` / `getMetadata` は `ref.origin === 'cloud'` のときだけ `packages/core` の `driveService`（`loadMap` / `saveMap` / `deleteMap` / `fetchMapAppProperties`）に処理を委譲し、それ以外はこれまで通りローカルファイルを扱う。`saveLocalMirror`（自動保存領域への書き込み）と `exportBlob` は Drive 化しておらず常にローカルのまま。
+
+**`DesktopApp.tsx` の配線**: `cloudAuth = useDesktopGoogleAuth()` を生成し、`accessToken` の変化を `setDriveAccessToken` へ渡す。`useAutoSave` の `autoSave.remoteReady` は常に `true`（ローカルファイルシステムは常に使える）。`onSaveError` は `uiStore.currentFileOrigin === 'cloud'` のときだけ 401 をキーチェーンでの `silentReauth()` にルーティングし、再試行後も失敗すれば「再接続」アクションボタン付きトーストを出す（§12.4「Phase 38 以降のデスクトップ版」）。
+
+**設定（`settings.json`）の Drive 同期は対象外**: デスクトップ版は APIキーを OSキーチェーンに置きマスターパスワードを持たないため、マスターパスワード暗号化が前提の `settings.json` 同期とは相性が悪い。`apps/desktop/src/main.tsx` は `setAppSettingsSync()`（§4.3）を注入していない。
+
+設計からの差分・未検証事項の詳細は `docs/desktop/README.md` §3.1-H、実装・検証状況は `docs/implementation-plan.md` Phase 38 を参照。

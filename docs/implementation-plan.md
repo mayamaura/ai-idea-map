@@ -1865,22 +1865,79 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 
 ---
 
-### Phase 38: デスクトップ版 Google Drive 連携（任意・約3日）
+### Phase 38: デスクトップ版 Google Drive 連携（約3日）🔨 実装済み（確認中）
 
-**目標**: デスクトップ版からも Google Drive 同期を使えるようにする。**任意フェーズ。** Ollama 対応という主目的とは独立しており、必要になってから着手する。
+**目標**: デスクトップ版からも Google Drive 同期を使えるようにする。
 
-> 参照: `docs/desktop/platform-integration.md` §3.8。Google は組み込みWebViewからの OAuth を `disallowed_useragent` でブロックするため、Web版の GIS ポップアップ方式は使えない。
+> 参照: `docs/desktop/platform-integration.md` §3.8。Google は組み込みWebViewからの OAuth を `disallowed_useragent` でブロックするため、Web版の GIS ポップアップ方式は使えない。設計からの差分は `docs/desktop/README.md` §3.1-H。
 
 #### タスク
-- [ ] Google Cloud Console で「デスクトップアプリ」種別の OAuth クライアントIDを新規発行
-- [ ] ループバックサーバ（`http://127.0.0.1:<port>`）＋ PKCE によるOAuthフローを実装
-- [ ] `opener` プラグインで OS 既定ブラウザに認可URLを開く
-- [ ] 取得したトークンを OSキーチェーンに保存
-- [ ] `googleDriveService.ts` を `packages/core` に移し、Web/Desktop 双方から使えるようにする（`fetch` は `HttpAdapter` 経由に）
-- [ ] `useGoogleAuth` の消費インタフェース（`isSignedIn`/`accessToken`/`signIn`/`signOut`/`userEmail`）を保ったまま内部実装のみ差し替え
-- [ ] `docs/desktop/README.md` §3.1 の裁定を「デスクトップも Drive 対応」に更新
+- [ ] **Google Cloud Console で「デスクトップアプリ」種別の OAuth クライアントIDを新規発行**（コードでは完結しない開発者の手作業。手順は `docs/desktop/platform-integration.md` §3.8 の「Google Cloud Console 側の設定手順」。未発行でもアプリは動き、起動画面のドライブ欄が「未設定」の案内になる）
+- [x] ループバックサーバ（`http://127.0.0.1:<port>`）＋ PKCE によるOAuthフローを実装（`src-tauri/src/oauth.rs`。`std::net::TcpListener` の自前実装で、`tauri-plugin-oauth` は使わない）
+- [x] `opener` プラグインで OS 既定ブラウザに認可URLを開く（`main-window` capability の `opener:allow-open-url` が `https://*` を許可済みのため追加変更なし）
+- [x] 取得したリフレッシュトークンを OSキーチェーンに保存（`SecretAdapter` の `googleRefreshToken` スロット。既存の汎用コマンド4本をそのまま使うため Rust 側の追加は不要）
+- [x] `googleDriveService.ts` を `packages/core/src/services/driveService.ts` に移し、Web/Desktop 双方から使えるようにする（`fetch` → `HttpAdapter.request`、`FormData`/`Blob` → `multipart/related` の手組み）
+- [x] `useGoogleAuth` の消費インタフェース（`isSignedIn`/`accessToken`/`signIn`/`signOut`/`userEmail`/`silentReauth`/`clientIdMissing`）を保ったまま、デスクトップ用に `useDesktopGoogleAuth` として別実装（Web版の `useGoogleAuth` は無変更）
+- [x] デスクトップ版 `FileAdapter` を `FileRef.origin` で Drive とローカルに振り分ける複合アダプタ化。`uiStore` に `currentFileOrigin` を追加し `currentFileId` と対で永続化
+- [x] 起動画面に Google ドライブ欄を追加（`DriveSection.tsx`。接続・一覧・開く・「いま開いているマップをドライブに保存」）
+- [x] `docs/desktop/README.md` §3.1 の裁定を「デスクトップも Drive 対応」に更新（§3.1-H に設計判断12項目、§5 に未検証事項 #11〜#13 を追加）
 
 **完了条件**: デスクトップ版から Google サインインでき、Web版と同じマップを開いて保存できる。
+
+**現状**: 実装・型検査・ビルド・Rustテストは通過済みだが、**完了条件そのものは未達**。クライアントIDの発行が開発者の手作業として残っており、実機での認可〜Drive 読み書きを一度も通していない（下記「残りの手動確認項目」）。
+
+#### 実装時の判断（設計ドキュメントからの差分）
+
+`docs/desktop/README.md` §3.1-H に表としてまとめた。要点のみ再掲する。
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | ループバックサーバの実装 | `tauri-plugin-oauth` を使わず自前（`oauth.rs`）。必要なのは「1本の GET のクエリを読む」ことだけで、プラグインを足すと4点セット（JS依存・Rust依存・`lib.rs` 登録・capability）の保守が増える。自作コマンドは capability の管轄外なので `keychain.rs` と同じ構成に収まる |
+| 2 | PKCE の `code_challenge` | Rust 側で計算（`sha2` + `base64` を追加）。`crypto.subtle` はセキュアコンテキストでしか使えず、Tauri の WebView でそれが保証されるかを実測していないため。`code_verifier`/`state` の生成は制約のない `crypto.getRandomValues` で JS 側 |
+| 3 | `access_type=offline` | **送らない。** Google 公式が installed app について「リフレッシュトークンは常に返る」と明記しており、認可パラメータ表にも存在しない。Web server フロー向けの知識を持ち込まない |
+| 4 | `client_secret` | 既定で送らない（PKCE 併用時は省略可。公式サンプルも送っていない）。要求される構成向けに `VITE_GOOGLE_DESKTOP_CLIENT_SECRET` を任意で受ける |
+| 5 | `redirect_uri` | `http://127.0.0.1:<port>`。`localhost` はファイアウォールで弾かれうると Google 公式が明記しているため使わない。ポートは毎回 OS から借りる（事前登録不要） |
+| 6 | メールアドレス | スコープに `openid email` を足し ID トークンの `email` クレームから読む。Web版のように `userinfo` を叩かないので HTTP 許可が1つ減る |
+| 7 | アップロード | `FormData`/`Blob` をやめ `multipart/related` を文字列で手組み。plugin-http への `FormData` の挙動が未検証なのに対し、文字列ボディは両アプリで同じ経路を通る。**Web版の保存経路も同時に変わる** |
+| 8 | 保存先の判別 | `uiStore.currentFileOrigin` を追加し `currentFileId` と対で永続化。`FileAdapter.origin` の意味が「唯一の保存先」から「未指定時の既定」に変わった |
+| 9 | 既定の保存先 | ローカルのまま。`saveFileAs`（Ctrl+S の新規保存）はネイティブ保存ダイアログ。Drive へ上げるのは起動画面からの明示操作だけ |
+| 10 | CSP | **変更しない。** `HttpAdapter` 経由は Rust 側の plugin-http が発行するため WebView の CSP を通らない。Phase 35 の Anthropic API が `connect-src` 未記載で動いている実績が裏付け。許可は capability（`google-drive.json`）だけ |
+| 11 | 設定（`settings.json`）の Drive 同期 | スコープ外。デスクトップ版はマスターパスワードを持たない一方、Drive の `settings.json` は暗号化が前提のため。`setAppSettingsSync()` は未注入のまま |
+| 12 | `clearDriveCache()` | settings.json の fileId キャッシュも一緒に消すよう修正した。移設前は `clearSettingsCache()` がどこからも呼ばれておらず、アカウント切替時に前アカウントの fileId が残る状態だった |
+| 13 | 設定パネルの `DriveSyncSection` | `showCloudSync`（＝`cloudAuth` の有無）に `SecretAdapter.isPassphraseFree` が false という条件を足した。デスクトップ版に `cloudAuth` を渡した副作用で「マスターパスワード & Drive同期」欄が出てしまい、押すと `setAppSettingsSync` 未注入で失敗するため。#11 と対の変更 |
+| 14 | ヘッダーの保存先表示 | `isSignedIn && currentFileId` に `currentFileOrigin === 'cloud'` を足した。デスクトップ版はサインイン中にローカルファイルを開いている状態がありえ、そのままだと「Drive」と誤表示するため |
+
+#### 検証（2026-08-09）
+
+- [x]✅ `cargo test --lib` — 13件通過。うち Phase 38 分は9件で、内訳は RFC 7636 の PKCE 検証ベクタとの一致、認可コードのパーセントデコード（`4%2FabC` → `4/abC`）、リクエストライン解析、そして**実ソケット往復4件**（認可コード受領で 200 と完了ページを返す／`state` 不一致は 400 で捨てる／`/favicon.ico` では待機を続ける／`error=access_denied` をエラーとして返す）
+- [x]✅ `pnpm typecheck` 通過
+- [x]✅ `pnpm build`（Web版）・`pnpm --filter @ideamap/desktop build`（デスクトップ版フロントエンド）ともに成功
+- [x]✅ `pnpm lint` — 16 problems（13 errors・3 warnings）。Phase 36・37 と同数で、すべて既存ファイル由来。Phase 38 の新規ファイルに起因する指摘はゼロ
+
+#### 残りの手動確認項目
+
+**いずれも Google Cloud Console でのクライアントID発行が前提。** 発行前はドライブ欄が「未設定」の案内になるため、以下は一切確認できていない。
+
+- 「デスクトップアプリ」種別の OAuth クライアントID発行と `apps/desktop/.env` への設定
+- 実機でのサインイン（OS既定ブラウザで認可画面が出る → `http://127.0.0.1:<port>` に戻る → アプリがサインイン済みになる）
+- Drive のマップ一覧取得・マップを開く・編集して自動保存が Drive に戻ること
+- **`multipart/related` の手組みボディを Drive API が受け付けること（未検証事項 #11）。Web版の保存経路も同じ実装に変わったため、Web版でも要確認**
+- アプリ再起動後にキーチェーンからサインイン状態が復元されること
+- 「いま開いているマップをドライブに保存」で新規ファイルが作られ、以後の自動保存が Drive に向くこと
+- サインアウトで Google 側の許可が取り消され、Drive のマップを開いていた場合に保存先が外れること
+- OAuth 同意画面を「本番環境」に切り替えないと、リフレッシュトークンが7日で失効すること（未検証事項 #13）
+
+#### Web版に影響が出ていないことの確認（未実施）
+
+Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入れているため、**Web版の回帰確認が別途要る**。デスクトップ版のクライアントID発行を待たずに実施できる。
+
+- [ ] マップの保存が従来どおり動く（**アップロードが `FormData` から `multipart/related` 手組みに変わっているため最重要**）。新規作成・上書き保存・タイトル変更のいずれも
+- [ ] 設定パネルに「マスターパスワード（ローカル暗号化 & Drive同期）」欄が従来どおり出る（`isKeychainBacked` 条件を足したため）
+- [ ] ヘッダーの保存先表示が Drive ファイルで「Drive」のままである（`currentFileOrigin` 条件を足したため）
+- [ ] Phase 38 以前から使っているブラウザで、前回開いていた Drive ファイルへの保存が継続する（`restoreCurrentFileId` が origin 無しの永続値を `FileAdapter` の既定に寄せる挙動）
+- [ ] マップ一覧・起動ダッシュボードからの読み込み・削除
+- [ ] 設定の Drive 同期（保存・読み込み）
+- [ ] console error / pageerror がゼロ
 
 ---
 
