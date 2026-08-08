@@ -1872,7 +1872,7 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 > 参照: `docs/desktop/platform-integration.md` §3.8。Google は組み込みWebViewからの OAuth を `disallowed_useragent` でブロックするため、Web版の GIS ポップアップ方式は使えない。設計からの差分は `docs/desktop/README.md` §3.1-H。
 
 #### タスク
-- [ ] **Google Cloud Console で「デスクトップアプリ」種別の OAuth クライアントIDを新規発行**（コードでは完結しない開発者の手作業。手順は `docs/desktop/platform-integration.md` §3.8 の「Google Cloud Console 側の設定手順」。未発行でもアプリは動き、起動画面のドライブ欄が「未設定」の案内になる）
+- [x]✅ **Google Cloud Console で「デスクトップアプリ」種別の OAuth クライアントIDを新規発行**（コードでは完結しない開発者の手作業。手順は `docs/desktop/platform-integration.md` §3.8 の「Google Cloud Console 側の設定手順」。2026-08-09 に発行・`apps/desktop/.env` へ設定し、実機でのサインインまで確認済み）
 - [x] ループバックサーバ（`http://127.0.0.1:<port>`）＋ PKCE によるOAuthフローを実装（`src-tauri/src/oauth.rs`。`std::net::TcpListener` の自前実装で、`tauri-plugin-oauth` は使わない）
 - [x] `opener` プラグインで OS 既定ブラウザに認可URLを開く（`main-window` capability の `opener:allow-open-url` が `https://*` を許可済みのため追加変更なし）
 - [x] 取得したリフレッシュトークンを OSキーチェーンに保存（`SecretAdapter` の `googleRefreshToken` スロット。既存の汎用コマンド4本をそのまま使うため Rust 側の追加は不要）
@@ -1884,7 +1884,9 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 
 **完了条件**: デスクトップ版から Google サインインでき、Web版と同じマップを開いて保存できる。
 
-**現状**: 実装・型検査・ビルド・Rustテストは通過済みだが、**完了条件そのものは未達**。クライアントIDの発行が開発者の手作業として残っており、実機での認可〜Drive 読み書きを一度も通していない（下記「残りの手動確認項目」）。
+**現状**: **認可フローは 2026-08-09 に実機で疎通した**（クライアントID／シークレットを発行 → OS既定ブラウザで認可 → ループバックで受領 → Drive へアクセスできることを確認）。ここで `client_secret` が必須であることが判明し、実装と設計ドキュメントを修正している（下記「実装時の判断」#4）。
+
+ただし**完了条件はまだ未達**。疎通で通ったのは認証と GET 系（マップ一覧の取得）までで、**書き込み経路（`multipart/related` の手組みアップロード）は未確認**。マップ一覧の表示は GET だけで成立し、`IdeaMap` フォルダの作成も素の JSON POST なので、これらが通ってもアップロードの検証にはならない。下記「残りの手動確認項目」を参照。
 
 #### 実装時の判断（設計ドキュメントからの差分）
 
@@ -1914,16 +1916,19 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 - [x]✅ `pnpm build`（Web版）・`pnpm --filter @ideamap/desktop build`（デスクトップ版フロントエンド）ともに成功
 - [x]✅ `pnpm lint` — 16 problems（13 errors・3 warnings）。Phase 36・37 と同数で、すべて既存ファイル由来。Phase 38 の新規ファイルに起因する指摘はゼロ
 
+#### 実機での確認（デスクトップ実機・2026-08-09）
+
+- [x]✅ 「デスクトップアプリ」種別の OAuth クライアントID／シークレットの発行と `apps/desktop/.env` への設定
+- [x]✅ 実機でのサインイン（OS既定ブラウザで認可画面が出る → `http://127.0.0.1:<port>` に戻る → アプリがサインイン済みになる → Drive へアクセスできる）。ループバックサーバ・PKCE・トークン交換・`opener` 経由の外部ブラウザ起動が一通り通ったことになる
+- [x]✅ `client_secret` が必須であることが判明（省略時は 400 `invalid_request` "client_secret is missing."）。実装・`.env.example`・設計ドキュメントを修正済み
+
 #### 残りの手動確認項目
 
-**いずれも Google Cloud Console でのクライアントID発行が前提。** 発行前はドライブ欄が「未設定」の案内になるため、以下は一切確認できていない。
+**サインインは通ったが、通ったのは認証と GET 系まで。** マップ一覧の取得は GET だけ、`IdeaMap` フォルダの作成も素の JSON POST で成立するため、**書き込み経路はまだ一度も通っていない**。
 
-- 「デスクトップアプリ」種別の OAuth クライアントID発行と `apps/desktop/.env` への設定
-- 実機でのサインイン（OS既定ブラウザで認可画面が出る → `http://127.0.0.1:<port>` に戻る → アプリがサインイン済みになる）
-- Drive のマップ一覧取得・マップを開く・編集して自動保存が Drive に戻ること
-- **`multipart/related` の手組みボディを Drive API が受け付けること（未検証事項 #11）。Web版の保存経路も同じ実装に変わったため、Web版でも要確認**
+- **`multipart/related` の手組みボディを Drive API が受け付けること（未検証事項 #11、最優先）。** 具体的には ①Drive のマップを開いて編集し自動保存が戻る（`PATCH`）②「いま開いているマップをドライブに保存」で新規作成される（`POST`）の2経路。**Web版の保存経路も同じ実装に変わったため Web版でも要確認**
+- Drive のマップを開いた後、ヘッダーの保存先表示が「Drive」になり、ローカルファイルを開いたときは「ローカル」に戻ること
 - アプリ再起動後にキーチェーンからサインイン状態が復元されること
-- 「いま開いているマップをドライブに保存」で新規ファイルが作られ、以後の自動保存が Drive に向くこと
 - サインアウトで Google 側の許可が取り消され、Drive のマップを開いていた場合に保存先が外れること
 - OAuth 同意画面を「本番環境」に切り替えないと、リフレッシュトークンが7日で失効すること（未検証事項 #13）
 
