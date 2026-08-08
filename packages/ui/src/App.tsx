@@ -50,8 +50,10 @@ export interface AppProps {
   mapListSlot?: ReactNode
   /** 起動時のファイル選択ダッシュボード。isFileDashboardOpen が true のときだけ描画する */
   dashboardSlot?: ReactNode
-  /** 共有URL生成（Web版のみ）。未指定なら共有タブを出さない */
+  /** 共有URL生成（Web版のみ）。未指定なら共有タブは代替手段の案内になる */
   onGenerateShareUrl?: ExportImportPanelProps['onGenerateShareUrl']
+  /** 設定パネル末尾に足すプラットフォーム固有セクション（デスクトップ版の自動更新など） */
+  settingsExtraSections?: ReactNode
 }
 
 const NO_CLOUD_AUTH: AppCloudAuth = {
@@ -71,6 +73,7 @@ function AppInner({
   mapListSlot,
   dashboardSlot,
   onGenerateShareUrl,
+  settingsExtraSections,
 }: AppProps) {
   useKeyboardShortcuts()
 
@@ -136,7 +139,11 @@ function AppInner({
       </div>
       {!isPresentationMode && (
         <>
-          <SettingsPanel accessToken={auth.accessToken} showCloudSync={cloudAuth != null} />
+          <SettingsPanel
+            accessToken={auth.accessToken}
+            showCloudSync={cloudAuth != null}
+            extraSections={settingsExtraSections}
+          />
           <AISuggestionPanel />
           {mapListSlot}
           <NodeDetailPanel />

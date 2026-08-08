@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from 'react'
 import { App } from '@ideamap/ui'
 import { DesktopFileDashboard } from './components/DesktopFileDashboard'
+import { UpdaterSection } from './components/UpdaterSection'
 import { openMapFile } from './openMap'
+import { scheduleStartupUpdateCheck } from './updater'
 
 /**
  * デスクトップ版のシェル。ローカルファイル中心の保存モデルと、その導線だけを足す。
@@ -23,8 +25,15 @@ export function DesktopApp() {
   )
 
   useOpenFileShortcut()
+  useEffect(scheduleStartupUpdateCheck, [])
 
-  return <App autoSave={autoSave} dashboardSlot={<DesktopFileDashboard />} />
+  return (
+    <App
+      autoSave={autoSave}
+      dashboardSlot={<DesktopFileDashboard />}
+      settingsExtraSections={<UpdaterSection />}
+    />
+  )
 }
 
 /** Ctrl+O でネイティブの「開く」ダイアログ。デスクトップアプリの慣習に合わせる */

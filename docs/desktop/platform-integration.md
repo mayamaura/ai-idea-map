@@ -444,116 +444,83 @@ Tauri v2は権限を機能ごとの capability ファイルに分割し、`tauri
 
 ## 6. ビルド・配布・自動更新
 
+> **Phase 36 で実装済み（2026-08-08）。** 実際の設定は `.github/workflows/release-desktop.yml`・`apps/desktop/src-tauri/tauri.conf.json`・`scripts/sync-version.mjs`・`apps/desktop/src/updater.ts` が正です。
+> 本節の例（モノレポ移行前の `desktop/` `ideamap/` 構成・`npm`）から意図的に変えた点（pnpm workspaces 化、バージョニングは同期スクリプト方式に統一したこと、updater/process の Rust依存を `cfg` でデスクトップ限定にしたこと等）は [README.md](README.md) §3.1-F の表が優先されます。
+
 ### 6.1 ローカルビルド手順
 
 Windows（開発機で実行）:
 
 ```powershell
 # MSI（Windows Installer）と NSIS（.exe インストーラ）の両方を生成
-npm run tauri build --prefix desktop -- --target x86_64-pc-windows-msvc
+pnpm --filter @ideamap/desktop tauri build
 ```
 
 macOS（ビルドはmacOS実機またはmacOSランナーが必要。WindowsからのクロスビルドはApple側の制約で不可）:
 
 ```bash
-npm run tauri build --prefix desktop -- --target universal-apple-darwin
+pnpm --filter @ideamap/desktop tauri build -- --target aarch64-apple-darwin
+# または
+pnpm --filter @ideamap/desktop tauri build -- --target x86_64-apple-darwin
 ```
 
-生成物は既定で `desktop/src-tauri/target/release/bundle/` 配下（`msi/`、`nsis/`、`dmg/`、`macos/` 等）に出力されます。
+生成物は既定で `apps/desktop/src-tauri/target/release/bundle/` 配下（`msi/`、`nsis/`、`dmg/`、`macos/` 等）に出力されます。ルートの `pnpm build:desktop`（`tsc -b && pnpm --filter @ideamap/desktop tauri build`）でも同じビルドを実行できます。
 
 ### 6.2 GitHub Actionsによるクロスプラットフォームビルド
 
-```yaml
-# .github/workflows/release-desktop.yml
-name: Release Desktop
+実装は `.github/workflows/release-desktop.yml` です。`desktop-v*` タグの push（または手動実行）で起動し、3つのジョブで構成されます。
 
-on:
-  push:
-    tags:
-      - 'desktop-v*'
-
-jobs:
-  release:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
-          - platform: 'windows-latest'
-            args: ''
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Node.js セットアップ
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Rust セットアップ
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Rust依存キャッシュ
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './desktop/src-tauri -> target'
-
-      - name: フロントエンド依存インストール
-        run: npm ci --prefix ideamap
-
-      - name: Tauriビルド・GitHub Releaseへ公開
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: ./desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'IdeaMap Desktop ${{ github.ref_name }}'
-          releaseBody: '自動生成されたリリースです。変更点は CHANGELOG を参照してください。'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
-```
+| ジョブ | 内容 |
+|---|---|
+| `verify-version` | ビルド前に `node scripts/sync-version.mjs --check` でバージョンの一貫性を検査し、タグ（`desktop-v<version>`）とルート `package.json` の `version` が一致するかも確認する。ズレていればここで失敗させ、後続のビルドを走らせない |
+| `build` | Windows・macOS（`aarch64-apple-darwin` / `x86_64-apple-darwin`）のマトリクスビルド。`pnpm/action-setup` + `actions/setup-node` + `dtolnay/rust-toolchain` + `swatinem/rust-cache`（`workspaces: './apps/desktop/src-tauri -> target'`）のあと `pnpm install --frozen-lockfile` し、`tauri-apps/tauri-action@v0`（`projectPath: ./apps/desktop`）でビルドと GitHub Release への公開（`releaseDraft: true`）を行う |
+| `checksums` | `build` の後に、公開されたリリースの成果物一式を `gh release download` で取得し `sha256sum` で `SHA256SUMS.txt` を生成してリリースに添付する（`latest.json` と過去の `SHA256SUMS.txt` 自体は集計対象から除く） |
 
 補足:
-- ここでの `TAURI_SIGNING_PRIVATE_KEY`/`_PASSWORD` は **updater用の署名鍵**（`tauri signer generate` で発行するUpdater専用の鍵ペア）であり、後述する**コード署名証明書とは別物**です。Updater署名鍵は無料・自己発行可能なので、コード署名証明書がなくても自動更新の整合性検証自体は最初から導入できます。
+- `TAURI_SIGNING_PRIVATE_KEY`/`_PASSWORD` は **updater用の署名鍵**（`tauri signer generate` で発行するUpdater専用の鍵ペア）であり、**コード署名証明書とは別物**です。Updater署名鍵は無料・自己発行可能なので、コード署名証明書がなくても自動更新の整合性検証自体は最初から導入できます。
 - `tauri-action` は `latest.json`（Updaterが参照するマニフェスト）を自動生成し、指定したGitHub Releaseにアップロードします。
+- `releaseDraft: true` のため、ビルドが成功しても Release は下書きのまま公開されません。内容を確認して手動で公開するまで、`plugins.updater.endpoints` の `latest.json` はこのリリースを参照しません（誤って未確認のビルドが自動更新で配られるのを防ぐ）。
 
 ### 6.3 `tauri-plugin-updater` の設定
 
 - `tauri.conf.json` の `bundle.createUpdaterArtifacts: true` を設定するとビルド時に各バンドルの署名ファイル（`.sig`）が生成されます。
-- `plugins.updater.pubkey` にはUpdater署名鍵の**公開鍵の中身**（ファイルパスではなく文字列そのもの）を貼り付けます。
-- `plugins.updater.endpoints` に `https://github.com/<user>/<repo>/releases/latest/download/latest.json` を指定すると、GitHub Releasesの最新版マニフェストを自動的に参照します。
-- フロントエンド側の更新チェックコード例:
+- `plugins.updater.pubkey` にはUpdater署名鍵の**公開鍵の中身**（ファイルパスではなく文字列そのもの）を貼り付けます。`apps/desktop/src-tauri/tauri.conf.json` にコミット済みです。秘密鍵とパスワードはリポジトリ外（開発機）に保管し、GitHub Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`）への登録はユーザーの手作業として**未実施**です。
+- `plugins.updater.endpoints` に `https://github.com/mayamaura/ai-idea-map/releases/latest/download/latest.json` を指定し、GitHub Releasesの最新版マニフェストを自動的に参照します。
+- Rust側の依存（`tauri-plugin-updater` / `tauri-plugin-process`）は `src-tauri/Cargo.toml` の `[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]` に置き、`lib.rs` では `#[cfg(desktop)]` でプラグイン登録しています（モバイル向けビルドでは自動更新・再起動という概念自体が無いため）。
+- 権限は `src-tauri/capabilities/updater.json`（`updater:default` / `process:allow-restart`）で許可しています。
+- フロントエンド側の実装は `apps/desktop/src/updater.ts` です。起動5秒後の自動チェック（`scheduleStartupUpdateCheck()`。失敗・更新なしは無言）と、設定パネルの `UpdaterSection`（`apps/desktop/src/components/UpdaterSection.tsx`）からの手動チェック（結果を必ずトースト/ダイアログで返す）の2経路があります。要点を抜粋します。
 
 ```ts
-import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
-
-async function checkForUpdate() {
+// apps/desktop/src/updater.ts（抜粋）
+export async function checkForUpdate(silent: boolean): Promise<boolean> {
   const update = await check()
-  if (update) {
-    await update.downloadAndInstall((event) => {
-      // ダウンロード進捗を uiStore のトーストに反映する等
-    })
-    await relaunch()
-  }
+  if (!update) return false
+
+  const accepted = await ask(`新しいバージョン ${update.version} が利用できます。…`)
+  if (!accepted) return false
+
+  // 未保存の変更があると再起動で失われる。保存の完了を最大10秒待ってから落とす
+  await flushPendingSave()
+  await update.downloadAndInstall()
+  await relaunch()
+  return true
 }
 ```
 
+更新パッケージの署名検証は Rust 側（`tauri-plugin-updater`）が公開鍵で行うため、コード署名証明書が無くても「配布後にすり替えられたものを掴む」ことは防げます。更新の取得自体は Rust 側（reqwest）が行うため、WebView の CSP（`tauri.conf.json` の `csp`/`devCsp`）には関係せず、Phase 36 で変更していません。
+
 ### 6.4 バージョニング方針
 
-- Web版 `ideamap/package.json` の `version` は現状 `0.0.0` 固定（`private: true` の静的SPAでバージョン管理していない）ため、まず **デスクトップ版導入を機にWeb版側も意味のあるバージョン番号を持たせる**ことを推奨します。
-- 方針: **Web版とデスクトップ版は同じアプリケーションバージョン番号（例: `SemVer`）を共有する。** デスクトップ固有の変更（Tauri側のみの修正）はパッチバージョンを進め、フロントエンド（`ideamap/src`）に影響する変更はWeb版のリリースとも歩調を合わせる。
-- 実務上は、CIの「デスクトップ版リリース」ワークフロー実行前に `ideamap/package.json` の `version` を読み取り、`desktop/src-tauri/tauui.conf.json` の `version` フィールドへ同期するスクリプトステップ（`node scripts/sync-version.mjs`）をビルド前に挟むのが確実です（`tauri.conf.json` の `version` にパッケージへの相対パス文字列を直接書けるかは §5.1 のとおり未確認のため、同期スクリプト方式を正としておきます）。
-- Gitタグは `desktop-v1.2.0` のようにプレフィックスを付けて、Web版のデプロイ（GitHub Pagesへのpush）とは別トリガーで運用します。
+**実装済み（Phase 36・2026-08-08）。** ルート `package.json` の `version`（初期値 `0.1.0`）を単一の真実とし、`scripts/sync-version.mjs` が下流の4ファイル（`apps/web/package.json`・`apps/desktop/package.json`・`apps/desktop/src-tauri/tauri.conf.json`・`apps/desktop/src-tauri/Cargo.toml`）へ配ります。**Web版とデスクトップ版は同じアプリケーションバージョン番号を共有する**方針です。
+
+```bash
+pnpm sync-version    # ルートの version を4ファイルへ配る
+pnpm check-version   # ズレていたら非ゼロ終了（CI の verify-version ジョブが実行）
+```
+
+`tauri.conf.json` の `version` にパッケージへの相対パス文字列（`"../../../package.json"`）を直接書けるかは、Phase 36 で実測して**指定できることを確認しました**（`cargo check` と `tauri inspect` の双方が `src-tauri` 基準でパスを解決）。ただし `apps/web/package.json` と `Cargo.toml` はどのみち同期スクリプトが要るため、仕組みを二重に持たない判断で `tauri.conf.json` も同期スクリプトによる数値配布のままにしています（実測結果の詳細は [README.md](README.md) §5「Phase 36 で解消した項目」、採用しなかった理由は §3.1-F）。
+
+Gitタグは `desktop-v0.1.0` のようにプレフィックスを付け、Web版のデプロイ（GitHub Pagesへのpush）とは別トリガー（`.github/workflows/release-desktop.yml`）で運用します。`verify-version` ジョブがタグ名とルート `package.json` の `version` の一致も検査します。
 
 ### 6.5 コード署名なしで始める場合の現実的な運用
 
@@ -597,7 +564,7 @@ AIエージェント（Claude Code）が実行できる粒度でコマンドを�
 > pnpm build:desktop      # = tsc -b && pnpm --filter @ideamap/desktop tauri build
 > ```
 >
-> 導入した Tauri プラグインは `dialog` / `fs` / `store` / `http` / `opener` / `clipboard-manager` / `persisted-scope` の7つです。`updater` と `notification` と `window-state` は未導入（それぞれ Phase 36・未使用・Phase 37）。
+> 導入した Tauri プラグインは `dialog` / `fs` / `store` / `http` / `opener` / `clipboard-manager` / `persisted-scope` / `updater` / `process` の9つです（`updater`/`process` は Phase 36 で追加）。`notification` と `window-state` は未導入（それぞれ未使用・Phase 37）。
 
 ### 7.1 Rustツールチェーン
 
@@ -689,7 +656,7 @@ await fetch('http://localhost:11434/api/tags').then(r => r.json())
 
 | # | 項目 | 内容 | 対応方針 |
 |---|---|---|---|
-| 1 | `version` フィールドへのパッケージ相対パス指定 | `tauri.conf.json` の `version` に `package.json` へのパスを直接渡せるかは未確認 | 実装時に検証し、不可なら §6.4 のバージョン同期スクリプトで代替 |
+| 1 | `version` フィールドへのパッケージ相対パス指定 | `tauri.conf.json` の `version` に `package.json` へのパスを直接渡せるかは未確認 | **Phase 36 で解消（2026-08-08）。** `"../../../package.json"` のような相対パスを指定でき、`cargo check`（tauri-build）と `tauri inspect`（tauri CLI）の両方が `src-tauri` を基準に解決することを実測で確認した。ただし `apps/web/package.json` と `Cargo.toml` も揃える必要がありどのみち同期スクリプトが要るため、本プロジェクトでは採用せず §6.4 の `scripts/sync-version.mjs` による数値同期方式を採用した |
 | 2 | `dialog` で選択した任意パスへの `fs` 書き込み許可の実際の挙動 | `fs:scope` の外にあるユーザー選択パスへの書き込みがdialog-fs連携で自動的に許可されるか未確認 | **Phase 34 で解消（2026-08-07）。** ダイアログで選んだパスは `fs:scope` の外でも読み書きできることを実機確認した（`dialog` プラグインが実行時にスコープを付与する）。あわせて、ダイアログを通していない `fs:scope` 外のパス（`~/Documents` 直下の直読み）は `forbidden path` で拒否されることも確認済み＝スコープは意図どおり最小に効いている。したがって `$HOME/Documents/**` の明示追加は不要。次回起動への引き継ぎには `tauri-plugin-persisted-scope` を採用している |
 | 3 | OSの「最近使った項目」（ジャンプリスト／macOS最近使った項目）へのネイティブ統合 | Tauri公式プラグインの範囲内で完結するか未確認。追加のRust実装が必要な可能性 | 初期リリースはアプリ内リストのみとし、OSネイティブ統合は別Phaseで検証 |
 | 4 | Tauriのドラッグ&ドロップイベントと React Flow のノードドラッグ操作の競合可能性 | `dragDropEnabled` がHTML5標準の `dragover`/`drop` を奪う場合、React Flow内のノードD&D操作に影響する懸念 | **Phase 34 では `dragDropEnabled: false` にして競合そのものを回避した。** D&D 受け入れを実装する Phase 37 で `true` にし、React Flowキャンバス上でのドラッグ操作を回帰テストする |

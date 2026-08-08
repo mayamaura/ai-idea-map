@@ -73,10 +73,12 @@ Phase 33 で pnpm workspaces のモノレポへ移行した。詳細な設計根
 ```
 ai-idea-map/
 ├── pnpm-workspace.yaml
-├── package.json                     # ワークスペースルート（dev / build / lint / typecheck）
+├── package.json                     # ワークスペースルート（dev / build / lint / typecheck / sync-version）
 ├── tsconfig.json                    # 各プロジェクトを束ねる solution ファイル
 ├── tsconfig.base.json               # 共有 compilerOptions
 ├── eslint.config.js                 # 共有設定 + 依存方向の強制ルール
+├── scripts/sync-version.mjs         # ルート package.json の version を4ファイルへ配布（Phase 36。--check でCIが検査）
+├── .github/workflows/release-desktop.yml # デスクトップ版のビルド・GitHub Releases公開（Phase 36）
 │
 ├── packages/
 │   ├── platform/                    # Platform Adapter の「型」と registry のみ（他パッケージに依存しない）
@@ -163,18 +165,20 @@ ai-idea-map/
         ├── package.json
         ├── vite.config.ts           # devUrl 用に固定ポート 5174・strictPort（Tauri のウィンドウが空白になるのを防ぐ）
         ├── src-tauri/
-        │   ├── tauri.conf.json      # ウィンドウ設定・CSP・capabilities の割り当て
-        │   ├── Cargo.toml
-        │   ├── capabilities/        # main-window / file-access / ai-http の3ファイル（§18.5）
+        │   ├── tauri.conf.json      # ウィンドウ設定・CSP・capabilities・plugins.updater の割り当て（Phase 36 で updater 追加）
+        │   ├── Cargo.toml           # updater/process は cfg(not(android/ios)) の対象外ターゲットに限定（Phase 36）
+        │   ├── capabilities/        # main-window / file-access / ai-http / updater の4ファイル（§18.5、updater は Phase 36）
         │   └── src/
-        │       ├── lib.rs           # プラグイン登録・invoke_handler
+        │       ├── lib.rs           # プラグイン登録・invoke_handler（updater/process は #[cfg(desktop)]、Phase 36）
         │       └── keychain.rs      # OSキーチェーン操作（has/get/set/clear_secret コマンド）
         └── src/
             ├── main.tsx             # setPlatform → restorePersistedState() を await → render
-            ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ
+            ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）
             ├── openMap.ts           # ファイルを開く共通処理（ダッシュボードと Ctrl+O が共用）
+            ├── updater.ts           # 自動更新のチェック・ダウンロード・適用（Phase 36）
             ├── components/
-            │   └── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰）
+            │   ├── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰）
+            │   └── UpdaterSection.tsx       # 設定パネル末尾の「アプリ情報」セクション（バージョン表示・手動更新チェック、Phase 36）
             └── platform/            # Adapter の Desktop 実装
                 ├── index.ts
                 ├── store.desktop.ts   # tauri-plugin-store の LazyStore 共有インスタンス（$APPCONFIG/app-data.json）
@@ -375,8 +379,9 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 | `mapListSlot` | クラウドのマップ一覧パネル | `<MapListPanel>` |
 | `dashboardSlot` | 起動時のファイル選択画面 | `<FileOpenDashboard>` |
 | `onGenerateShareUrl` | 共有URL生成。未指定なら共有タブを出さない | `generateShareUrl` |
+| `settingsExtraSections`（Phase 36） | 設定パネル末尾に足すプラットフォーム固有セクション。未指定なら何も描画しない | （Web版は渡さない） |
 
-`cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播し、デスクトップ版では設定パネルの「Google Driveと同期」セクションを描画しない（Phase 34）。
+`cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播し、デスクトップ版では設定パネルの「Google Driveと同期」セクションを描画しない（Phase 34）。`settingsExtraSections` は `SettingsPanel` に `extraSections` props としてそのまま渡り、設定パネル最後尾（「保存」セクションの後）に描画される。`packages/ui` からプラットフォーム実装への依存を避けるための注入口で、デスクトップ版は `<UpdaterSection>`（バージョン表示・更新チェック、Phase 36）を渡す（§18.7）。
 
 終了前確認は `SystemAdapter.onBeforeExit`、ウェルカム表示フラグは `StorageAdapter` 経由。
 
@@ -1595,3 +1600,20 @@ ai-idea-map/
 | 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9）。Web検索（`LLMProvider` の外側の独立機能）を Phase 35 の追加実装で反映（§9.10〜9.11） |
 | 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要 |
 | 12. Google Drive連携設計 | Web版専用機能である旨を明記（デスクトップ版 v1 は非対応） |
+
+### 18.7 ビルド・配布・自動更新（`apps/desktop`、Phase 36）
+
+**バージョニング**: ルート `package.json` の `version`（初期値 `0.1.0`）を単一の真実にし、`scripts/sync-version.mjs` が `apps/web/package.json`・`apps/desktop/package.json`・`apps/desktop/src-tauri/tauri.conf.json`・`apps/desktop/src-tauri/Cargo.toml` の4ファイルへ配る。`pnpm check-version`（`--check` フラグ）はズレていると非ゼロ終了するため、`.github/workflows/release-desktop.yml` の `verify-version` ジョブがビルド前に実行し、タグ（`desktop-v<version>`）とルートの `version` の一致も検査する。
+
+**配布**: `desktop-v*` タグの push で起動する GitHub Actions（`tauri-apps/tauri-action@v0`）が Windows（msi/nsis）・macOS（aarch64/x64 の dmg）をビルドし、`releaseDraft: true` で GitHub Releases の下書きを作る（内容確認後に手動公開するまで自動更新の参照先にならない）。`checksums` ジョブがリリース成果物から `SHA256SUMS.txt` を生成して添付する。
+
+**自動更新**: `tauri-plugin-updater` + `tauri-plugin-process`。Rust依存は `src-tauri/Cargo.toml` の `[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]` に置き、`lib.rs` では `#[cfg(desktop)]` でプラグインを登録する（モバイル向けビルドを対象外にするため）。権限は `capabilities/updater.json`（`updater:default` / `process:allow-restart`）。`apps/desktop/src/updater.ts` が更新チェックを提供する。
+
+| 経路 | 呼び出し元 | 結果の扱い |
+|---|---|---|
+| 起動時自動チェック | `scheduleStartupUpdateCheck()`（`DesktopApp.tsx` の `useEffect`、起動5秒後） | 失敗・更新なしは無言（`silent: true`） |
+| 手動チェック | 設定パネルの `UpdaterSection`（`checkForUpdate(false)`） | 結果を必ずトースト/ダイアログで返す |
+
+更新が見つかると `ask()` でユーザーに確認し、承諾されたら `flushPendingSave()` でデバウンス待ちの自動保存（`uiStore.saveStatus`）を最大10秒待って確定させてから `update.downloadAndInstall()` → `relaunch()` する。更新パッケージの署名検証は Rust 側（`tauri-plugin-updater`）が公開鍵（`tauri.conf.json` の `plugins.updater.pubkey`）で行うため、コード署名証明書が無くても配布後の改ざんは検出できる。更新の取得自体は Rust 側（reqwest）が行うため、WebView の CSP（`csp`/`devCsp`）には関係せず、Phase 36 で変更していない。
+
+設計ドキュメントからの差分は `docs/desktop/README.md` §3.1-F、実装・検証状況は `docs/implementation-plan.md` Phase 36 を参照。

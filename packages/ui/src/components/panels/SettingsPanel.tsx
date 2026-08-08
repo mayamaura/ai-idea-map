@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { getPlatform } from '@ideamap/platform'
 import { ExternalLink } from '../common/ExternalLink'
 import {
@@ -662,9 +662,14 @@ interface SettingsPanelProps {
   accessToken: string | null
   /** クラウド設定同期のセクションを出すか。デスクトップ版は false */
   showCloudSync?: boolean
+  /**
+   * プラットフォーム固有の追加セクション（デスクトップ版の自動更新など）。
+   * 末尾に描画する。packages/ui からプラットフォーム実装へ依存しないための注入口
+   */
+  extraSections?: ReactNode
 }
 
-export function SettingsPanel({ accessToken, showCloudSync = true }: SettingsPanelProps) {
+export function SettingsPanel({ accessToken, showCloudSync = true, extraSections }: SettingsPanelProps) {
   const { isSettingsOpen, setSettingsOpen } = useUIStore()
   const {
     apiKey, setApiKey,
@@ -911,6 +916,8 @@ export function SettingsPanel({ accessToken, showCloudSync = true }: SettingsPan
               Googleドライブにサインイン中は3秒後に自動保存します。未サインイン時はローカルストレージに保存します。
             </p>
           </section>
+
+          {extraSections}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700">

@@ -1,7 +1,7 @@
 {
   "name": "ai-idea-map",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "scripts": {
@@ -12,7 +12,9 @@
     "build:desktop": "tsc -b && pnpm --filter @ideamap/desktop tauri build",
     "preview": "pnpm --filter @ideamap/web preview",
     "lint": "eslint .",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "sync-version": "node scripts/sync-version.mjs",
+    "check-version": "node scripts/sync-version.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

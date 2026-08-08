@@ -24,7 +24,7 @@
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost data: blob:",
       "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:5174 http://localhost:5174 data: blob:",
-      "capabilities": ["main-window", "file-access", "ai-http"]
+      "capabilities": ["main-window", "file-access", "ai-http", "updater"]
     }
   },
   "bundle": {
@@ -36,6 +36,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzQUI0RkUwOERBN0FGRDcKUldUWHI2ZU40RStyODBEVEFmSlNnRHpNbWVvQkRPdVA5UG1PQzZ2RldoTlRqTDFKZkRwazFSSkUK",
+      "endpoints": [
+        "https://github.com/mayamaura/ai-idea-map/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -53,6 +53,55 @@ pnpm build:desktop  # インストーラをビルド
 
 ビルドには Rust ツールチェーン（`stable-msvc`）・Visual Studio Build Tools 2022 の C++ ワークロード・WebView2 ランタイムが必要です（[手順](docs/desktop/platform-integration.md#7-開発環境セットアップ手順windows)）。
 
+## デスクトップ版のインストール
+
+[Releases](https://github.com/mayamaura/ai-idea-map/releases) から、お使いの環境に合うファイルをダウンロードしてください。
+
+| OS | ダウンロードするファイル |
+|---|---|
+| Windows | `IdeaMap_x.y.z_x64_en-US.msi` または `IdeaMap_x.y.z_x64-setup.exe` |
+| macOS（Apple Silicon） | `IdeaMap_x.y.z_aarch64.dmg` |
+| macOS（Intel） | `IdeaMap_x.y.z_x64.dmg` |
+
+同じリリースに添付されている `SHA256SUMS.txt` で、ダウンロードしたファイルが改ざんされていないか検証できます。
+
+```bash
+# Windows (PowerShell)
+Get-FileHash .\IdeaMap_0.1.0_x64-setup.exe -Algorithm SHA256
+
+# macOS / Linux
+shasum -a 256 IdeaMap_0.1.0_aarch64.dmg
+```
+
+### 初回起動時の警告について（コード署名未対応）
+
+IdeaMap Desktop は個人開発のため、**OS標準のコード署名を行っていません。** そのため初回起動時に次のような警告が出ます。
+
+- **Windows**: 「WindowsによってPCが保護されました」と表示されたら、「詳細情報」をクリックして「実行」を選択してください。
+- **macOS**: 「"IdeaMap"は開発元を確認できないため開けません」と表示されたら、Finderでアプリを右クリック（またはControlキーを押しながらクリック）して「開く」を選択してください。それでも開けない場合は「システム設定 → プライバシーとセキュリティ」の下部に出る「このまま開く」を押してください。
+
+これは IdeaMap が OS に未検証であることを示す標準の警告です。ソースコードは本リポジトリで公開しているため、内容はいつでも確認いただけますし、ご不安な場合はソースからビルドしてご利用ください。
+
+### 自動更新
+
+新しいバージョンが公開されると、起動時（および設定パネルの「更新を確認」）に通知します。更新パッケージは署名を検証してから適用するため、コード署名が無くても「配布後に第三者が中身をすり替えて更新させる」ことはできません。
+
+### リリース手順（開発者向け）
+
+1. ルート `package.json` の `version` を更新し、`pnpm sync-version` で下流（`apps/*` と `src-tauri`）へ配る
+2. 変更をコミットして `desktop-v<version>` のタグを打って push する
+3. [Release Desktop ワークフロー](.github/workflows/release-desktop.yml)が Windows・macOS のインストーラをビルドし、**下書きの** Release を作る
+4. 内容を確認して Release を公開する（下書きのままでは自動更新の参照先にならない）
+
+事前に GitHub の Secrets へ Updater の署名鍵を登録しておく必要があります。鍵は `pnpm --filter @ideamap/desktop exec tauri signer generate` で発行し、公開鍵を `apps/desktop/src-tauri/tauri.conf.json` の `plugins.updater.pubkey` に、秘密鍵とパスワードを Secrets に置きます。
+
+| Secret 名 | 中身 |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | 秘密鍵ファイル（`.key`）の中身そのもの |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 鍵生成時に設定したパスワード |
+
+**秘密鍵とパスワードを失うと、以降のバージョンに署名できず自動更新が継続できなくなります。** リポジトリの外で確実に保管してください。
+
 ## 使い方
 
 1. ヘッダーの設定アイコンから **Claude APIキー** を入力

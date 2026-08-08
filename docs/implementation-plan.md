@@ -1751,21 +1751,49 @@ WebView2 を `--remote-debugging-port` 付きで起動し、Playwright を CDP �
 
 ---
 
-### Phase 36: ビルド・配布・自動更新（約3日）
+### Phase 36: ビルド・配布・自動更新（約3日）🔨 実装済み（確認中）
 
 **目標**: 他人にインストーラを配れる状態にする。
 
-> 参照: `docs/desktop/platform-integration.md` §6。
+> 参照: `docs/desktop/platform-integration.md` §6。設計からの差分は `docs/desktop/README.md` §3.1-F。
 
 #### タスク
-- [ ] GitHub Actions で Windows（MSI/NSIS）・macOS（dmg）をビルドするワークフローを作成（`tauri-action`）
-- [ ] GitHub Releases への成果物公開
-- [ ] `tauri-plugin-updater` の設定（署名鍵の生成と管理、アップデートマニフェストの配置）
-- [ ] バージョニング方針の決定（Web版とデスクトップ版の番号の揃え方）
-- [ ] コード署名なし配布時の SmartScreen / Gatekeeper 警告に対するユーザー向け案内文を README に用意
+- [x] GitHub Actions で Windows（MSI/NSIS）・macOS（dmg、aarch64/x64）をビルドするワークフローを作成（`.github/workflows/release-desktop.yml`、`tauri-apps/tauri-action@v0`）。ビルド前に `verify-version` ジョブでバージョンの一貫性とタグの一致を検査する
+- [x] GitHub Releases への成果物公開（`releaseDraft: true` で下書きとして作成。`checksums` ジョブがリリース成果物から `SHA256SUMS.txt` を集計して添付する）
+- [x] `tauri-plugin-updater` の設定（署名鍵を生成し、公開鍵を `tauri.conf.json` の `plugins.updater.pubkey` にコミット。秘密鍵は GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` に登録する運用。`apps/desktop/src/updater.ts` に起動時自動チェックと、設定パネルの `UpdaterSection` による手動チェックを実装）
+- [x]✅ バージョニング方針の決定（ルート `package.json` の `version` を単一の真実にし、`scripts/sync-version.mjs` が `apps/web`・`apps/desktop`・`src-tauri/tauri.conf.json`・`src-tauri/Cargo.toml` の4ファイルへ配る。`node scripts/sync-version.mjs --check` を実行し全ファイルの一致を確認済み）
+- [x] コード署名なし配布時の SmartScreen / Gatekeeper 警告に対するユーザー向け案内文を README に用意（README.md「初回起動時の警告について」節、SHA256チェックサムの検証手順、リリース手順を追加）
 - [ ] インストール〜起動〜アップデートの一連の流れを、開発機以外で確認
 
 **完了条件**: タグを打つと Windows・macOS 向けインストーラが自動ビルドされ Releases に公開される。インストールしたアプリが起動し、新バージョン公開時に自動更新が動作する。
+
+上記のうち「タグを打っての実ビルド」「開発機以外での実機確認」「GitHub Secrets への署名鍵登録」は未実施のため、完了条件は実装面（コード・CI設定）でのみ満たしている。詳細は「残りの手動確認項目」を参照。
+
+#### 実装時の判断（設計ドキュメントからの差分）
+
+`docs/desktop/README.md` §3.1-F に表としてまとめた。要点のみ再掲する。
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | バージョニング | ルート `package.json` の `version` を単一の真実にし、`scripts/sync-version.mjs` が `apps/web/package.json`・`apps/desktop/package.json`・`apps/desktop/src-tauri/tauri.conf.json`・`apps/desktop/src-tauri/Cargo.toml` の4ファイルへ配る。`--check` でCIがズレを検出する。初期バージョンは `0.1.0`。Web版とデスクトップ版で同じ番号を共有し、Gitタグは `desktop-v<version>` |
+| 2 | `tauri.conf.json` の `version` への相対パス指定（README §5 #9） | 指定できることを実測で確認したが採用しなかった。数値直書き＋同期スクリプト方式のまま統一している |
+| 3 | 自動更新の実装 | `tauri-plugin-updater` + `tauri-plugin-process`。JS依存・Rust依存・`lib.rs` 登録・`capabilities/updater.json` の4点を揃えた。Rust依存は `[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]` に置き、`lib.rs` では `#[cfg(desktop)]` で登録。エンドポイントは `https://github.com/mayamaura/ai-idea-map/releases/latest/download/latest.json`。起動5秒後の自動チェック（失敗・更新なしは無言）と設定パネルの手動チェック（結果を必ず返す）の2経路。更新適用前に `flushPendingSave()` で自動保存を最大10秒待って確定させる |
+| 4 | updater の通信とCSP | 更新の取得は Rust 側（reqwest）が行うため WebView の CSP には関係しない。`tauri.conf.json` の `csp`/`devCsp` は変更していない |
+| 5 | `settingsExtraSections` スロット | `packages/ui` からプラットフォーム実装へ依存させないため、設定パネル末尾への差し込み口を `App` の props として追加（既存の `mapListSlot`/`dashboardSlot` と同じ方針）。デスクトップ版が `UpdaterSection`（バージョン表示＋更新を確認）を渡す |
+
+#### 検証済み
+
+- [x]✅ `cargo check`（`apps/desktop/src-tauri`）通過。`tauri-plugin-updater` / `tauri-plugin-process` の依存追加後もビルドエラーなし
+- [x]✅ `tauri.conf.json` の `version` に `package.json` への相対パス文字列（`"../../../package.json"`）を指定できるかを実測。`cargo check`（tauri-build）と `pnpm --filter @ideamap/desktop exec tauri inspect wix-upgrade-code`（tauri CLI）の両方が成功し、存在しないパス（`"../../nonexistent-package.json"`）では両方とも「`tauri.conf.json > version` must be a semver string」で失敗することを確認した（＝パスとして解決されている）。詳細は `docs/desktop/README.md` §5「Phase 36 で解消した項目」参照
+- [x]✅ `node scripts/sync-version.mjs --check` — ルート・`apps/web`・`apps/desktop`・`src-tauri/tauri.conf.json`・`src-tauri/Cargo.toml` の5箇所すべてが `0.1.0` で一致
+- [x]✅ `pnpm typecheck`（`tsc -b`）通過
+- [x]✅ `pnpm lint` — 16 problems（13 errors・3 warnings）。Phase 36 の変更前と同数で、すべて既存ファイル（`useAutoSave.ts` 等）由来。Phase 36 の新規ファイル（`updater.ts`・`UpdaterSection.tsx`・`sync-version.mjs`）に起因する指摘はゼロ
+
+#### 残りの手動確認項目
+
+- GitHub Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`）の登録
+- `desktop-v<version>` タグを打っての実ビルド（`release-desktop.yml` の実走）
+- ビルドされたインストーラでの、インストール〜起動〜自動更新の一連の流れの確認（開発機以外の実機が必要）
 
 ---
 

@@ -127,6 +127,20 @@ Phase 33 の判定条件が「移行前と同じ動作」であることを優�
 
 Web検索（ollama.com の Web Search API）の裏取り（エンドポイント・リクエスト/レスポンス形状・認証・401の実測）は `docs/desktop/llm-abstraction.md` §8.3 を参照。実装は完了しているが、デスクトップ実機でのWeb検索付きAI呼び出しの動作確認はユーザーの手動確認待ち（`docs/implementation-plan.md` Phase 35「追加実装」参照）。
 
+### 3.1-F ビルド・配布実装時の設計判断（Phase 36 実施済み・2026-08-08）
+
+`platform-integration.md` §6 の記述から意図的に変えた点があります。**本節が優先されます。**
+
+| 事項 | 判断 | 理由 |
+|---|---|---|
+| バージョニング | ルート `package.json` の `version` を単一の真実にし、`scripts/sync-version.mjs` が `apps/web/package.json`・`apps/desktop/package.json`・`apps/desktop/src-tauri/tauri.conf.json`・`apps/desktop/src-tauri/Cargo.toml` の4ファイルへ配る。`--check` でCIがズレを検出する。初期バージョンは `0.1.0`。Web版とデスクトップ版で同じ番号を共有し、Gitタグは `desktop-v<version>` | 4ファイルを手で揃えると事故る。ルートを唯一の真実にすれば更新箇所は1つで済む |
+| `tauri.conf.json` の `version` への相対パス指定（§5 #9） | 指定できることを実測で確認したが**採用しなかった**。`tauri.conf.json` の `version` は数値直書きのまま、同期スクリプトで配る方式を継続する | `apps/web/package.json` と `Cargo.toml` も揃える必要があり、どのみち同期スクリプトが要る。仕組みを二重に持たない判断 |
+| 自動更新 | `tauri-plugin-updater` + `tauri-plugin-process`。JS依存（`@tauri-apps/plugin-updater` 2.10.1 / `@tauri-apps/plugin-process` 2.3.1）・Rust依存・`lib.rs` 登録・`capabilities/updater.json` の4点を揃えた。Rust依存は `[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]` に置き、`lib.rs` では `#[cfg(desktop)]` で登録する。エンドポイントは `https://github.com/mayamaura/ai-idea-map/releases/latest/download/latest.json`。更新チェックは起動5秒後の自動チェック（失敗・更新なしは無言）と、設定パネルの「更新を確認」ボタンによる手動チェック（結果を必ず返す）の2経路。更新適用前に `flushPendingSave()` でデバウンス待ちの自動保存を最大10秒待って確定させる | モバイルターゲット非対応のプラグインをビルド対象から切り離す。起動直後の重い処理（マップ復元・設定復元）とネットワークを取り合わない。手動操作は結果を隠さずユーザーに返す |
+| updater の通信とCSP | 更新の取得は Rust 側（reqwest）が行うため WebView の CSP には関係しない。`tauri.conf.json` の `csp`/`devCsp` は変更していない | 誤って CSP を緩めないよう、対象外であることを明記しておく |
+| `settingsExtraSections` スロット | `packages/ui` からプラットフォーム実装へ依存させないため、設定パネル末尾への差し込み口を `App` の props（`settingsExtraSections`）として追加した。`SettingsPanel` は `extraSections` として受け取る。既存の `mapListSlot`/`dashboardSlot` と同じ方針。デスクトップ版が `UpdaterSection`（バージョン表示＋「更新を確認」ボタン）を渡す | Web版・デスクトップ版で共通の `SettingsPanel` を保ちながら、プラットフォーム固有UIを注入できるようにする |
+
+署名鍵（公開鍵は `tauri.conf.json` にコミット済み。秘密鍵とパスワードはリポジトリ外に保管）と無署名配布時の案内（README「初回起動時の警告について」節、SHA256チェックサム）の詳細は `docs/implementation-plan.md` Phase 36 を参照。GitHub Secrets への署名鍵登録・タグを打っての実ビルド・開発機以外での実機確認は未実施。
+
 ### 3.2 プラットフォーム実装の切り替え方式 → **`setPlatform()` 注入に統一**
 
 `platform-integration.md` §3.2 は「`import.meta.env` や `'__TAURI__' in window` 判定でエントリポイントを分ける」と書いていますが、これは `architecture.md` §3.5 で**明示的に却下された案C**です。
@@ -160,7 +174,7 @@ graph LR
     P32 --> P33["Phase 33<br/>モノレポ移行<br/>（実装済み）"]
     P33 --> P34["Phase 34 ✅<br/>Tauri骨格<br/>ローカルファイル保存"]
     P34 --> P35["Phase 35 🔨<br/>Ollama統合<br/>★主目的達成（実機確認待ち）"]
-    P35 --> P36["Phase 36<br/>ビルド・配布・自動更新"]
+    P35 --> P36["Phase 36 🔨<br/>ビルド・配布・自動更新<br/>（タグ実走・実機確認待ち）"]
     P36 --> P37["Phase 37<br/>デスクトップ固有UX"]
     P36 -.任意.-> P38["Phase 38<br/>Drive連携<br/>（PKCE）"]
 ```
@@ -171,7 +185,7 @@ graph LR
 | 33 🔨 | モノレポ移行（`packages/*` + `apps/web`） | 5日 | architecture §4〜5 Step0-7 | Web版が従来通り動き、コアが共通パッケージに分離された状態（実装済み・Drive 連携とデプロイの実機確認待ち） |
 | 34 ✅ | Tauri デスクトップ版の骨格 | 5日 | platform-integration §5, §7 / architecture §5 Step8 | ウィンドウが起動し、マップ編集とローカルファイル保存ができる（Windows 実機で確認済み。設計からの差分は §3.1-D） |
 | 35 🔨 | **Ollama 統合** | 4日 | llm-abstraction §3〜7 Step3-7 | **ローカルLLMでアイデア提案・チャットが動く＝当初目的の達成**（実装済み。デスクトップ実機でのAI機能5種の動作確認と日本語モデルの実用性確認が未了。差分は §3.1-E） |
-| 36 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | 他人に配れるインストーラと自動更新 |
+| 36 🔨 | ビルド・配布・自動更新 | 3日 | platform-integration §6 | GitHub Actions によるビルド・下書きリリース公開・自動更新の仕組みは実装済み（`cargo check`・`pnpm typecheck`・`pnpm lint` 通過）。タグを打っての実ビルド・GitHub Secrets登録・開発機以外での実機確認が未了。差分は §3.1-F |
 | 37 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・最近使った項目） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」 |
 | 38 | （任意）デスクトップ版 Google Drive 連携 | 3日 | platform-integration §3.8 | Web版とのクラウド同期 |
 
@@ -196,7 +210,6 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | 3 | `format` に JSON Schema オブジェクトを渡す機能の Ollama 最低バージョン。**Ollama 0.32.6 では動作を確認済み**（2026-08-07実測、`docs/implementation-plan.md` Phase 35「検証済み」参照）だが、「どのバージョンから」の下限は未確定のまま | 35 | llm-abstraction §8.2 |
 | 7 | Tauri のドラッグ&ドロップと React Flow のノード操作が競合しないか | 37 | platform-integration §8 |
 | 8 | OSの「最近使った項目」「ジャンプリスト」統合が公式プラグインだけで完結するか | 37 | platform-integration §8 |
-| 9 | `tauri.conf.json` の `version` に `package.json` の相対パスを指定できるか | 36 | platform-integration §8 |
 | 10 | macOS（WKWebView）でのレンダリング差異・日本語IME・描画性能。Windows では解消済みだが macOS 実機が未入手 | 36 | adr-001 §4 |
 
 #### Phase 34 で解消した項目（2026-08-07・Windows 11 実機）
@@ -217,6 +230,14 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | 5 | **解消。** `/api/tags` の `details.context_length` が実コンテキスト長を返す（Ollama 0.32系以降が対応）。モデルファミリーごとに `/api/show` の `model_info` フィールド名を調べる必要がなくなった。取得値は `ModelInfo.contextTokens` として設定UIの表示に使う（`docs/design.md` §9.1.2） |
 
 番号は元の表のものを維持している（#4・#5 は上の表から削除済み）。
+
+#### Phase 36 で解消した項目（2026-08-08）
+
+| # | 結果 |
+|---|---|
+| 9 | **解消。** `tauri.conf.json` の `version` に `package.json` への相対パス文字列（`"../../../package.json"`）を指定できることを実測で確認した。`cargo check`（tauri-build）と `pnpm --filter @ideamap/desktop exec tauri inspect wix-upgrade-code`（tauri CLI）の両方が成功し、存在しないパス（`"../../nonexistent-package.json"`）を指定すると両方とも「`tauri.conf.json > version` must be a semver string」で失敗することから、パスとして解決されていることを確認した。**両者とも `src-tauri` を基準に解決する。** ただし本プロジェクトでは `apps/web/package.json` と `Cargo.toml` も揃える必要があり同期スクリプトがどのみち要るため、仕組みを二重に持たない判断で `tauri.conf.json` も数値で持つ方式を採用した（採用理由の詳細は §3.1-F） |
+
+番号は元の表のものを維持している（#9 は上の表から削除済み）。
 
 ---
 

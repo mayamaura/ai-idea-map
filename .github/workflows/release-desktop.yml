@@ -1,0 +1,124 @@
+name: Release Desktop
+
+# desktop-v0.1.0 のようなタグを打つとインストーラをビルドして Releases に下書きを作る。
+# Web版の GitHub Pages デプロイ（deploy.yml / main への push）とはトリガーを分けている。
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # バージョンのズレたまま配ると自動更新が正しく効かないので、ビルド前に落とす
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: バージョンの一貫性を検査
+        run: node scripts/sync-version.mjs --check
+
+      - name: タグとルート package.json の version が一致するか
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#desktop-v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "タグ $GITHUB_REF_NAME は version $PKG_VERSION と一致しません" >&2
+            exit 1
+          fi
+
+  build:
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+            rust-targets: aarch64-apple-darwin
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+            rust-targets: x86_64-apple-darwin
+          - platform: windows-latest
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ルート package.json の packageManager フィールドからバージョンを解決する
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './apps/desktop/src-tauri -> target'
+
+      - name: 依存インストール
+        run: pnpm install --frozen-lockfile
+
+      # tauri.conf.json の beforeBuildCommand（apps/desktop の pnpm build）が
+      # フロントエンドをビルドしてから、tauri がインストーラにまとめる
+      - name: Tauri ビルド・GitHub Release へ公開
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater 用の署名鍵。コード署名証明書とは別物で、更新パッケージの改ざん検出に使う
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: ./apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'IdeaMap Desktop ${{ github.ref_name }}'
+          releaseBody: |
+            ## インストール
+
+            - **Windows**: `.msi` または `.exe`（NSIS）をダウンロードして実行してください。
+            - **macOS**: Apple Silicon は `aarch64`、Intel は `x64` の `.dmg` を選んでください。
+
+            **本アプリはコード署名を行っていません。** 初回起動時の警告への対処は
+            [README](https://github.com/mayamaura/ai-idea-map#デスクトップ版のインストール) を参照してください。
+
+            `SHA256SUMS.txt` で配布物のハッシュを検証できます。
+          # 中身を確認してから手動で公開する。下書きのうちは自動更新の参照先にもならない
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  # 無署名配布の信頼担保として、配布物のハッシュ一覧を同じリリースに添付する
+  # （docs/desktop/platform-integration.md §6.5）
+  checksums:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: リリース成果物のSHA256を集計して添付
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir assets
+          gh release download "$GITHUB_REF_NAME" --pattern '*' --dir assets --clobber
+          cd assets
+          # 自動更新のマニフェストと過去の集計結果そのものは検証対象ではない
+          rm -f latest.json SHA256SUMS.txt
+          sha256sum * > ../SHA256SUMS.txt
+          cd ..
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --clobber

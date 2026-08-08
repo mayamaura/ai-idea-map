@@ -2,7 +2,15 @@ mod keychain;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // 自動更新と再起動はデスクトップにしか存在しない概念なので cfg で切り分ける
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

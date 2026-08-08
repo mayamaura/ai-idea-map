@@ -28,3 +28,8 @@ tauri-plugin-store = "2"
 keyring = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# 自動更新はデスクトップ専用。モバイル向けビルドでは updater / process を含めない
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
