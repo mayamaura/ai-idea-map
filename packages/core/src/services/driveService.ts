@@ -1,3 +1,19 @@
+import { v4 as uuidv4 } from 'uuid'
+import { getPlatform } from '@ideamap/platform'
+import type { AppSettingsPayload } from '../stores/settingsStore'
+
+/**
+ * Google Drive REST API の薄いラッパー。Web版・デスクトップ版の両方から使う。
+ *
+ * Phase 38 で apps/web から移設した。core に置く以上 `fetch` を直接呼べないため
+ * 通信は `HttpAdapter.request` 経由にしてある（デスクトップ版では Rust 側の
+ * plugin-http が発行するので CORS の制約を受けない）。
+ *
+ * アップロードは `FormData`/`Blob` ではなく `multipart/related` を文字列で手組みする。
+ * Tauri の plugin-http へ `FormData` を渡したときの挙動が未検証なのに対し、
+ * 文字列ボディは Web版・デスクトップ版のどちらでも同じ経路で確実に通るため。
+ */
+
 const DRIVE_API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
 const FOLDER_NAME = 'IdeaMap'
@@ -12,9 +28,16 @@ export interface DriveFile {
 }
 
 let folderIdCache: string | null = null
+let settingsFileIdCache: string | null = null
 
+/**
+ * プロセス内メモリキャッシュを破棄する。アクセストークンが変わったとき
+ * （サインアウト・アカウント切替）に呼ぶ。
+ * settings.json の fileId も同じ Drive アカウントに紐づくので一緒に消す。
+ */
 export function clearDriveCache(): void {
   folderIdCache = null
+  settingsFileIdCache = null
 }
 
 async function driveRequest(
@@ -22,7 +45,8 @@ async function driveRequest(
   token: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const res = await fetch(url, {
+  // getPlatform() はモジュール評価時ではなく呼び出し時に取る（setPlatform より先に走らせない）
+  const res = await getPlatform().http.request(url, {
     ...options,
     headers: {
       ...(options.headers as Record<string, string> | undefined),
@@ -34,6 +58,40 @@ async function driveRequest(
     throw new Error(`Drive API ${res.status}: ${body}`)
   }
   return res
+}
+
+/**
+ * `uploadType=multipart` のボディを組み立てる。
+ * メタデータと本文の2パートを CRLF 区切りで並べる MIME 形式で、
+ * Google Drive API のドキュメントが示すリクエスト例と同じ並びにしている。
+ */
+function buildMultipartBody(boundary: string, metadata: unknown, content: string): string {
+  return (
+    `--${boundary}\r\n` +
+    `Content-Type: ${MIME_JSON}; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${MIME_JSON}\r\n\r\n` +
+    `${content}\r\n` +
+    `--${boundary}--`
+  )
+}
+
+async function uploadMultipart(
+  url: string,
+  token: string,
+  method: 'POST' | 'PATCH',
+  metadata: unknown,
+  content: string
+): Promise<Response> {
+  // 境界文字列はリクエストごとに作る。固定値だと、たまたま同じ文字列を含むマップを
+  // 保存したときにボディが壊れる（FormData は同じ理由で毎回ランダムな境界を使う）
+  const boundary = `ideamap-${uuidv4()}`
+  return driveRequest(url, token, {
+    method,
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body: buildMultipartBody(boundary, metadata, content),
+  })
 }
 
 async function getOrCreateFolder(token: string): Promise<string> {
@@ -103,47 +161,40 @@ export async function saveMap(
   mapId?: string | null
 ): Promise<string> {
   const fileName = `${title}.json`
-  const fileBlob = new Blob([JSON.stringify(content, null, 2)], { type: MIME_JSON })
+  const body = JSON.stringify(content, null, 2)
   // appProperties に mapId を保存することで、ファイル内容をダウンロードせず衝突チェックが可能
   const appProperties = mapId ? { mapId } : undefined
 
   if (fileId) {
-    const form = new FormData()
-    form.append('metadata', new Blob([JSON.stringify({ name: fileName, appProperties })], { type: MIME_JSON }))
-    form.append('file', fileBlob)
-    await driveRequest(`${UPLOAD_API}/files/${fileId}?uploadType=multipart`, token, {
-      method: 'PATCH',
-      body: form,
-    })
+    await uploadMultipart(
+      `${UPLOAD_API}/files/${fileId}?uploadType=multipart`,
+      token,
+      'PATCH',
+      { name: fileName, appProperties },
+      body
+    )
     return fileId
   }
 
   const folderId = await getOrCreateFolder(token)
   const existingId = await findMapFileId(token, fileName, mapId, folderId)
   if (existingId) {
-    const form = new FormData()
-    form.append('metadata', new Blob([JSON.stringify({ name: fileName, appProperties })], { type: MIME_JSON }))
-    form.append('file', fileBlob)
-    await driveRequest(`${UPLOAD_API}/files/${existingId}?uploadType=multipart`, token, {
-      method: 'PATCH',
-      body: form,
-    })
+    await uploadMultipart(
+      `${UPLOAD_API}/files/${existingId}?uploadType=multipart`,
+      token,
+      'PATCH',
+      { name: fileName, appProperties },
+      body
+    )
     return existingId
   }
 
-  const form = new FormData()
-  form.append(
-    'metadata',
-    new Blob(
-      [JSON.stringify({ name: fileName, mimeType: MIME_JSON, parents: [folderId], appProperties })],
-      { type: MIME_JSON }
-    )
-  )
-  form.append('file', fileBlob)
-  const res = await driveRequest(
+  const res = await uploadMultipart(
     `${UPLOAD_API}/files?uploadType=multipart&fields=id`,
     token,
-    { method: 'POST', body: form }
+    'POST',
+    { name: fileName, mimeType: MIME_JSON, parents: [folderId], appProperties },
+    body
   )
   const data = (await res.json()) as { id: string }
   return data.id
@@ -173,20 +224,6 @@ export async function deleteMap(token: string, fileId: string): Promise<void> {
 
 // ---- アプリ設定（settings.json）の読み書き ----
 
-export interface AppSettings {
-  version: string
-  encryptedApiKey: string
-  salt: number[]
-  model: string
-  updatedAt: string
-}
-
-let settingsFileIdCache: string | null = null
-
-export function clearSettingsCache(): void {
-  settingsFileIdCache = null
-}
-
 async function findSettingsFileId(token: string): Promise<string | null> {
   if (settingsFileIdCache) return settingsFileIdCache
   const folderId = await getOrCreateFolder(token)
@@ -202,41 +239,38 @@ async function findSettingsFileId(token: string): Promise<string | null> {
   return null
 }
 
-export async function saveAppSettings(token: string, settings: AppSettings): Promise<void> {
-  const fileBlob = new Blob([JSON.stringify(settings, null, 2)], { type: MIME_JSON })
+export async function saveAppSettings(
+  token: string,
+  settings: AppSettingsPayload
+): Promise<void> {
+  const body = JSON.stringify(settings, null, 2)
   const existingId = await findSettingsFileId(token)
 
   if (existingId) {
-    const form = new FormData()
-    form.append('metadata', new Blob([JSON.stringify({ name: SETTINGS_FILE_NAME })], { type: MIME_JSON }))
-    form.append('file', fileBlob)
-    await driveRequest(`${UPLOAD_API}/files/${existingId}?uploadType=multipart`, token, {
-      method: 'PATCH',
-      body: form,
-    })
+    await uploadMultipart(
+      `${UPLOAD_API}/files/${existingId}?uploadType=multipart`,
+      token,
+      'PATCH',
+      { name: SETTINGS_FILE_NAME },
+      body
+    )
   } else {
     const folderId = await getOrCreateFolder(token)
-    const form = new FormData()
-    form.append(
-      'metadata',
-      new Blob(
-        [JSON.stringify({ name: SETTINGS_FILE_NAME, mimeType: MIME_JSON, parents: [folderId] })],
-        { type: MIME_JSON }
-      )
+    const res = await uploadMultipart(
+      `${UPLOAD_API}/files?uploadType=multipart&fields=id`,
+      token,
+      'POST',
+      { name: SETTINGS_FILE_NAME, mimeType: MIME_JSON, parents: [folderId] },
+      body
     )
-    form.append('file', fileBlob)
-    const res = await driveRequest(`${UPLOAD_API}/files?uploadType=multipart&fields=id`, token, {
-      method: 'POST',
-      body: form,
-    })
     const data = (await res.json()) as { id: string }
     settingsFileIdCache = data.id
   }
 }
 
-export async function loadAppSettings(token: string): Promise<AppSettings | null> {
+export async function loadAppSettings(token: string): Promise<AppSettingsPayload | null> {
   const fileId = await findSettingsFileId(token)
   if (!fileId) return null
   const res = await driveRequest(`${DRIVE_API}/files/${fileId}?alt=media`, token)
-  return res.json() as Promise<AppSettings>
+  return res.json() as Promise<AppSettingsPayload>
 }

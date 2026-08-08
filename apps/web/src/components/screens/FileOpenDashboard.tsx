@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
-import { useUIStore, useMapStore, type MapFile } from '@ideamap/core'
+import {
+  useUIStore,
+  useMapStore,
+  listMaps,
+  loadMap,
+  deleteMap,
+  saveMap,
+  type MapFile,
+  type DriveFile,
+} from '@ideamap/core'
 import { openLoadedMap, startNewMap, useDashboardEscapeToClose } from '@ideamap/ui'
-import { listMaps, loadMap, deleteMap, saveMap } from '../../services/googleDriveService'
 import { loadRecentMaps, saveRecentMap, loadMapLocally } from '../../services/storageService'
-import type { DriveFile } from '../../services/googleDriveService'
 
 interface FileOpenDashboardProps {
   accessToken: string | null

@@ -5,7 +5,7 @@
  * このパッケージには型と registry 以外を入れない（他パッケージへ依存しない最終ノードに保つ）。
  *
  * マップ内容を `unknown` で受け渡すのは、`MapFile` 型を持つ `@ideamap/core` への
- * 逆向き依存（platform → core の循環）を避けるため。既存の googleDriveService も
+ * 逆向き依存（platform → core の循環）を避けるため。`@ideamap/core` の driveService も
  * `saveMap(content: unknown)` / `loadMap(): Promise<unknown>` で同じ扱いをしている。
  */
 

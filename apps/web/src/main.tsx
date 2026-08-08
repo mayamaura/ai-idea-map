@@ -1,9 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { setPlatform } from '@ideamap/platform'
-import { restorePersistedState, setAppSettingsSync } from '@ideamap/core'
+import {
+  restorePersistedState,
+  setAppSettingsSync,
+  saveAppSettings,
+  loadAppSettings,
+} from '@ideamap/core'
 import { webPlatform } from './platform'
-import { saveAppSettings, loadAppSettings } from './services/googleDriveService'
 import '@ideamap/ui/styles.css'
 import { WebApp } from './WebApp.tsx'
 

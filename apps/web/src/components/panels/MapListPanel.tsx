@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useUIStore, useMapStore, type MapFile } from '@ideamap/core'
-import { listMaps, loadMap, deleteMap } from '../../services/googleDriveService'
-import type { DriveFile } from '../../services/googleDriveService'
+import {
+  useUIStore,
+  useMapStore,
+  listMaps,
+  loadMap,
+  deleteMap,
+  type MapFile,
+  type DriveFile,
+} from '@ideamap/core'
 
 interface MapListPanelProps {
   accessToken: string | null
