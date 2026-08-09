@@ -178,6 +178,7 @@ ai-idea-map/
             ├── main.tsx             # setPlatform → restorePersistedState() を await → render
             ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）、起動引数ファイルの取り込みと外部変更検知の購読（Phase 37）、Drive アクセストークンを FileAdapter へ流し込む配線（Phase 38）
             ├── openMap.ts           # ファイルを開く共通処理（ダッシュボードと Ctrl+O が共用）
+            ├── saveToDrive.ts       # いま開いているマップを Drive へ保存する共通処理（起動画面の DriveSection とヘッダーが共用、Phase 38 追加実装）
             ├── launchFile.ts        # `.ideamap` ダブルクリック起動・2つ目インスタンスからのイベントの受け入れ（Phase 37）
             ├── externalChange.ts    # 外部でのファイル変更検知（フォーカス復帰時に mtime 比較、Phase 37。Drive 上のマップは mtime を持たないため対象外、Phase 38）
             ├── updater.ts           # 自動更新のチェック・ダウンロード・適用（Phase 36）
@@ -392,12 +393,15 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 | `dashboardSlot` | 起動時のファイル選択画面 | `<FileOpenDashboard>` |
 | `onGenerateShareUrl` | 共有URL生成。未指定でも「共有」タブは出るが、「JSONファイルとして共有」の代替案内になる（Phase 37） | `generateShareUrl` |
 | `settingsExtraSections`（Phase 36） | 設定パネル末尾に足すプラットフォーム固有セクション。未指定なら何も描画しない | （Web版は渡さない） |
+| `onSaveToCloud`（Phase 38 追加実装） | いま開いているマップをクラウドへ保存し直す。`Header` の「接続済み」メニューに「このマップをドライブに保存」項目を出す（未指定、または `currentFileOrigin === 'cloud'` のときは出さない） | （Web版は渡さない） |
 
 `cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播する（Phase 34）。**Phase 38 でデスクトップ版も `cloudAuth` を渡すようになったため、この条件だけでは足りなくなった。** `SettingsPanel` は `showCloudSync` に加えて `isKeychainBacked`（`SecretAdapter.isPassphraseFree`）が false であることも条件にし、`DriveSyncSection`（マスターパスワード設定を兼ねた設定の Drive 同期）を Web版でだけ描画する。デスクトップ版はマスターパスワードを持たず `setAppSettingsSync()` も未注入のため、出してしまうと押した時点で失敗する（`docs/desktop/README.md` §3.1-H #12・#13）。
 
 ヘッダーの保存先表示（`saveTarget`）も同じ理由で条件を足した。`isSignedIn && currentFileId` だけだと、デスクトップ版でサインイン中にローカルファイルを開いている状態を「Drive」と誤表示するため、`currentFileOrigin === 'cloud'` を加えている（Phase 38、§4.2）。
 
 `settingsExtraSections` は `SettingsPanel` に `extraSections` props としてそのまま渡り、設定パネル最後尾（「保存」セクションの後）に描画される。`packages/ui` からプラットフォーム実装への依存を避けるための注入口で、デスクトップ版は `<UpdaterSection>`（バージョン表示・更新チェック、Phase 36）を渡す（§18.7）。
+
+`Header` の `showMapList` は `App` が `mapListSlot != null` から算出して渡す（Phase 38 追加実装。`AppProps` には現れない）。`mapListSlot` を持たないデスクトップ版では、モバイル用アイコンボタンと「接続済み」メニューの「マップ一覧」項目が押しても何も起きなかったため、`showMapList` が `false` のときはどちらも描画しない。
 
 終了前確認は `SystemAdapter.onBeforeExit`、ウェルカム表示フラグは `StorageAdapter` 経由。
 
@@ -1661,7 +1665,7 @@ ai-idea-map/
 
 ### 18.9 デスクトップ版 Google Drive 連携（`apps/desktop`、Phase 38）
 
-Web版で作ったマップをデスクトップ版からもそのまま開けるようにする機能。既定の保存先はローカルファイルのままで（§18.1〜18.3）、Drive は起動画面から明示的に選ぶ「もう一つの保存先」として並ぶ。
+Web版で作ったマップをデスクトップ版からもそのまま開けるようにする機能。既定の保存先はローカルファイルのままで（§18.1〜18.3）、Drive は起動画面またはヘッダーから明示的に選ぶ「もう一つの保存先」として並ぶ（ヘッダーからの導線は Phase 38 への追加実装、2026-08-09）。
 
 **認証がWeb版と別方式になる理由**: Google は組み込み WebView からの認可リクエストを `disallowed_useragent` で拒否するため、Web版の GIS ポップアップはデスクトップ版では使えない。代わりに認可画面を OS 既定ブラウザで開き、ループバック（`http://127.0.0.1:<port>`）+ PKCE（RFC 8252）で受け取る方式にした。
 
@@ -1679,7 +1683,11 @@ Web版で作ったマップをデスクトップ版からもそのまま開け�
 
 **`useDesktopGoogleAuth`（`apps/desktop/src/hooks/useDesktopGoogleAuth.ts`）**: Web版 `useGoogleAuth` と同じ形の状態（`isSignedIn` / `accessToken` / `isLoading` / `error` / `userEmail` / `signIn` / `signOut` / `silentReauth`）を返し、`App` の `cloudAuth` prop・`useAutoSave` の 401 リトライから見て等価に扱えるようにしている。中身は別物（GIS のポップアップではなくループバック+PKCE）。サインアウト時は Google 側のトークンを失効させ、キーチェーンとメールアドレスの永続化を消し、`clearDriveCache()` を呼ぶ。**Drive 上のマップを開いたままサインアウトした場合は `uiStore.currentFileOrigin === 'cloud'` を見て `currentFileId` をクリアする**（ローカルファイルを開いている場合は保存先を保つため触らない）。
 
-**起動画面の Drive UI（`apps/desktop/src/components/DriveSection.tsx`）**: `DesktopFileDashboard`（§5.1.2）に組み込まれる。サインイン前は接続ボタンと案内文、サインイン後は `listMaps()`（`packages/core` の `driveService`）で取得した一覧・開くボタン・「いま開いているマップをドライブに保存」ボタンを表示する。アップロードは `buildMapFile(mapId)`（§4章 stores/mapSnapshot.ts）でスナップショットを組み立て、`saveMap(token, title, content, null, mapId)` で新規作成し、成功したら `setCurrentFileId(fileId, 'cloud')` で以後の自動保存を Drive に向ける。
+**起動画面の Drive UI（`apps/desktop/src/components/DriveSection.tsx`）**: `DesktopFileDashboard`（§5.1.2）に組み込まれる。サインイン前は接続ボタンと案内文、サインイン後は `listMaps()`（`packages/core` の `driveService`）で取得した一覧・開くボタン・「いま開いているマップをドライブに保存」ボタンを表示する。
+
+**マップを Drive へ保存する共通処理（`apps/desktop/src/saveToDrive.ts`、Phase 38 追加実装）**: `saveCurrentMapToDrive(accessToken)` が、`buildMapFile(mapId)`（§4章 stores/mapSnapshot.ts）でスナップショットを組み立て `saveMap(token, title, content, null, mapId)` で保存し、成功したら `setCurrentFileId(fileId, 'cloud')` で以後の自動保存を Drive に向けるところまでを担う。`hasActiveMap` が `false`（マップ未読込）のときは何もしない。もとは `DriveSection.tsx` の `handleUpload` にインラインで書かれていたが、`openMap.ts` が「開く」処理を一本化しているのと同じ理由で、複数の呼び出し元（`DriveSection` の「いま開いているマップをドライブに保存」ボタンと、下記のヘッダーからの導線）から使えるよう切り出した。`DriveSection.tsx` はこの関数を呼び、成功時に Drive 一覧を再取得するだけになっている。
+
+**ヘッダーからの保存先切り替え（Phase 38 追加実装）**: `Header`（`packages/ui`）の「接続済み」ドロップダウンメニューに「このマップをドライブに保存」項目を追加した（`onSaveToCloud` prop、§5.1）。ローカルのマップを開いている（`currentFileOrigin !== 'cloud'`）ときだけ表示する。`DesktopApp.tsx` は `onSaveToCloud={accessToken ? () => void saveCurrentMapToDrive(accessToken) : undefined}` を渡す。編集中の画面からは保存先切り替えの導線が起動画面にしかなく見つけにくかったため、ヘッダーからも直接切り替えられるようにした。元のローカルファイルは上げた時点の内容のまま残り、以後は更新されない。
 
 **`desktopFileAdapter`（`apps/desktop/src/platform/file.desktop.ts`）**: `setDriveAccessToken(token)` でモジュール内変数にトークンを流し込む（`DesktopApp.tsx` が `accessToken` の変化を `useEffect` で反映する、Web版の `googleDriveService` と同じ形）。`openFile` / `saveFile` / `deleteFile` / `getMetadata` は `ref.origin === 'cloud'` のときだけ `packages/core` の `driveService`（`loadMap` / `saveMap` / `deleteMap` / `fetchMapAppProperties`）に処理を委譲し、それ以外はこれまで通りローカルファイルを扱う。`saveLocalMirror`（自動保存領域への書き込み）と `exportBlob` は Drive 化しておらず常にローカルのまま。
 

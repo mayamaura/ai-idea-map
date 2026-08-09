@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import type { FileRef } from '@ideamap/platform'
-import {
-  buildMapFile,
-  listMaps,
-  saveMap,
-  useUIStore,
-  type DriveFile,
-} from '@ideamap/core'
+import { listMaps, useUIStore, type DriveFile } from '@ideamap/core'
 import { openMapFile } from '../openMap'
+import { saveCurrentMapToDrive } from '../saveToDrive'
 import type { useDesktopGoogleAuth } from '../hooks/useDesktopGoogleAuth'
 
 /**
@@ -85,19 +79,8 @@ export function DriveSection({ auth, onBusyChange }: DriveSectionProps) {
   const handleUpload = () =>
     void runBusy(async () => {
       if (!accessToken) return
-      const ui = useUIStore.getState()
-      const mapId = ui.currentMapId ?? uuidv4()
-      try {
-        const fileId = await saveMap(accessToken, ui.mapTitle, buildMapFile(mapId), null, mapId)
-        ui.setCurrentMapId(mapId)
-        ui.setCurrentFileId(fileId, 'cloud')
-        ui.setSaveStatus('saved')
-        ui.setLastSavedAt(new Date().toISOString())
-        ui.addToast(`「${ui.mapTitle}」をGoogleドライブに保存しました`, 'success')
-        setLoaded({ token: accessToken, files: await listMaps(accessToken) })
-      } catch {
-        ui.addToast('Googleドライブへの保存に失敗しました', 'error')
-      }
+      if (!(await saveCurrentMapToDrive(accessToken))) return
+      setLoaded({ token: accessToken, files: await listMaps(accessToken) })
     })
 
   const formatDate = (iso: string) =>

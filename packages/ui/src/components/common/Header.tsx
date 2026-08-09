@@ -14,22 +14,31 @@ const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
 interface HeaderProps {
   /** クラウド同期UI（Google Drive 接続）を出すか。デスクトップ版は false */
   showCloudAuth?: boolean
+  /** クラウドのマップ一覧パネルを持つか。持たないアプリでは押しても何も起きないため隠す */
+  showMapList?: boolean
   isSignedIn: boolean
   isGoogleLoading: boolean
   clientIdMissing: boolean
   userEmail: string | null
   onGoogleSignIn: () => void
   onGoogleSignOut: () => void
+  /**
+   * いま開いているマップをクラウドへ保存し直す（デスクトップ版のみ）。
+   * ローカルファイルとして開いたマップの保存先を後から Drive に変える導線。
+   */
+  onSaveToCloud?: () => void
 }
 
 export function Header({
   showCloudAuth = true,
+  showMapList = true,
   isSignedIn,
   isGoogleLoading,
   clientIdMissing,
   userEmail,
   onGoogleSignIn,
   onGoogleSignOut,
+  onSaveToCloud,
 }: HeaderProps) {
   // AI ストリーミング中の chatMessages 更新などで再描画されないよう、必要な値だけを購読する
   const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
@@ -156,6 +165,7 @@ export function Header({
         {!showCloudAuth ? null : isSignedIn ? (
           <>
             {/* モバイル用アイコンボタン（マップ一覧）は残す */}
+            {showMapList && (
             <button
               onClick={() => setMapListOpen(true)}
               className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors sm:hidden"
@@ -166,6 +176,7 @@ export function Header({
                   d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
             </button>
+            )}
 
             {/* デスクトップ: 「接続済み」ボタン → クリックでドロップダウン */}
             <div ref={accountMenuRef} className="relative hidden sm:block">
@@ -191,16 +202,31 @@ export function Header({
                   )}
                   <div className="border-t border-gray-100 dark:border-gray-700" />
                   {/* マップ一覧 */}
-                  <button
-                    onClick={() => { setShowAccountMenu(false); setMapListOpen(true) }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
-                  >
-                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    マップ一覧
-                  </button>
+                  {showMapList && (
+                    <button
+                      onClick={() => { setShowAccountMenu(false); setMapListOpen(true) }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      </svg>
+                      マップ一覧
+                    </button>
+                  )}
+                  {/* このマップをドライブに保存（ローカルのマップを開いているときだけ） */}
+                  {onSaveToCloud && currentFileOrigin !== 'cloud' && (
+                    <button
+                      onClick={() => { setShowAccountMenu(false); onSaveToCloud() }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3-3m0 0l3 3m-3-3v12" />
+                      </svg>
+                      このマップをドライブに保存
+                    </button>
+                  )}
                   {/* サインアウト */}
                   <button
                     onClick={handleSignOut}

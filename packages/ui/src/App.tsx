@@ -54,6 +54,11 @@ export interface AppProps {
   onGenerateShareUrl?: ExportImportPanelProps['onGenerateShareUrl']
   /** 設定パネル末尾に足すプラットフォーム固有セクション（デスクトップ版の自動更新など） */
   settingsExtraSections?: ReactNode
+  /**
+   * いま開いているマップをクラウドへ保存し直す（デスクトップ版のみ）。
+   * ローカルに保存したマップの保存先を後から Drive に変える導線をヘッダーに出す。
+   */
+  onSaveToCloud?: () => void
 }
 
 const NO_CLOUD_AUTH: AppCloudAuth = {
@@ -74,6 +79,7 @@ function AppInner({
   dashboardSlot,
   onGenerateShareUrl,
   settingsExtraSections,
+  onSaveToCloud,
 }: AppProps) {
   useKeyboardShortcuts()
 
@@ -125,12 +131,14 @@ function AppInner({
       {!isPresentationMode && (
         <Header
           showCloudAuth={cloudAuth != null}
+          showMapList={mapListSlot != null}
           isSignedIn={auth.isSignedIn}
           isGoogleLoading={auth.isLoading}
           clientIdMissing={auth.clientIdMissing}
           userEmail={auth.userEmail}
           onGoogleSignIn={auth.signIn}
           onGoogleSignOut={auth.signOut}
+          onSaveToCloud={onSaveToCloud}
         />
       )}
       <div className="flex flex-1 min-h-0">

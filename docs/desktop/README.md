@@ -79,11 +79,12 @@ Phase 34〜37 の移行パス（JSON エクスポート → デスクトップ�
 | 7 | トークンの保管 | リフレッシュトークンは **OSキーチェーン**（`SecretAdapter` の `googleRefreshToken` スロット）。アクセストークンはメモリのみ。メールアドレスは表示用なので `StorageAdapter`。Web版の `sessionStorage` 方式とは別物 |
 | 8 | アップロードの組み立て | `FormData`/`Blob` をやめ、**`multipart/related` を文字列で手組み**する方式に変えた（`driveService.ts` の `buildMultipartBody`）。Tauri の plugin-http へ `FormData` を渡したときの挙動が未検証なのに対し、文字列ボディは Web版・デスクトップ版のどちらでも同じ経路で通るため。Web版の挙動も同時に変わる点に注意 |
 | 9 | 保存先の判別 | `uiStore` に `currentFileOrigin`（`'cloud' \| 'local'`）を追加し、`currentFileId` と対で永続化する。`useAutoSave` はこれを見て `FileRef.origin` を決める。**デスクトップ版は1つの `FileAdapter` が両方を扱う複合アダプタ**になり、`FileAdapter.origin` の意味が「この Adapter が扱う唯一の保存先」から「保存先未指定のときの既定」に変わった |
-| 10 | 既定の保存先 | **ローカルのまま。** `saveFileAs`（Ctrl+S での新規保存）はネイティブの保存ダイアログに進む。Drive へ上げるのは起動画面の「いま開いているマップをドライブに保存」からの明示操作だけ。Ollama利用者のローカル完結志向（§2）を崩さないため |
+| 10 | 既定の保存先 | **ローカルのまま。** `saveFileAs`（Ctrl+S での新規保存）はネイティブの保存ダイアログに進む。Drive へ上げるのは起動画面の「いま開いているマップをドライブに保存」、またはヘッダーの「接続済み」メニューの「このマップをドライブに保存」（#15）からの明示操作だけ。Ollama利用者のローカル完結志向（§2）を崩さないため |
 | 11 | CSP | **変更しない。** Drive・トークンエンドポイントへの通信は `HttpAdapter` 経由＝Rust 側の plugin-http が発行するため WebView の CSP を通らない。Phase 35 の Anthropic API・ollama.com が `connect-src` に無いまま動いている実績がその裏付け。許可は capability（`google-drive.json`）側だけで足りる |
 | 12 | 設定（`settings.json`）の Drive 同期 | **スコープ外。** デスクトップ版は APIキーを OSキーチェーンに置きマスターパスワードを持たない（§2）一方、Drive の `settings.json` はマスターパスワード暗号化が前提。`setAppSettingsSync()` はデスクトップ版では未注入のままにしてある。同期したくなったら `platform-integration.md` §4.4 の「同期のためだけの一時暗号化」から設計を起こす |
 | 13 | 設定パネルの `DriveSyncSection` の表示条件 | `showCloudSync`（＝`cloudAuth` の有無）だけでは足りなくなったため、`SecretAdapter.isPassphraseFree` が false のときだけ出すよう条件を足した。**これが無いとデスクトップ版に「マスターパスワード & Drive同期」欄が現れ、押すと `setAppSettingsSync` 未注入で失敗する。** #12 と対で必要な変更 |
 | 14 | ヘッダーの保存先表示 | `isSignedIn && currentFileId` という判定に `currentFileOrigin === 'cloud'` を足した。**デスクトップ版はサインイン中にローカルファイルを開いている状態がありえ、そのままだと「Drive」と誤表示する。** あわせて `restoreCurrentFileId()` は、origin が保存されていない（Phase 38 以前の）値を読んだとき `FileAdapter` の既定 origin に寄せる。当時は保存先がアプリごとに1つだけだったので、これが正しい復元になる |
+| 15 | ヘッダーからの保存先切り替え（Phase 38 への追加実装・2026-08-09） | 起動画面の Drive 欄だけでは、編集中の画面から保存先切り替えの導線を見つけられなかった。`Header` に `onSaveToCloud` prop を追加し、「接続済み」メニューに「このマップをドライブに保存」を出す（ローカルのマップを開いているときだけ）。`DriveSection.tsx` にインラインで書かれていた保存処理は `apps/desktop/src/saveToDrive.ts` の `saveCurrentMapToDrive()` に切り出し、起動画面とヘッダーの両方から呼ぶ。あわせて `Header` に `showMapList` prop を追加し、`mapListSlot` を持たないデスクトップ版では「マップ一覧」メニュー項目とモバイル用アイコンボタンを隠すようにした（これまでは押しても何も起きない死んだ項目だった）。既定の保存先がローカルのままである点（#10）は変わらない |
 
 ### 3.1-B `LLMProvider` 実装時の4つの変更（Phase 32 実施済み・2026-08-05）
 

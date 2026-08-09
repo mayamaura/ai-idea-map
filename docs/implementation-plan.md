@@ -1944,6 +1944,27 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - [ ] 設定の Drive 同期（保存・読み込み）
 - [ ] console error / pageerror がゼロ
 
+#### 追加実装: ヘッダーからのドライブ保存導線（2026-08-09）
+
+**目標**: ローカルに保存したマップの保存先を Drive に切り替える導線が起動画面の Drive 欄にしかなく、編集中の画面から見つけられなかったため、ヘッダーの「接続済み」メニューにも追加する。
+
+##### タスク
+- [x] `apps/desktop/src/saveToDrive.ts` を新規実装。`DriveSection.tsx` の `handleUpload` にインラインで書かれていた保存処理（`buildMapFile` → `saveMap` → `setCurrentFileId(fileId, 'cloud')`）を `saveCurrentMapToDrive(accessToken)` として切り出し、`DriveSection.tsx` はこれを呼ぶだけにした（`hasActiveMap` が `false` のときは何もしないガード込み）
+- [x] `packages/ui` の `Header` に `onSaveToCloud?: () => void` を追加。「接続済み」ドロップダウンメニューに「このマップをドライブに保存」項目を追加（`onSaveToCloud` が指定され、かつ `currentFileOrigin !== 'cloud'` のときだけ表示）
+- [x] `packages/ui` の `Header` に `showMapList?: boolean`（既定 `true`）を追加。デスクトップ版は `mapListSlot` を持たず、モバイル用アイコンボタンと「マップ一覧」メニュー項目が押しても何も起きない死んだ項目になっていたため、`App` が `showMapList={mapListSlot != null}` を渡して隠す（`AppProps` には足していない。`App` が持っている情報から算出できるため）
+- [x] `apps/desktop/src/DesktopApp.tsx` から `onSaveToCloud={accessToken ? () => void saveCurrentMapToDrive(accessToken) : undefined}` を渡す配線を追加
+
+**完了条件**: 型検査・ビルドが通過すること。ヘッダーからのドライブ保存の実機動作確認は別途行う。
+
+##### 検証（2026-08-09）
+- [x] `pnpm typecheck` 通過
+- [x] `pnpm build`（Web版）・`pnpm --filter @ideamap/desktop build`（デスクトップ版フロントエンド）ともに成功
+
+##### 残りの手動確認項目
+- ヘッダーの「接続済み」メニューから「このマップをドライブに保存」を押し、ローカルのマップが Drive に保存されて以後の自動保存が Drive に向くこと（Phase 38 本体の Drive 書き込み経路の実機確認と合わせて行う）
+- Drive のマップを開いている間はメニューにこの項目が出ないこと
+- デスクトップ版でヘッダーとモバイル用アイコンの「マップ一覧」項目が出ないこと。Web版では従来どおり出ること（回帰確認）
+
 ---
 
 ## 2. Google Cloud Project 設定（開発者向け）
