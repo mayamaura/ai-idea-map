@@ -173,6 +173,7 @@ VITE_GOOGLE_DESKTOP_CLIENT_ID=xxxx.apps.googleusercontent.com
 - `capabilities/*.json` は機能単位で分ける（`main-window` / `file-access` / `ai-http` / `google-drive` / `updater`）。`fs:scope` はアプリ専用ディレクトリ（`$APPCONFIG` / `$APPLOCALDATA`）のみで、ユーザーが選んだパスは dialog プラグインの実行時許可 ＋ `tauri-plugin-persisted-scope` に任せる。安易に `$HOME/**` を足さない。新しい通信先を許すときは、既存 capability の説明文に合わないなら新しいファイルを作る。
 - `#[tauri::command]` で自作したコマンド（`keychain` / `launch` / `oauth`）は capability の管轄外で、`lib.rs` の `generate_handler!` に登録するだけで呼べる。権限追加が要るのはプラグインのコマンドだけ。
 - CSP は `tauri.conf.json` の `csp`（本番）と `devCsp`（開発）の両方にある。片方だけ直すと本番ビルドで壊れる。ただし `HttpAdapter` 経由の通信は Rust 側の plugin-http が発行するため CSP を通らない（許可は capability 側で行う）。
+- `tauri-plugin-http` は webview の URL を `Origin` ヘッダとして自動付与する。開発時（`devUrl`）は Ollama の既定 CORS 許可に収まるが、本番ビルドの webview オリジン（Windows は `http://tauri.localhost`）は含まれず 403 になる。`Cargo.toml` 側で `unsafe-headers` feature を有効にし、JS 側で `Origin: ''` を送って落とす（`apps/desktop/src/platform/http.desktop.ts`）。
 - `src-tauri` は Vite の watch から除外してある（`vite.config.ts`）。cargo が書き込み中の DLL を監視すると EBUSY で dev サーバーごと落ちるため、外さないこと。
 
 ### Web専用として `apps/web` に残っているもの

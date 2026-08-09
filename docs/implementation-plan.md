@@ -1971,6 +1971,20 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - Drive のマップを開いている間は「このマップをドライブに保存」ではなく「このマップをローカルに保存」だけが出ること（ローカルのマップを開いている間はその逆）
 - デスクトップ版でヘッダーとモバイル用アイコンの「マップ一覧」項目が出ないこと。Web版では従来どおり出ること（回帰確認）
 
+#### バグ修正: 本番ビルドから Ollama にアクセスできない（2026-08-09）
+
+**症状**: `pnpm dev:desktop` では Ollama（`http://localhost:11434`）に到達できるが、`pnpm build:desktop` で作ったインストーラから入れたアプリでは「Ollamaがエラーを返しました（HTTP 403）」になる。
+
+**原因**: `tauri-plugin-http` は webview の URL を `Origin` ヘッダとして毎リクエストに自動付与する。開発時の webview オリジンは `devUrl`（`http://localhost:5174`）で Ollama の既定 CORS 許可に収まるが、本番ビルドの webview オリジンは Windows では `http://tauri.localhost` になり既定許可に含まれず 403 が返る。実 Ollama への curl 検証で `Origin: http://tauri.localhost` → 403、`Origin: http://localhost:5174` → 200、Origin なし → 200 を確認した。「デスクトップ版は Rust 経由なのでブラウザの CORS 制約を受けない」という従来の説明は不正確で、正しくは「Origin ヘッダを送っていないから通る」だった（訂正は `docs/desktop/README.md` §3.3、`docs/desktop/llm-abstraction.md` §6.4、`docs/desktop/platform-integration.md` §5.2）。
+
+##### タスク
+- [x]✅ `apps/desktop/src-tauri/Cargo.toml` の `tauri-plugin-http` に `features = ["unsafe-headers"]` を追加（無いと JS 側から渡した `Origin` ヘッダが fetch 仕様の禁止ヘッダとして Rust 側で黙って捨てられる）
+- [x]✅ `apps/desktop/src/platform/http.desktop.ts` に `withoutOrigin()` ヘルパーを追加し、`canReach` / `request` / `getFetch` の3経路すべてで `Origin: ''`（空文字）を送るようにした。plugin-http は空文字の `Origin` をヘッダごと削除する仕様のため、結果としてデスクトップ版の全 HTTP リクエストから `Origin` が消える
+
+**完了条件**: デスクトップ版の本番ビルド（インストーラ経由でインストールしたアプリ）から Ollama の各エンドポイント（`/api/tags` 等）に到達できること。
+
+**検証状況（2026-08-09）**: 原因の特定は実 Ollama サーバーへの curl 検証で行った（上記3パターン）。修正後は `pnpm typecheck` 通過・`pnpm build:desktop` 成功（msi / nsis の2バンドル生成）。本番ビルドの `target/release/ideamap-desktop.exe`（webview オリジンは本番と同じ `http://tauri.localhost`）を起動し、Ollama 側の `%LOCALAPPDATA%\Ollama\server.log` で `/api/version`・`/api/tags`・`/api/ps` がいずれも **200** で記録されることを確認した（修正前の同ログには同じ `/api/tags` が 403 で記録されていた）。インストーラから入れ直したアプリでの確認は同一バイナリのため省略。
+
 ---
 
 ## 2. Google Cloud Project 設定（開発者向け）

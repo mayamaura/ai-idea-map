@@ -6,7 +6,7 @@
 
 > **先に [README.md](README.md) を読んでください。** ドキュメント間で結論が食い違う箇所は README §3 の裁定が優先されます。本書に関係する裁定は次の2点です。
 > - 本書はモノレポ移行前の構成（`src/services/llm/`）を前提に書かれています。**移行後の配置は `packages/core/src/llm/`** です。パス対応表は README §3.3 にあります。
-> - `packages/core` は `fetch` を直接呼べません。`ClaudeProvider`/`OllamaProvider` の HTTP 呼び出しは必ず `getPlatform().http`（`HttpAdapter`、[architecture.md](architecture.md) §3）経由にしてください。Web版は `fetch`、デスクトップ版は `@tauri-apps/plugin-http` に解決され、**Ollama の CORS 問題はこの1箇所で解決します**。本書中の直接 `fetch` を使ったコード例は、この Adapter 経由に読み替えてください。
+> - `packages/core` は `fetch` を直接呼べません。`ClaudeProvider`/`OllamaProvider` の HTTP 呼び出しは必ず `getPlatform().http`（`HttpAdapter`、[architecture.md](architecture.md) §3）経由にしてください。Web版は `fetch`、デスクトップ版は `@tauri-apps/plugin-http` に解決され、**Ollama への到達経路はこの1箇所に閉じ込められます**。本書中の直接 `fetch` を使ったコード例は、この Adapter 経由に読み替えてください。ただし「Rust経由だからCORSは無関係」ではありません。`tauri-plugin-http` は webview の Origin ヘッダを自動付与するため、本番ビルドでは別途 Origin を落とす対応が必要でした（§6.4 の訂正・バグ修正2026-08-09参照）。
 
 ---
 
@@ -879,6 +879,8 @@ Ollamaはデフォルトでは `OLLAMA_ORIGINS` に `http://localhost` 等の限
 
 いずれにせよ **この節の内容は一次情報での検証が済んでいない（8節「未確認」参照）**。実装フェーズで実機検証し、`OLLAMA_ORIGINS` の追加設定が本当に不要かを確認すること。
 
+> **訂正（バグ修正・2026-08-07 Phase 35→2026-08-09 修正）**: 案2（`@tauri-apps/plugin-http` 経由）を採用し、Phase 35 の開発ビルド確認では疎通したが、「ブラウザの CORS 制約を経由しないので `OLLAMA_ORIGINS` に依存せず疎通できる」という上記の結論は不正確だった。`tauri-plugin-http` はブラウザのCORSプリフライトこそ経由しないが、webview の URL を `Origin` ヘッダとして毎リクエストに自動付与する。開発時（`devUrl` の `http://localhost:5174`）はこれが Ollama の既定許可オリジンに収まるため気づけなかったが、本番ビルドの webview オリジンは Windows では `http://tauri.localhost` になり既定許可に含まれず、Ollama が 403 を返した。対策は `src-tauri/Cargo.toml` の `tauri-plugin-http` に `unsafe-headers` feature を追加し、`apps/desktop/src/platform/http.desktop.ts` の全リクエストで `Origin: ''`（空文字）を送って Origin ヘッダごと落とすこと。詳細は `docs/desktop/platform-integration.md` §5.2 の該当節。
+
 ---
 
 ## 7. 段階的実装計画
@@ -976,14 +978,15 @@ WebSearch / WebFetch で一次情報（Ollama公式リポジトリの `docs/api.
 - **OpenAI互換エンドポイント**: `http://localhost:11434/v1/chat/completions`（他に `/v1/embeddings`、`/v1/models`）が存在し、OpenAI SDKの `base_url` を差し替えるだけで動く。APIキーは任意の文字列でよい（認証なし）。
 - **`OLLAMA_ORIGINS`**: CORS許可オリジンを制御する環境変数。未設定時は `http(s)://localhost`・`127.0.0.1`・`0.0.0.0`・`app://`・`file://`・`tauri://`・`vscode-webview://` が自動的に許可リストに入る。変更には Ollama サービスの再起動が必要。
 - **日本語対応ローカルモデルの候補**: Gemma 3（4B/12B/27B、140以上の言語に対応と公称、マルチモーダル対応）、Qwen3（4B/8B/14B/30B-A3B MoE）、ELYZA-JP-8B（Llama-3ベースの日本語特化ファインチューン、`ollama pull` 可能、約4.9GB）、Swallow（同じく `ollama pull` 可能、約8.5GB）。目安VRAM: 7〜8B級はQ4量子化で約8GB、14B級で約12GB、30B級で約24GB。
-- **Tauri v2 と CORS の一般論**: TauriのWebViewは本番ビルドで `tauri://localhost` オリジンから動作し、通常のブラウザ同様CORS制約を受ける。Ollamaのようにヘッダーを返さないローカルサービスへのアクセスが失敗する事例が複数の情報源で報告されており、回避策として `@tauri-apps/plugin-http` のRust経由fetchを使う方法が紹介されている。
+- **Tauri v2 と CORS の一般論**: TauriのWebViewは本番ビルドで `tauri://localhost` オリジンから動作するとされる（Windowsでは実際には `http://tauri.localhost` になることを実機の curl 検証で確認済み、2026-08-09）。Ollamaのようにヘッダーを返さないローカルサービスへのアクセスが失敗する事例が複数の情報源で報告されており、回避策として `@tauri-apps/plugin-http` のRust経由fetchを使う方法が紹介されている。**ただしこの回避策は「ブラウザのCORSプリフライトを経由しない」だけで、`plugin-http` が付与する `Origin` ヘッダをOllama側が拒否する問題は別途 `unsafe-headers` feature とOriginの明示的な除去が必要だった（§6.4訂正参照）。**
 
 ### 8.2 未確認事項
 
 > **Phase 35（2026-08-07、Ollama 0.32.6 / Windows 11）で以下を実測した。** Node から `HttpAdapter` をスタブして `OllamaProvider` を直接動かした結果であり、UI・デスクトップ実機を通した確認ではない。
 
 - **`format` にJSON Schemaオブジェクト（文字列 `"json"` ではなく）を渡す機能が、Ollamaのどのバージョンから利用可能か**の正確なバージョン番号。**Ollama 0.32.6 では動作を確認した**（2件配列を含むスキーマで正しくパースできた）。基本的な `format: "json"` モードは0.3.0以降という情報は得られたが、フルスキーマ制約がどのバージョンから入ったかという**下限は依然として未確定**。
-- **開発時（`tauri dev`、Viteの `http://localhost:5173` 等のオリジン）から `OLLAMA_ORIGINS` の追加設定なしにOllamaへアクセスできるか**。**実装は素の `fetch` ではなく `@tauri-apps/plugin-http`（Rust側、`HttpAdapter` 経由）に統一したため、ブラウザのオリジン判定自体が経路に登場せずこの論点は原理的に無効化されている。** ただしデスクトップ実機を通した到達確認はまだ（`docs/desktop/README.md` §5 #4）。
+- **開発時（`tauri dev`、Viteの `http://localhost:5173` 等のオリジン）から `OLLAMA_ORIGINS` の追加設定なしにOllamaへアクセスできるか**。**実装は素の `fetch` ではなく `@tauri-apps/plugin-http`（Rust側、`HttpAdapter` 経由）に統一したため、ブラウザ側のオリジン判定（プリフライト）は経路に登場しない。ただし「この論点は原理的に無効化されている」というのは誤りで、plugin-http が付与する `Origin` を Ollama 側が検査するため、オリジンの問題は Rust 側に移っただけだった（下記の本番ビルドの項を参照）。**
+- ~~**本番ビルド（`pnpm build:desktop`）から Ollama へアクセスできるか**。~~ → **バグを発見・修正（2026-08-09）。** `tauri-plugin-http` は webview の URL を `Origin` ヘッダとして自動付与するため、開発時（`devUrl` の `http://localhost:5174`）は Ollama の既定 CORS 許可に収まって疎通するが、本番ビルドの webview オリジン（Windows: `http://tauri.localhost`）は含まれず 403 になっていた。`src-tauri/Cargo.toml` の `unsafe-headers` feature と、`apps/desktop/src/platform/http.desktop.ts` での `Origin: ''` 送出で修正した。**修正後の本番ビルドを起動し、Ollama の `server.log` で `/api/version`・`/api/tags`・`/api/ps` がいずれも 200 になることを確認済み**（`docs/implementation-plan.md` Phase 38 のバグ修正項を参照）。
 - ~~**モデルファミリーごとの `/api/show` の `model_info` 内フィールド名**（コンテキスト長を表すキーが `llama.context_length` 等ファミリーごとに異なる）の網羅的な一覧。~~ → **解消。** `/api/show` を使う必要がなくなった。`/api/tags` の `details.context_length` が Ollama 0.32系以降のモデルで実コンテキスト長を直接返すことを実測で確認したため、`OllamaProvider.listModels()` はこちらを `ModelInfo.contextTokens` として使う（`docs/desktop/README.md` §5「Phase 35 で解消した項目」）。
 - **Rakuten AI 2.0 が Ollama公式ライブラリから直接 `ollama pull` できるか**。Phase 35 では未調査のまま。調査した範囲では Hugging Face から GGUF を取得し `Modelfile` 経由で手動インポートする方法のみ確認できた。
 - **`done_reason` フィールド**（ストリーミング最終行に含まれるとされる終了理由）が全バージョンの `/api/chat` レスポンスに存在するか。**Ollama 0.32.6 では非ストリーミング応答にも存在することを確認した**（思考モデルの出力が途中で切れた際に `done_reason: 'length'` が返り、これが `think: false` を全リクエストに付与する実装のきっかけになった）。他バージョンでの存在は未確認。

@@ -479,6 +479,8 @@ Tauri v2は権限を機能ごとの capability ファイルに分割し、`tauri
 }
 ```
 
+**`Origin` ヘッダと `unsafe-headers`（バグ修正・2026-08-09）**: capability の許可とは別に、`tauri-plugin-http` は webview の URL をそのまま `Origin` ヘッダとして毎リクエストへ自動付与する。開発時（`devUrl` の `http://localhost:5174`）はこれが Ollama の既定 CORS 許可オリジンに収まるため通っていたが、本番ビルドの webview オリジンは Windows では `http://tauri.localhost` になり既定許可に含まれず、Ollama が 403 を返す不具合があった（実機の Ollama への curl 検証で `Origin: http://tauri.localhost` → 403、`Origin: http://localhost:5174` → 200、Origin なし → 200 を確認）。対策として `src-tauri/Cargo.toml` の `tauri-plugin-http` に `features = ["unsafe-headers"]` を追加し、`apps/desktop/src/platform/http.desktop.ts` の全リクエストで `Origin: ''`（空文字）を明示的に渡している。`unsafe-headers` が無いと、JS 側から渡した `Origin` ヘッダは fetch 仕様の禁止ヘッダとして Rust 側で黙って捨てられる。plugin-http は空文字の `Origin` を渡すとヘッダごと送出しない仕様のため、結果としてデスクトップ版の全 HTTP リクエストから `Origin` が消える。
+
 ### 5.3 CSP設定の考え方
 
 - `connect-src` はホワイトリスト方式にし、Ollama（`http://localhost:11434`）、Anthropic API（`https://api.anthropic.com`）、Google関連3ドメインのみを列挙します。`*` によるワイルドカード許可は行いません。

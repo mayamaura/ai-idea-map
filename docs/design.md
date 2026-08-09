@@ -1587,10 +1587,10 @@ ai-idea-map/
 | `StorageAdapter` | Key-Value 永続化 | `localStorage` | `@tauri-apps/plugin-store`（`LazyStore('app-data.json')`、`$APPCONFIG` 配下） |
 | `FileAdapter` | マップファイルの読み書き | Google Drive API / ブラウザダウンロード | `@tauri-apps/plugin-dialog`（開く/保存ダイアログ）+ `@tauri-apps/plugin-fs`（読み書き・自動保存領域）+ `'cloud'` origin は `packages/core` の `driveService`（Web版と共通、Phase 38） |
 | `SecretAdapter` | APIキー等の秘密情報 | WebCrypto（PBKDF2+AES-GCM）+ localStorage | OSキーチェーン。Rust 側の `keyring` crate（`src-tauri/src/keychain.rs`）を4つの Tauri コマンドでラップし `invoke()` から呼ぶ |
-| `HttpAdapter` | HTTP 呼び出し | `fetch` | `@tauri-apps/plugin-http` の `fetch`（Rust の reqwest から発行するため CORS 制約を受けない） |
+| `HttpAdapter` | HTTP 呼び出し | `fetch` | `@tauri-apps/plugin-http` の `fetch`（Rust の reqwest から発行するためブラウザの CORS プリフライトは受けないが、webview の Origin ヘッダは自動付与されるため、本番ビルドでは `unsafe-headers` feature ＋ Origin 除去が別途必要だった） |
 | `SystemAdapter` | クリップボード・外部URL・終了前確認・通知 | ブラウザAPI（`navigator.clipboard`・`beforeunload`） | `@tauri-apps/plugin-clipboard-manager`（クリップボード）/ `@tauri-apps/plugin-opener`（外部URL）/ `@tauri-apps/api/window` の `onCloseRequested` + `@tauri-apps/plugin-dialog` の `ask()`（終了前確認） |
 
-**`HttpAdapter` が本計画で最も重要な接続点です。** `packages/core` の `LLMProvider` 実装は `fetch` を直接呼ばず必ず `getPlatform().http` を経由し、デスクトップ版ではそれが Rust 側の HTTP クライアントに解決されることで **Ollama の CORS 問題が1箇所で解決します**。
+**`HttpAdapter` が本計画で最も重要な接続点です。** `packages/core` の `LLMProvider` 実装は `fetch` を直接呼ばず必ず `getPlatform().http` を経由し、デスクトップ版ではそれが Rust 側の HTTP クライアントに解決されることで、ブラウザの CORS プリフライトを経由せず Ollama へ到達できます。ただし plugin-http は webview の Origin ヘッダを自動付与するため、本番ビルドでは別途 Origin を落とす対応が必要でした（詳細は [desktop/README.md](desktop/README.md) §3.3 の訂正）。
 
 **`HttpAdapter.canAccessLocalServers`（Phase 35 で追加）**: Web=`false` / Desktop=`true` の読み取り専用プロパティ。`SettingsPanel` がプロバイダ切り替えUIを描画するかどうかの判定に使う（§9.8）。
 

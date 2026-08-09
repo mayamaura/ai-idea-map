@@ -34,7 +34,7 @@
 
 | 項目 | 決定 | 根拠 |
 |---|---|---|
-| フレームワーク | **Tauri v2**（2026-07 時点の安定版 2.11.5） | `tauri-plugin-http` で Ollama へ CORS 制約なしにアクセスできる／既存 Vite+React 資産をほぼ無改修で流用できる／Electron 比でバンドル・メモリが小さい |
+| フレームワーク | **Tauri v2**（2026-07 時点の安定版 2.11.5） | `tauri-plugin-http` でブラウザの CORS プリフライトを経由せず Ollama へアクセスできる（ただし到達には Origin ヘッダを落とす追加対応が要った。§3.3訂正参照）／既存 Vite+React 資産をほぼ無改修で流用できる／Electron 比でバンドル・メモリが小さい |
 | リポジトリ構成 | **pnpm workspaces のモノレポ**。`packages/core` `packages/ui` `packages/platform` + `apps/web` `apps/desktop` | 依存の厳格さがそのまま「coreはUIに依存しない」というルールの強制装置になる |
 | プラットフォーム差の吸収 | **Platform Adapter**（`StorageAdapter` / `FileAdapter` / `SecretAdapter` / `HttpAdapter` / `SystemAdapter`）を `setPlatform()` でシングルトン注入 | Zustand ストアが React ツリー外のプレーンモジュールとして設計済みのため、Context より自然 |
 | LLM 抽象化 | `LLMProvider` インタフェース（`complete` / `completeJson` / `stream` / `listModels` / `capabilities`）に `ClaudeProvider` と `OllamaProvider` の2実装 | 構造化出力の方式差（Claude=プロンプト指示＋正規表現抽出 / Ollama=`format` にJSON Schema）を境界内に閉じ込める |
@@ -199,7 +199,9 @@ Web検索（ollama.com の Web Search API）の裏取り（エンドポイント
 | `src/components/panels/*.tsx` | `packages/ui/src/components/panels/*.tsx` |
 | `src/stores/settingsStore.ts` | `packages/core/src/stores/settingsStore.ts` |
 
-**重要な制約:** `packages/core` は `fetch` を直接呼んではいけません（`architecture.md` §2.2）。`ClaudeProvider` / `OllamaProvider` の HTTP 呼び出しは必ず `getPlatform().http`（`HttpAdapter`）経由にします。Web版は `fetch` をそのまま、デスクトップ版は `@tauri-apps/plugin-http` を返す実装になり、**Ollama の CORS 問題はこの1箇所で解決します**。これが Adapter 設計上、最も重要な接続点です。
+**重要な制約:** `packages/core` は `fetch` を直接呼んではいけません（`architecture.md` §2.2）。`ClaudeProvider` / `OllamaProvider` の HTTP 呼び出しは必ず `getPlatform().http`（`HttpAdapter`）経由にします。Web版は `fetch` をそのまま、デスクトップ版は `@tauri-apps/plugin-http` を返す実装になり、**Ollama への到達経路はこの1箇所に閉じ込められます**。これが Adapter 設計上、最も重要な接続点です。
+
+**訂正（バグ修正・2026-08-09）:** 「Ollama の CORS 問題はこの1箇所で解決します」という当初の記述は不正確でした。`tauri-plugin-http` はブラウザの CORS プリフライトこそ経由しませんが、webview の URL を `Origin` ヘッダとして毎リクエストへ自動付与します。開発時（`devUrl` の `http://localhost:5174`）はこれが Ollama の既定 CORS 許可オリジンに収まるため気づけませんでしたが、本番ビルドの webview オリジンは Windows では `http://tauri.localhost` になり既定許可に含まれず、Ollama が 403 を返していました（実機の Ollama への curl 検証で `Origin: http://tauri.localhost` → 403、`Origin: http://localhost:5174` → 200、Origin なし → 200 を確認）。対策は `apps/desktop/src-tauri/Cargo.toml` の `tauri-plugin-http` に `features = ["unsafe-headers"]` を追加し、`apps/desktop/src/platform/http.desktop.ts` の全リクエストで `Origin: ''`（空文字）を明示的に渡すこと。`unsafe-headers` が無いと JS 側から渡した `Origin` は fetch 仕様の禁止ヘッダとして Rust 側で黙って捨てられる。詳細は `docs/desktop/platform-integration.md` §5.2 の該当節。
 
 ---
 

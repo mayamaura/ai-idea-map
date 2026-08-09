@@ -19,7 +19,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-http = "2"
+# unsafe-headers: JS 側から Origin ヘッダを制御するために必要（apps/desktop/src/platform/http.desktop.ts 参照）
+tauri-plugin-http = { version = "2", features = ["unsafe-headers"] }
 tauri-plugin-opener = "2"
 # ダイアログで選ばれたパスへの fs 許可は既定ではプロセス内に留まるため、
 # 「最近開いたファイル」を次回起動でも開けるようスコープを永続化する
