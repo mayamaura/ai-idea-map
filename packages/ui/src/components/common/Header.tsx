@@ -27,6 +27,8 @@ interface HeaderProps {
    * ローカルファイルとして開いたマップの保存先を後から Drive に変える導線。
    */
   onSaveToCloud?: () => void
+  /** いま開いているマップをローカルファイルへ保存し直す（デスクトップ版のみ、上記の逆方向） */
+  onSaveToLocal?: () => void
 }
 
 export function Header({
@@ -39,6 +41,7 @@ export function Header({
   onGoogleSignIn,
   onGoogleSignOut,
   onSaveToCloud,
+  onSaveToLocal,
 }: HeaderProps) {
   // AI ストリーミング中の chatMessages 更新などで再描画されないよう、必要な値だけを購読する
   const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
@@ -225,6 +228,19 @@ export function Header({
                           d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3-3m0 0l3 3m-3-3v12" />
                       </svg>
                       このマップをドライブに保存
+                    </button>
+                  )}
+                  {/* このマップをローカルに保存（Drive のマップを開いているときだけ） */}
+                  {onSaveToLocal && currentFileOrigin === 'cloud' && (
+                    <button
+                      onClick={() => { setShowAccountMenu(false); onSaveToLocal() }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a5 5 0 110-10 5.5 5.5 0 0111 0 5 5 0 010 10z" />
+                      </svg>
+                      このマップをローカルに保存
                     </button>
                   )}
                   {/* サインアウト */}

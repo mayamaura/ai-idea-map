@@ -59,6 +59,8 @@ export interface AppProps {
    * ローカルに保存したマップの保存先を後から Drive に変える導線をヘッダーに出す。
    */
   onSaveToCloud?: () => void
+  /** いま開いているマップをローカルファイルへ保存し直す（デスクトップ版のみ、上記の逆方向） */
+  onSaveToLocal?: () => void
 }
 
 const NO_CLOUD_AUTH: AppCloudAuth = {
@@ -80,6 +82,7 @@ function AppInner({
   onGenerateShareUrl,
   settingsExtraSections,
   onSaveToCloud,
+  onSaveToLocal,
 }: AppProps) {
   useKeyboardShortcuts()
 
@@ -139,6 +142,7 @@ function AppInner({
           onGoogleSignIn={auth.signIn}
           onGoogleSignOut={auth.signOut}
           onSaveToCloud={onSaveToCloud}
+          onSaveToLocal={onSaveToLocal}
         />
       )}
       <div className="flex flex-1 min-h-0">

@@ -179,6 +179,7 @@ ai-idea-map/
             ├── DesktopApp.tsx       # デスクトップ版シェル。Ctrl+O でネイティブ「開く」ダイアログ、起動5秒後の自動更新チェック（Phase 36）、起動引数ファイルの取り込みと外部変更検知の購読（Phase 37）、Drive アクセストークンを FileAdapter へ流し込む配線（Phase 38）
             ├── openMap.ts           # ファイルを開く共通処理（ダッシュボードと Ctrl+O が共用）
             ├── saveToDrive.ts       # いま開いているマップを Drive へ保存する共通処理（起動画面の DriveSection とヘッダーが共用、Phase 38 追加実装）
+            ├── saveToLocal.ts       # いま開いているマップをローカルへ保存し直す処理（saveToDrive.ts の逆方向、ヘッダー専用、Phase 38 追加実装）
             ├── launchFile.ts        # `.ideamap` ダブルクリック起動・2つ目インスタンスからのイベントの受け入れ（Phase 37）
             ├── externalChange.ts    # 外部でのファイル変更検知（フォーカス復帰時に mtime 比較、Phase 37。Drive 上のマップは mtime を持たないため対象外、Phase 38）
             ├── updater.ts           # 自動更新のチェック・ダウンロード・適用（Phase 36）
@@ -394,6 +395,7 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 | `onGenerateShareUrl` | 共有URL生成。未指定でも「共有」タブは出るが、「JSONファイルとして共有」の代替案内になる（Phase 37） | `generateShareUrl` |
 | `settingsExtraSections`（Phase 36） | 設定パネル末尾に足すプラットフォーム固有セクション。未指定なら何も描画しない | （Web版は渡さない） |
 | `onSaveToCloud`（Phase 38 追加実装） | いま開いているマップをクラウドへ保存し直す。`Header` の「接続済み」メニューに「このマップをドライブに保存」項目を出す（未指定、または `currentFileOrigin === 'cloud'` のときは出さない） | （Web版は渡さない） |
+| `onSaveToLocal`（Phase 38 追加実装） | いま開いているマップをローカルファイルへ保存し直す（`onSaveToCloud` の逆方向）。`Header` の同メニューに「このマップをローカルに保存」項目を出す（未指定、または `currentFileOrigin !== 'cloud'` のときは出さない） | （Web版は渡さない） |
 
 `cloudAuth` の有無は `SettingsPanel` にも `showCloudSync`（`cloudAuth != null`）として伝播する（Phase 34）。**Phase 38 でデスクトップ版も `cloudAuth` を渡すようになったため、この条件だけでは足りなくなった。** `SettingsPanel` は `showCloudSync` に加えて `isKeychainBacked`（`SecretAdapter.isPassphraseFree`）が false であることも条件にし、`DriveSyncSection`（マスターパスワード設定を兼ねた設定の Drive 同期）を Web版でだけ描画する。デスクトップ版はマスターパスワードを持たず `setAppSettingsSync()` も未注入のため、出してしまうと押した時点で失敗する（`docs/desktop/README.md` §3.1-H #12・#13）。
 
@@ -1688,6 +1690,8 @@ Web版で作ったマップをデスクトップ版からもそのまま開け�
 **マップを Drive へ保存する共通処理（`apps/desktop/src/saveToDrive.ts`、Phase 38 追加実装）**: `saveCurrentMapToDrive(accessToken)` が、`buildMapFile(mapId)`（§4章 stores/mapSnapshot.ts）でスナップショットを組み立て `saveMap(token, title, content, null, mapId)` で保存し、成功したら `setCurrentFileId(fileId, 'cloud')` で以後の自動保存を Drive に向けるところまでを担う。`hasActiveMap` が `false`（マップ未読込）のときは何もしない。もとは `DriveSection.tsx` の `handleUpload` にインラインで書かれていたが、`openMap.ts` が「開く」処理を一本化しているのと同じ理由で、複数の呼び出し元（`DriveSection` の「いま開いているマップをドライブに保存」ボタンと、下記のヘッダーからの導線）から使えるよう切り出した。`DriveSection.tsx` はこの関数を呼び、成功時に Drive 一覧を再取得するだけになっている。
 
 **ヘッダーからの保存先切り替え（Phase 38 追加実装）**: `Header`（`packages/ui`）の「接続済み」ドロップダウンメニューに「このマップをドライブに保存」項目を追加した（`onSaveToCloud` prop、§5.1）。ローカルのマップを開いている（`currentFileOrigin !== 'cloud'`）ときだけ表示する。`DesktopApp.tsx` は `onSaveToCloud={accessToken ? () => void saveCurrentMapToDrive(accessToken) : undefined}` を渡す。編集中の画面からは保存先切り替えの導線が起動画面にしかなく見つけにくかったため、ヘッダーからも直接切り替えられるようにした。元のローカルファイルは上げた時点の内容のまま残り、以後は更新されない。
+
+**逆方向: ヘッダーからローカルへ保存し直す（`apps/desktop/src/saveToLocal.ts`、Phase 38 への続く追加実装）**: `saveCurrentMapToLocal()` が `buildMapFile(mapId)` のスナップショットを `getPlatform().file.saveFileAs(content, mapTitle)` に渡す。保存ダイアログの表示・ファイル書き込み・最近開いたファイルへの記録は既存の `desktopFileAdapter.saveFileAs`（§18.1〜18.3、`apps/desktop/src/platform/file.desktop.ts`）がすでに担っているため、ここが追加でやるのは返ってきた `FileRef` で `setCurrentFileId(ref.id, ref.origin)` して以後の自動保存をそのローカルファイルへ向けるところだけ。`saveFileAs` が `null`（保存ダイアログのキャンセル）を返した場合は失敗扱いにせず保存先も変えない。`hasActiveMap` が `false` のときは何もしない（`saveCurrentMapToDrive` と同じガード）。`Header` には `onSaveToLocal` prop（§5.1）を追加し、メニューに「このマップをローカルに保存」を `currentFileOrigin === 'cloud'` のときだけ表示する。「このマップをドライブに保存」とは表示条件が逆なので、メニューには常にどちらか一方だけが出る（サインアウト項目のように両方常時表示ではない）。`DesktopApp.tsx` は `onSaveToLocal={() => void saveCurrentMapToLocal()}` を渡す。`onSaveToCloud` と異なりネイティブダイアログのみで完結するため `accessToken` に依存しない。Drive 側のファイルは切り替えた時点の内容のまま残り、以後は更新されない。
 
 **`desktopFileAdapter`（`apps/desktop/src/platform/file.desktop.ts`）**: `setDriveAccessToken(token)` でモジュール内変数にトークンを流し込む（`DesktopApp.tsx` が `accessToken` の変化を `useEffect` で反映する、Web版の `googleDriveService` と同じ形）。`openFile` / `saveFile` / `deleteFile` / `getMetadata` は `ref.origin === 'cloud'` のときだけ `packages/core` の `driveService`（`loadMap` / `saveMap` / `deleteMap` / `fetchMapAppProperties`）に処理を委譲し、それ以外はこれまで通りローカルファイルを扱う。`saveLocalMirror`（自動保存領域への書き込み）と `exportBlob` は Drive 化しておらず常にローカルのまま。
 

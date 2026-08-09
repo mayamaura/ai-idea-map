@@ -1944,25 +1944,31 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - [ ] 設定の Drive 同期（保存・読み込み）
 - [ ] console error / pageerror がゼロ
 
-#### 追加実装: ヘッダーからのドライブ保存導線（2026-08-09）
+#### 追加実装: ヘッダーからの保存先切り替え導線（2026-08-09）
 
-**目標**: ローカルに保存したマップの保存先を Drive に切り替える導線が起動画面の Drive 欄にしかなく、編集中の画面から見つけられなかったため、ヘッダーの「接続済み」メニューにも追加する。
+**目標**: 保存先（ローカル/Drive）を切り替える導線が起動画面の Drive 欄にしかなく、編集中の画面から見つけられなかったため、ヘッダーの「接続済み」メニューに双方向の切り替えを追加する。
 
-##### タスク
+##### タスク（ローカル→Drive）
 - [x] `apps/desktop/src/saveToDrive.ts` を新規実装。`DriveSection.tsx` の `handleUpload` にインラインで書かれていた保存処理（`buildMapFile` → `saveMap` → `setCurrentFileId(fileId, 'cloud')`）を `saveCurrentMapToDrive(accessToken)` として切り出し、`DriveSection.tsx` はこれを呼ぶだけにした（`hasActiveMap` が `false` のときは何もしないガード込み）
 - [x] `packages/ui` の `Header` に `onSaveToCloud?: () => void` を追加。「接続済み」ドロップダウンメニューに「このマップをドライブに保存」項目を追加（`onSaveToCloud` が指定され、かつ `currentFileOrigin !== 'cloud'` のときだけ表示）
 - [x] `packages/ui` の `Header` に `showMapList?: boolean`（既定 `true`）を追加。デスクトップ版は `mapListSlot` を持たず、モバイル用アイコンボタンと「マップ一覧」メニュー項目が押しても何も起きない死んだ項目になっていたため、`App` が `showMapList={mapListSlot != null}` を渡して隠す（`AppProps` には足していない。`App` が持っている情報から算出できるため）
 - [x] `apps/desktop/src/DesktopApp.tsx` から `onSaveToCloud={accessToken ? () => void saveCurrentMapToDrive(accessToken) : undefined}` を渡す配線を追加
 
-**完了条件**: 型検査・ビルドが通過すること。ヘッダーからのドライブ保存の実機動作確認は別途行う。
+##### タスク（Drive→ローカル。続く追加実装）
+- [x] `apps/desktop/src/saveToLocal.ts` を新規実装。`saveCurrentMapToLocal()` が `buildMapFile(mapId)` を `getPlatform().file.saveFileAs(content, mapTitle)` に渡す。ネイティブ保存ダイアログの表示・ファイル書き込み・最近開いたファイルへの記録は既存の `desktopFileAdapter.saveFileAs`（`apps/desktop/src/platform/file.desktop.ts`）がすでに担うため、ここが追加でやるのは返ってきた `FileRef` で `setCurrentFileId(ref.id, ref.origin)` して以後の自動保存を切り替えるところだけ。`saveFileAs` が `null`（ダイアログのキャンセル）を返したときは失敗扱いにせず保存先も変えない。`hasActiveMap` が `false` のときは何もしない（`saveCurrentMapToDrive` と同じガード）
+- [x] `packages/ui` の `Header`/`AppProps` に `onSaveToLocal?: () => void` を追加。「接続済み」メニューに「このマップをローカルに保存」項目を追加（`onSaveToLocal` が指定され、かつ `currentFileOrigin === 'cloud'` のときだけ表示）。表示条件が「このマップをドライブに保存」と逆なので、メニューには常にどちらか一方だけが出る
+- [x] `apps/desktop/src/DesktopApp.tsx` から `onSaveToLocal={() => void saveCurrentMapToLocal()}` を渡す配線を追加。`onSaveToCloud` と異なりネイティブダイアログのみで完結するため `accessToken` に依存しない
 
-##### 検証（2026-08-09）
+**完了条件**: 型検査・ビルドが通過すること。ヘッダーからの保存先切り替え（両方向）の実機動作確認は別途行う。
+
+##### 検証（2026-08-09、両方向とも同じセッションで確認）
 - [x] `pnpm typecheck` 通過
 - [x] `pnpm build`（Web版）・`pnpm --filter @ideamap/desktop build`（デスクトップ版フロントエンド）ともに成功
 
 ##### 残りの手動確認項目
 - ヘッダーの「接続済み」メニューから「このマップをドライブに保存」を押し、ローカルのマップが Drive に保存されて以後の自動保存が Drive に向くこと（Phase 38 本体の Drive 書き込み経路の実機確認と合わせて行う）
-- Drive のマップを開いている間はメニューにこの項目が出ないこと
+- ヘッダーの「接続済み」メニューから「このマップをローカルに保存」を押し、保存ダイアログが出て、保存後は以後の自動保存がそのローカルファイルに向くこと。保存ダイアログをキャンセルした場合は保存先が変わらないこと
+- Drive のマップを開いている間は「このマップをドライブに保存」ではなく「このマップをローカルに保存」だけが出ること（ローカルのマップを開いている間はその逆）
 - デスクトップ版でヘッダーとモバイル用アイコンの「マップ一覧」項目が出ないこと。Web版では従来どおり出ること（回帰確認）
 
 ---

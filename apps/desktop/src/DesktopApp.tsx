@@ -8,6 +8,7 @@ import { useDesktopGoogleAuth } from './hooks/useDesktopGoogleAuth'
 import { setDriveAccessToken } from './platform'
 import { openMapFile } from './openMap'
 import { saveCurrentMapToDrive } from './saveToDrive'
+import { saveCurrentMapToLocal } from './saveToLocal'
 import { scheduleStartupUpdateCheck } from './updater'
 import { listenForLaunchFile } from './launchFile'
 import { watchExternalFileChanges } from './externalChange'
@@ -75,6 +76,7 @@ export function DesktopApp() {
         dashboardSlot={<DesktopFileDashboard cloudAuth={cloudAuth} />}
         settingsExtraSections={<UpdaterSection />}
         onSaveToCloud={accessToken ? () => void saveCurrentMapToDrive(accessToken) : undefined}
+        onSaveToLocal={() => void saveCurrentMapToLocal()}
       />
       <FileDropOverlay />
     </>
