@@ -59,7 +59,7 @@ pnpm build:desktop  # インストーラをビルド
 
 | OS | ダウンロードするファイル |
 |---|---|
-| Windows | `IdeaMap_x.y.z_x64_en-US.msi` または `IdeaMap_x.y.z_x64-setup.exe` |
+| Windows | `IdeaMap_x.y.z_x64_ja-JP.msi` または `IdeaMap_x.y.z_x64-setup.exe` |
 | macOS（Apple Silicon） | `IdeaMap_x.y.z_aarch64.dmg` |
 | macOS（Intel） | `IdeaMap_x.y.z_x64.dmg` |
 

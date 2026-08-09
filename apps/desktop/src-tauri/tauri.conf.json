@@ -38,6 +38,11 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
+    "windows": {
+      "wix": {
+        "language": ["ja-JP"]
+      }
+    },
     "fileAssociations": [
       {
         "ext": ["ideamap"],

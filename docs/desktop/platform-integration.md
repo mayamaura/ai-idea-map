@@ -516,7 +516,14 @@ pnpm --filter @ideamap/desktop tauri build -- --target aarch64-apple-darwin
 pnpm --filter @ideamap/desktop tauri build -- --target x86_64-apple-darwin
 ```
 
-生成物は既定で `apps/desktop/src-tauri/target/release/bundle/` 配下（`msi/`、`nsis/`、`dmg/`、`macos/` 等）に出力されます。ルートの `pnpm build:desktop`（`tsc -b && pnpm --filter @ideamap/desktop tauri build`）でも同じビルドを実行できます。
+生成物は既定で `apps/desktop/src-tauri/target/release/bundle/` 配下（`msi/`、`nsis/`、`dmg/`、`macos/` 等）に出力されます。ルートの `pnpm build:desktop`（`tsc -b && node scripts/build-desktop.mjs`）でも同じビルドを実行できます。
+
+ローカルビルド時の注意（2026-08-09 に実機で確認）:
+
+- `bundle.windows.wix.language` に `ja-JP` を指定している。MSI は既定の `en-US` だとコードページ1252で、`fileAssociations` の日本語（`IdeaMap マップファイル` など）が `error LGHT0311` で link に失敗するため。この指定により MSI のファイル名は `IdeaMap_x.y.z_x64_ja-JP.msi` になる（NSIS は Unicode なので影響を受けない）。
+- `createUpdaterArtifacts: true` のため、署名鍵がないとビルド末尾で失敗する（インストーラ自体は生成済み）。`scripts/build-desktop.mjs` が `~/.tauri/ideamap-updater.key` と `ideamap-updater.password.txt` を読んで環境変数に載せてから `tauri build` を呼ぶため、ローカルでは追加の設定なしに `.sig` まで生成される。鍵はこのプロジェクト専用なのでユーザー環境変数には置かない。Tauri v2 の CLI は `.env` を読まない（実測で確認）ので、`.env` に書いても効かない。
+  - 鍵が見つからない場合は警告を出して環境変数を渡さずに続行する。CI（`release-desktop.yml`）は GitHub Secrets から `TAURI_SIGNING_PRIVATE_KEY` を直接与え、`tauri-action` を使うため本スクリプトを経由しない。
+- `Patching ... with bundle type information` の直後に `os error 32`（別のプロセスが使用中）で落ちることがある。生成直後の exe をウイルス対策がスキャンしているだけなので、再実行すれば通る。
 
 ### 6.2 GitHub Actionsによるクロスプラットフォームビルド
 
@@ -613,7 +620,7 @@ AIエージェント（Claude Code）が実行できる粒度でコマンドを�
 > ```powershell
 > pnpm install            # ルートで実行
 > pnpm dev:desktop        # = pnpm --filter @ideamap/desktop tauri dev
-> pnpm build:desktop      # = tsc -b && pnpm --filter @ideamap/desktop tauri build
+> pnpm build:desktop      # = tsc -b && node scripts/build-desktop.mjs（§6.1）
 > ```
 >
 > 導入した Tauri プラグインは `dialog` / `fs` / `store` / `http` / `opener` / `clipboard-manager` / `persisted-scope` / `updater` / `process` の9つです（`updater`/`process` は Phase 36 で追加）。`notification` と `window-state` は未導入（それぞれ未使用・Phase 37）。

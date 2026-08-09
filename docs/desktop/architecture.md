@@ -463,7 +463,7 @@ packages:
     "dev:web": "pnpm --filter @ideamap/web dev",
     "dev:desktop": "pnpm --filter @ideamap/desktop tauri dev",
     "build": "tsc -b && pnpm --filter @ideamap/web build",
-    "build:desktop": "tsc -b && pnpm --filter @ideamap/desktop tauri build",
+    "build:desktop": "tsc -b && node scripts/build-desktop.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -b"
   },
