@@ -118,6 +118,29 @@ export const createEdgeSlice: MapSliceCreator<EdgeSlice> = (set, get) => ({
       }
     }),
 
+  // pushPast しない: このアクションは onNodeDragStop から呼ばれ、直前の onNodesChange(dragging:false) が
+  // ドロップ直前のスナップショットを履歴に積み終えている。ここで積むと Undo 1回目が
+  // 「エッジだけ消えて重なった位置に戻る」中間状態になるため、相乗りさせて1回で丸ごと戻す
+  connectDroppedNode: (sourceId, targetId, returnPosition) =>
+    set((state) => {
+      if (sourceId === targetId) return {}
+      const already = state.edges.some(
+        (e) =>
+          (e.source === sourceId && e.target === targetId) ||
+          (e.source === targetId && e.target === sourceId)
+      )
+      if (already) return {}
+      return {
+        edges: addEdge(
+          makeEdge({ source: sourceId, target: targetId, sourceHandle: null, targetHandle: null }),
+          state.edges
+        ),
+        nodes: state.nodes.map((n) =>
+          n.id === sourceId ? { ...n, position: returnPosition } : n
+        ),
+      }
+    }),
+
   hasConnectedEdges: (nodeId) =>
     get().edges.some((e) => e.source === nodeId || e.target === nodeId),
 })

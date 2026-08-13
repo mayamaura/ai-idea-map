@@ -71,6 +71,9 @@ export interface EdgeSlice {
   toggleEdgeDirection: (id: string) => void
   updateEdgeLabel: (id: string, label: string) => void
   addSuggestedEdge: (sourceId: string, targetId: string) => void
+  /** ドラッグ&ドロップ接続。エッジ作成と同時にドラッグしたノードを開始位置へ戻す。
+   *  履歴は直前の onNodesChange(dragging:false) が積んだエントリに相乗りし、Undo 1回で両方戻る */
+  connectDroppedNode: (sourceId: string, targetId: string, returnPosition: { x: number; y: number }) => void
   hasConnectedEdges: (nodeId: string) => boolean
 }
 

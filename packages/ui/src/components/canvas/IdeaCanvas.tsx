@@ -159,7 +159,7 @@ const edgeTypes: EdgeTypes = {
 }
 
 export function IdeaCanvas() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, connectNodes, pendingFitView, clearPendingFitView } = useMapStore(
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, connectNodes, connectDroppedNode, pendingFitView, clearPendingFitView } = useMapStore(
     useShallow((s) => ({
       nodes: s.nodes,
       edges: s.edges,
@@ -168,6 +168,7 @@ export function IdeaCanvas() {
       onConnect: s.onConnect,
       addNode: s.addNode,
       connectNodes: s.connectNodes,
+      connectDroppedNode: s.connectDroppedNode,
       pendingFitView: s.pendingFitView,
       clearPendingFitView: s.clearPendingFitView,
     }))
@@ -187,6 +188,7 @@ export function IdeaCanvas() {
     openContextMenu,
     closeContextMenu,
     setDragOverGroupId,
+    setDragOverNodeId,
     isPresentationMode,
     presentationNodeIds,
     presentationCurrentIndex,
@@ -202,6 +204,7 @@ export function IdeaCanvas() {
       openContextMenu: s.openContextMenu,
       closeContextMenu: s.closeContextMenu,
       setDragOverGroupId: s.setDragOverGroupId,
+      setDragOverNodeId: s.setDragOverNodeId,
       isPresentationMode: s.isPresentationMode,
       presentationNodeIds: s.presentationNodeIds,
       presentationCurrentIndex: s.presentationCurrentIndex,
@@ -284,14 +287,60 @@ export function IdeaCanvas() {
     [openContextMenu]
   )
 
+  // ドロップ接続: ドラッグ開始位置（親相対座標）と現在の重なり先。
+  // handleNodeDragStop で uiStore を購読せずに参照できるよう ref にミラーする
+  const dragStartPosRef = useRef<{ id: string; position: { x: number; y: number } } | null>(null)
+  const dropTargetRef = useRef<string | null>(null)
+
+  const handleNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
+    dragStartPosRef.current = { id: node.id, position: { ...node.position } }
+  }, [])
+
   const handleNodeDrag = useCallback(
     (_: React.MouseEvent, draggedNode: Node) => {
-      if (draggedNode.parentId) {
-        setDragOverGroupId(null)
-        return
+      // --- ドロップ接続: ドラッグノードの中心が重なった未接続 ideaNode をハイライト ---
+      // 子ノードの position は親相対のため、判定は絶対座標に直してから行う
+      const absOf = (n: Node): { x: number; y: number } => {
+        if (!n.parentId) return n.position
+        const parent = nodes.find((p) => p.id === n.parentId)
+        return parent
+          ? { x: parent.position.x + n.position.x, y: parent.position.y + n.position.y }
+          : n.position
       }
       const nodeW = draggedNode.measured?.width ?? 160
       const nodeH = draggedNode.measured?.height ?? 60
+      // 複数選択ドラッグは戻す位置が掴んだノードにしか効かず挙動が崩れるため対象外
+      const multiDrag = nodes.some((n) => n.selected && n.id !== draggedNode.id)
+      let dropTargetId: string | null = null
+      if (!multiDrag) {
+        const dragPos = absOf(draggedNode)
+        const cx = dragPos.x + nodeW / 2
+        const cy = dragPos.y + nodeH / 2
+        const target = nodes.find((n) => {
+          if (n.type !== 'ideaNode' || n.id === draggedNode.id) return false
+          const tPos = absOf(n)
+          const tW = n.measured?.width ?? 160
+          const tH = n.measured?.height ?? 60
+          return cx >= tPos.x && cx <= tPos.x + tW && cy >= tPos.y && cy <= tPos.y + tH
+        })
+        // 既に接続済み（向き・双方向を問わず）の相手は対象外 = 通常の移動として扱う
+        if (target) {
+          const already = edges.some(
+            (e) =>
+              (e.source === draggedNode.id && e.target === target.id) ||
+              (e.source === target.id && e.target === draggedNode.id)
+          )
+          if (!already) dropTargetId = target.id
+        }
+      }
+      dropTargetRef.current = dropTargetId
+      setDragOverNodeId(dropTargetId)
+
+      // --- グループハイライト: 接続先ノードがあるときはそちらを優先して消す ---
+      if (dropTargetId || draggedNode.parentId) {
+        setDragOverGroupId(null)
+        return
+      }
       const { x, y } = draggedNode.position
       const groupNodes = nodes.filter((n) => n.type === 'groupNode')
       const overlapping = groupNodes.find((g) => {
@@ -302,12 +351,24 @@ export function IdeaCanvas() {
       })
       setDragOverGroupId(overlapping?.id ?? null)
     },
-    [nodes, setDragOverGroupId]
+    [nodes, edges, setDragOverGroupId, setDragOverNodeId]
   )
 
-  const handleNodeDragStop = useCallback(() => {
-    setDragOverGroupId(null)
-  }, [setDragOverGroupId])
+  const handleNodeDragStop = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      const targetId = dropTargetRef.current
+      const start = dragStartPosRef.current
+      if (targetId && start && start.id === node.id) {
+        connectDroppedNode(node.id, targetId, start.position)
+        addToast('接続しました', 'success')
+      }
+      dropTargetRef.current = null
+      dragStartPosRef.current = null
+      setDragOverNodeId(null)
+      setDragOverGroupId(null)
+    },
+    [connectDroppedNode, addToast, setDragOverNodeId, setDragOverGroupId]
+  )
 
   const handlePaneContextMenu = useCallback(
     (e: MouseEvent | React.MouseEvent) => {
@@ -431,6 +492,7 @@ export function IdeaCanvas() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={handleNodeClick}
+            onNodeDragStart={handleNodeDragStart}
             onNodeDrag={handleNodeDrag}
             onNodeDragStop={handleNodeDragStop}
             onPaneClick={handlePaneClick}

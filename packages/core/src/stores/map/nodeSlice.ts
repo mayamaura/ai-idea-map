@@ -39,6 +39,9 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
       groupNodes.length > 0
         ? changes.map((c) => {
             if (c.type !== 'position' || c.dragging !== false || !c.position) return c
+            // ドロップ接続のターゲットに重なったままのドロップは直後に開始位置へ戻されるため、
+            // ドロップ位置でのグループ出入り判定（ダイアログ・押し出し）を行わない
+            if (useUIStore.getState().dragOverNodeId) return c
             const node = currentNodes.find((n) => n.id === c.id)
             if (!node || node.type === 'groupNode') return c
 

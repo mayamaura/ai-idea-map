@@ -2032,6 +2032,32 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
+### Phase 40: ドラッグ&ドロップ接続 🔨 実装済み（確認中）
+
+**目標**: ノードをドラッグして別ノードに重ねてドロップするだけでエッジを作成できるようにする。ハンドルドラッグ・接続モードに続く3つ目のエッジ作成手段。
+
+#### タスク
+- [x] `packages/core/src/stores/uiStore.ts` に `dragOverNodeId` / `setDragOverNodeId` を追加（`dragOverGroupId` と同様の一時UI状態）
+- [x] `packages/core/src/stores/map/edgeSlice.ts` に `connectDroppedNode(sourceId, targetId, returnPosition)` を実装。エッジ追加とドラッグしたノードの位置を開始位置へ戻す処理を1回の `set` にまとめ、`sourceId === targetId` または既に接続済み（向き問わず）なら何もしない
+- [x] `packages/core/src/stores/map/nodeSlice.ts` の `onNodesChange` を修正し、`uiStore.dragOverNodeId` が立っている間はドロップ位置でのグループ出入り判定（「グループに追加」ダイアログ・押し出し）をスキップする（位置は直後に開始位置へ戻されるため）
+- [x] `packages/ui/src/components/canvas/IdeaCanvas.tsx` に `handleNodeDragStart`（開始位置を記録）・`handleNodeDrag`（ドラッグ中のノード中心が未接続の別 `ideaNode` に重なっているかを判定しハイライト、複数選択ドラッグとグループノードは対象外）・`handleNodeDragStop`（重なっていれば `connectDroppedNode` を呼びエッジ作成＋位置を戻す）を実装し、`<ReactFlow>` に `onNodeDragStart` を追加
+- [x] `packages/ui/src/components/canvas/IdeaNode.tsx` に `isDropTarget`（`dragOverNodeId === id`）による緑リング（`outline: 3px solid #10b981`）のハイライト表示を追加
+- [x] ドロップ成功時にトースト「接続しました」を表示
+- [x] Undo/Redo: React Flow が発火する `onNodesChange`（`dragging: false`）→ `onNodeDragStop` の順を利用し、前者が積んだドロップ直前のスナップショットに `connectDroppedNode`（`pushPast` なし）を相乗りさせることで、Undo 1回でエッジ作成と位置戻しをまとめて取り消せるようにした
+- [x] `docs/design.md`・`docs/requirements.md` を更新
+
+**完了条件**: 型検査・ビルドが通過し、ノードを別ノードにドラッグ&ドロップするとエッジが作成され、ドラッグしたノードが開始位置に戻ること。
+
+#### 残りの手動確認項目
+- 未接続のノード同士をドラッグ&ドロップしてエッジが作成され、ドラッグしたノードが開始位置に戻ること
+- 既に接続済みの相手（順方向・逆方向・双方向）にドロップしても、エッジが増えず通常の移動として位置が確定すること
+- 複数選択した状態でのドラッグでは、ハイライト・エッジ作成が発生しないこと
+- グループノード同士、およびグループの子ノードを絡めたドラッグで意図しない動作がないこと（接続先ノードに重なっている間はグループへの出入り判定が抑制されること）
+- ドロップ後の Undo 1回で、エッジ作成とノード移動の両方がまとめて取り消されること
+- トースト「接続しました」が表示されること
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。

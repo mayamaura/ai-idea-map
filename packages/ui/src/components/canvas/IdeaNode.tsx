@@ -45,6 +45,8 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
     }))
   )
   const presentationIndex = useUIStore((s) => s.presentationNodeIds.indexOf(id))
+  // ドラッグ中のノードが自ノードに重なっている（ドロップでエッジ作成）。boolean 化して自ノードだけ再レンダー
+  const isDropTarget = useUIStore((s) => s.dragOverNodeId === id)
   const nodeShape = useSettingsStore((s) => s.nodeShape)
   const getCategoryById = useSettingsStore((s) => s.getCategoryById)
 
@@ -164,8 +166,12 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       className="relative group animate-node-enter transition-opacity duration-200"
       style={{
         opacity,
-        outline: isConnectSource ? '2px solid #6366f1' : undefined,
-        outlineOffset: isConnectSource ? 2 : undefined,
+        outline: isDropTarget
+          ? '3px solid #10b981'
+          : isConnectSource
+          ? '2px solid #6366f1'
+          : undefined,
+        outlineOffset: isDropTarget ? 3 : isConnectSource ? 2 : undefined,
       }}
       onDoubleClick={handleDoubleClick}
       onTouchStart={handleTouchStart}

@@ -115,6 +115,9 @@ interface UIState {
   /** ドラッグ中のノードが重なっているグループ（ハイライト表示用） */
   dragOverGroupId: string | null
   setDragOverGroupId: (id: string | null) => void
+  /** ドラッグ中のノードが重なっている接続先ノード（ドロップでエッジ作成・ハイライト表示用） */
+  dragOverNodeId: string | null
+  setDragOverNodeId: (id: string | null) => void
   // ファイルダッシュボード & ショートカット一覧
   isFileDashboardOpen: boolean
   isShortcutsModalOpen: boolean
@@ -232,6 +235,8 @@ export const useUIStore = create<UIState>((set) => ({
   presentationCurrentIndex: 0,
   dragOverGroupId: null,
   setDragOverGroupId: (id) => set({ dragOverGroupId: id }),
+  dragOverNodeId: null,
+  setDragOverNodeId: (id) => set({ dragOverNodeId: id }),
   connectingFromNodeId: null,
   isFileDashboardOpen: true,
   isShortcutsModalOpen: false,

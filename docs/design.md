@@ -265,6 +265,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 - `setNodesNoHistory(nodes)` — ノード配列を更新するが履歴に積まない（アニメーション途中フレーム用）（Phase 21）
 - `commitNodesWithHistory(originalNodes, finalNodes)` — 最終フレームを確定し、整列前スナップショットを `past` に1回積む（Phase 21）
 - `connectNodes(source, target)` — 接続モード方式のエッジ作成（Phase 26）。`onConnect` に委譲して履歴push・矢印マーカー付与・`addEdge` 重複排除を再利用。`source === target` のときは何もしない
+- `connectDroppedNode(sourceId, targetId, returnPosition)` — ドラッグ&ドロップ接続（Phase 40、§5.2.1）。エッジ追加とドラッグしたノードを `returnPosition`（ドラッグ開始位置）へ戻す処理を1回の `set` にまとめる。`pushPast` はしない（§8.2 の履歴相乗り）。`sourceId === targetId`、または既に接続済み（向き問わず）なら何もしない
 - `undo`, `redo` — 履歴操作
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
 
@@ -320,6 +321,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `presentationCurrentIndex` | `number` | 現在表示中のインデックス（0-based）（Phase 15） |
 | `renderAllNodes` | `boolean` | 画像エクスポート時のみ true。`onlyRenderVisibleElements` を一時無効化して全ノードをDOM描画させ、マップ全体エクスポートの欠落を防ぐ（Phase 24） |
 | `connectingFromNodeId` | `string \| null` | 接続モード中の接続元ノードID。null=接続モードでない。`setConnectingFromNodeId(id)` で更新（Phase 26） |
+| `dragOverNodeId` | `string \| null` | ドラッグ中のノードが重なっている接続先候補ノードID（ドロップでエッジ作成・緑リング表示、§5.2.1）。null=重なりなし。`setDragOverNodeId(id)` で更新（Phase 40） |
 
 ### 4.3 settingsStore（packages/core/src/stores/settingsStore.ts）
 
@@ -460,8 +462,21 @@ React Flow の主要設定:
 - `onEdgeContextMenu` → `uiStore.openContextMenu({ type: 'edge', ... })`
 - `onPaneContextMenu` → `uiStore.openContextMenu({ type: 'pane', flowPosition })`
 - `onPaneClick` → 選択解除 + コンテキストメニュー閉じる
+- `onNodeDragStart` / `onNodeDrag` / `onNodeDragStop` → ドラッグ&ドロップ接続（Phase 40、§5.2.1）
 
 フォーカス／発表／接続モードの dim は `FocusStateContext` 経由で各ノード・エッジに配る（§16.3）。`<ReactFlow>` に渡す `nodes` / `edges` はストアの配列そのままで、加工しない。
+
+### 5.2.1 ドラッグ&ドロップ接続（Phase 40）
+
+ノードをドラッグして別の `ideaNode` に重ねると、ドロップでエッジを作成できる。ハンドルドラッグ・接続モード（§17.8「接続モード方式」）に続く3つ目のエッジ作成手段。
+
+- `handleNodeDragStart` — ドラッグ開始位置を `dragStartPosRef` に記録する（Undo/接続後にノードを戻す位置）
+- `handleNodeDrag` — ドラッグ中のノードの中心座標が、未接続の別 `ideaNode` の矩形に入っているかを毎フレーム判定する。子ノードの `position` は親相対のため、絶対座標に直してから判定する。対象が見つかれば `uiStore.setDragOverNodeId(id)` でハイライト（緑リング、§5.3）。複数選択ドラッグ（掴んだノード以外にも `selected` があるとき）とグループノードは対象外
+- 既に接続済みの相手（`source`/`target` の向き・双方向を問わず）はハイライトされず、ドロップしても何も起きない＝通常の移動として扱う（誤操作でのエッジ削除事故を防ぐ設計判断）
+- 接続先ノードに重なっている間はグループのドロップハイライト（`dragOverGroupId`）を消し、接続先ノードを優先する
+- `handleNodeDragStop` — `dragOverNodeId` が立っていれば `mapStore.connectDroppedNode(draggedId, targetId, startPosition)` を呼び、エッジを作成すると同時にドラッグしたノードを開始位置へ戻す（「重ねる」は接続ジェスチャであって移動ではない）。トースト「接続しました」を表示
+- `nodeSlice.onNodesChange` は `uiStore.dragOverNodeId` が立っている間、ドロップ位置でのグループ出入り判定（「グループに追加」ダイアログ・押し出し）を行わない。位置は直後に開始位置へ戻されるため、判定しても意味がない
+- Undo/Redo の扱い（履歴への相乗り）は §8.2 を参照
 
 ### 5.3 IdeaNode（packages/ui/src/components/canvas/IdeaNode.tsx）
 
@@ -479,6 +494,7 @@ React Flow の主要設定:
 - 通常: テキスト表示、ボーダー `border-gray-200`
 - 選択中: ボーダー `border-primary-500`、アクションバーを下部に表示
 - AIノード (`createdBy === 'ai'`): `node-ai-generated` クラス（`✦` バッジ + pulse アニメーション）
+- ドロップ接続先候補（`dragOverNodeId === id`、Phase 40・§5.2.1）: 緑リング `outline: 3px solid #10b981`
 
 **インライン編集（タイトルのみ）（Phase 22）:**
 - ダブルクリック / F2 / 右クリック「名前を変更」で `uiStore.editingNodeId` を設定 → textarea 表示
@@ -795,6 +811,9 @@ interface Snapshot {
 
 **積まない（ドラッグ中）:**
 - ドラッグ中の位置変化（`position change` with `dragging=true`）
+
+**履歴への相乗り（Phase 40: ドラッグ&ドロップ接続、§5.2.1）:**
+React Flow はドラッグ終了時に `onNodesChange`（`dragging: false`）→ `onNodeDragStop` の順で発火する。前者がドロップ直前の位置を反映したスナップショットを `past` に積んだ直後、後者から呼ばれる `connectDroppedNode` は `pushPast` せずにエッジ追加とドラッグしたノードの位置を開始位置へ戻す処理を行う。こうして直前のスナップショットに相乗りさせることで、Undo 1回で「エッジ作成＋位置が戻る」を丸ごと取り消せる（`connectDroppedNode` 自身が積むと、Undo 1回目が「エッジだけ消えて重なった位置に戻る」という中間状態になってしまう）。
 
 ### 8.3 操作フロー
 
