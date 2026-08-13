@@ -63,7 +63,7 @@ Web版との最大の違いは「バックエンドなし・ブラウザのみ�
 | 機能 | Web版の実装 | デスクトップ版の実装 | 挙動の差異 | ユーザーへの影響 |
 |---|---|---|---|---|
 | 設定の永続化 | `settingsStore.ts`（Zustand `persist` ミドルウェア）が `localStorage` キー `ideamap-settings` に `aiModel`/`suggestionCount`/`autoSave`/`theme`/`language`/`nodeShape`/`categories`/`snapToGrid`/`edgeStyle` を保存 | `tauri-plugin-store` で `settings.json` を OS標準の設定ディレクトリ（`$APPCONFIG`）に保存。Zustand の `persist` の `storage` オプションをカスタム実装（store プラグイン経由）に差し替え | `localStorage` は5MB程度の上限があるがローカルファイルには実質上限なし。ファイルは平文JSONとしてディスク上に残る | ユーザーはOS上のアプリ設定フォルダを直接エクスプローラ/Finderで確認できるようになる（削除・バックアップが容易に） |
-| APIキーの保管 | `utils/encryption.ts` の `setStoredApiKeyWithPassword`/`getStoredApiKeyWithPassword`（マスターパスワードから PBKDF2 100,000回 + AES-GCM で `localStorage` の `ideamap-apikey-mp` に暗号化保存） | OSキーチェーン（Windows Credential Manager / macOS Keychain / libsecret）に平文キーを直接格納。`keyring` crate をラップした Tauri プラグイン経由でRust側から読み書き（詳細は §4） | Web版は「ローカルストレージ＋マスターパスワード」という多層防御が必要だったが、デスクトップ版はOS自体がユーザーログインで保護するキーチェーンを使うため、**マスターパスワード入力が原則不要**になる | 起動のたびにマスターパスワードを入力する手間がなくなる。一方でOSアカウントを共有しているユーザー間ではキーが見える点は変わらない |
+| APIキーの保管 | `utils/encryption.ts` の `setStoredSecretWithPassword`/`getStoredSecretWithPassword`（マスターパスワードから PBKDF2 100,000回 + AES-GCM で `localStorage` に暗号化保存。Phase 39 で論理キー別に一般化し、Claude APIキーは旧キー名 `ideamap-apikey-mp` を維持） | OSキーチェーン（Windows Credential Manager / macOS Keychain / libsecret）に平文キーを直接格納。`keyring` crate をラップした Tauri プラグイン経由でRust側から読み書き（詳細は §4） | Web版は「ローカルストレージ＋マスターパスワード」という多層防御が必要だったが、デスクトップ版はOS自体がユーザーログインで保護するキーチェーンを使うため、**マスターパスワード入力が原則不要**になる | 起動のたびにマスターパスワードを入力する手間がなくなる。一方でOSアカウントを共有しているユーザー間ではキーが見える点は変わらない |
 | マップファイルの保存・読込 | `services/storageService.ts`（`localStorage` の `ideamap-current-map` に現在のマップをJSON保存）＋ `services/googleDriveService.ts`（`saveMap`/`loadMap` で Google Drive にJSONアップロード/ダウンロード） | `dialog` プラグインでネイティブの開く/保存ダイアログを表示し、`fs` プラグインで `.ideamap`（実体はJSON）ファイルを直接読み書き。Google Driveは任意のオプション機能として残す（§3.8） | Web版は「ファイル」という概念がなく常に1つの `localStorage` エントリ or Drive上のファイル。デスクトップ版は明示的なファイルパスを持つ「ファイルベース編集」になる | 「名前を付けて保存」でユーザーが管理するファイルツリーの好きな場所に保存できるようになる一方、初めてのユーザーには「開くダイアログ」という一手間が増える |
 | 最近開いたファイル | `storageService.ts` の `saveRecentMap`/`loadRecentMaps`（`localStorage` の `ideamap-recent-maps` に Drive の `fileId` ベースで最大5件） | ローカルファイルパスの履歴を `store` プラグインに保存し、あわせてOSの「最近使った項目」（Windowsジャンプリスト／macOS「最近使った項目」メニュー）にも登録 | Web版はDriveの `fileId` を主キーにしていたが、デスクトップ版はファイルの絶対パスを主キーにする必要がある（ファイル移動・削除で無効化されうる） | エクスプローラ/Finder・タスクバーのアイコン右クリックからも最近のマップを開けるようになる |
 | エクスポート（JSON/画像/Markdown） | `services/exportService.ts`（`downloadDataUrl`/`downloadText` が `<a download>` を生成しクリックしてブラウザのダウンロード機構を利用） | `dialog.save()` でファイルパスを選ばせ、`fs.writeTextFile`/`fs.writeFile` で直接書き出す。PNG/SVGは `html-to-image` の `toPng`/`toSvg` の出力（data URL）をデコードして書き込む | ブラウザのダウンロードフォルダに固定で落ちる挙動から、ユーザーが保存先を毎回選べる挙動に変わる | 保存先を毎回選べて便利になる反面、初回はダイアログが増える分クリック数が増える |
@@ -282,7 +282,9 @@ fn get_api_key(account: String) -> Result<String, String> {
 }
 ```
 
-フロントエンド側は `utils/encryption.ts` の `setStoredApiKeyWithPassword`/`getStoredApiKeyWithPassword` 相当のインターフェースを持つ `utils/encryption.desktop.ts` を新設し、内部で上記Rustコマンドを `invoke('set_api_key', ...)` のように呼び出す形にします。呼び出し元の `settingsStore.ts` からは抽象化された同じ関数名で呼べるようにし、プラットフォーム判定でモジュールを切り替えます。
+フロントエンド側は `utils/encryption.ts` 相当のインターフェースを持つモジュールを新設し、内部で上記Rustコマンドを `invoke('set_api_key', ...)` のように呼び出す形にします。呼び出し元の `settingsStore.ts` からは抽象化された同じ関数名で呼べるようにし、プラットフォーム判定でモジュールを切り替えます。
+
+> **実装時の変更（Phase 33〜39）**: この「プラットフォーム判定でモジュールを切り替える」案は採用せず、`SecretAdapter`（`packages/platform`）を介す形になりました。実体は Web版が `apps/web/src/platform/secret.web.ts`、デスクトップ版が `apps/desktop/src/platform/secret.desktop.ts` + `src-tauri/src/keychain.rs` です。Phase 39 で Adapter は論理キー別の複数スロットを扱えるようになり、Claude APIキーと OpenAI APIキーを同時に保管できます（`docs/design.md` §10）。
 
 ### 4.3 マスターパスワード入力は不要にできるか
 

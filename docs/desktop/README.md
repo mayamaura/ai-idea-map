@@ -3,7 +3,7 @@
 **このディレクトリは「Web版とデスクトップ版でコアを共通化しながら、ローカルLLM（Ollama）対応のデスクトップ版を作る」ための設計群です。**
 作業を始める AI エージェント・開発者は、まず本ファイルを読んでから個別ドキュメントに進んでください。
 
-最終更新: 2026-08-09
+最終更新: 2026-08-13
 
 ---
 
@@ -37,7 +37,8 @@
 | フレームワーク | **Tauri v2**（2026-07 時点の安定版 2.11.5） | `tauri-plugin-http` でブラウザの CORS プリフライトを経由せず Ollama へアクセスできる（ただし到達には Origin ヘッダを落とす追加対応が要った。§3.3訂正参照）／既存 Vite+React 資産をほぼ無改修で流用できる／Electron 比でバンドル・メモリが小さい |
 | リポジトリ構成 | **pnpm workspaces のモノレポ**。`packages/core` `packages/ui` `packages/platform` + `apps/web` `apps/desktop` | 依存の厳格さがそのまま「coreはUIに依存しない」というルールの強制装置になる |
 | プラットフォーム差の吸収 | **Platform Adapter**（`StorageAdapter` / `FileAdapter` / `SecretAdapter` / `HttpAdapter` / `SystemAdapter`）を `setPlatform()` でシングルトン注入 | Zustand ストアが React ツリー外のプレーンモジュールとして設計済みのため、Context より自然 |
-| LLM 抽象化 | `LLMProvider` インタフェース（`complete` / `completeJson` / `stream` / `listModels` / `capabilities`）に `ClaudeProvider` と `OllamaProvider` の2実装 | 構造化出力の方式差（Claude=プロンプト指示＋正規表現抽出 / Ollama=`format` にJSON Schema）を境界内に閉じ込める |
+| LLM 抽象化 | `LLMProvider` インタフェース（`complete` / `completeJson` / `stream` / `listModels` / `capabilities`）に `ClaudeProvider` と `OllamaProvider` の2実装。**Phase 39 で `OpenAIProvider` を追加し3実装に** | 構造化出力の方式差（Claude=プロンプト指示＋正規表現抽出 / Ollama=`format` にJSON Schema / OpenAI=`response_format: json_object`）を境界内に閉じ込める |
+| OpenAI プロバイダ（Phase 39） | Chat Completions API（`/v1/chat/completions`）を叩く `OpenAIProvider` を追加。api.openai.com は CORS を許可しているため Ollama と異なり Web版でも利用できる。GitHub Copilot（GitHub Models）対応は、当該サービスが2026-07-30に終了済みのため見送り | ユーザーが Claude 以外のAPIキーも選べるようにする。GitHub Models は実測で終了エラーが返ることを確認した |
 | デスクトップの保存先 | **ローカルファイル中心**（`.ideamap` 拡張子、実体はJSON）。ネイティブの開く/保存ダイアログ | Ollama利用者はローカル完結志向。`MapFile` 型は Web/Desktop 共通なのでファイル交換で相互運用できる |
 | APIキーの保管 | デスクトップは **OSキーチェーン**（`keyring` crate）。マスターパスワード入力は不要になる | Stronghold 公式プラグインは非推奨化（v3で削除予定）のため不採用 |
 | 配布 | GitHub Actions で Windows(MSI/NSIS)・macOS(dmg) をビルド → GitHub Releases → `tauri-plugin-updater` で自動更新。**当面はコード署名なし** | 個人開発。署名証明書は後から導入可能な移行パスを確保 |
@@ -85,6 +86,22 @@ Phase 34〜37 の移行パス（JSON エクスポート → デスクトップ�
 | 13 | 設定パネルの `DriveSyncSection` の表示条件 | `showCloudSync`（＝`cloudAuth` の有無）だけでは足りなくなったため、`SecretAdapter.isPassphraseFree` が false のときだけ出すよう条件を足した。**これが無いとデスクトップ版に「マスターパスワード & Drive同期」欄が現れ、押すと `setAppSettingsSync` 未注入で失敗する。** #12 と対で必要な変更 |
 | 14 | ヘッダーの保存先表示 | `isSignedIn && currentFileId` という判定に `currentFileOrigin === 'cloud'` を足した。**デスクトップ版はサインイン中にローカルファイルを開いている状態がありえ、そのままだと「Drive」と誤表示する。** あわせて `restoreCurrentFileId()` は、origin が保存されていない（Phase 38 以前の）値を読んだとき `FileAdapter` の既定 origin に寄せる。当時は保存先がアプリごとに1つだけだったので、これが正しい復元になる |
 | 15 | ヘッダーからの保存先切り替え（Phase 38 への追加実装・2026-08-09） | 起動画面の Drive 欄だけでは、編集中の画面から保存先切り替えの導線を見つけられなかった。`Header` に `onSaveToCloud` prop を追加し、「接続済み」メニューに「このマップをドライブに保存」を出す（ローカルのマップを開いているときだけ）。`DriveSection.tsx` にインラインで書かれていた保存処理は `apps/desktop/src/saveToDrive.ts` の `saveCurrentMapToDrive()` に切り出し、起動画面とヘッダーの両方から呼ぶ。あわせて `Header` に `showMapList` prop を追加し、`mapListSlot` を持たないデスクトップ版では「マップ一覧」メニュー項目とモバイル用アイコンボタンを隠すようにした（これまでは押しても何も起きない死んだ項目だった）。既定の保存先がローカルのままである点（#10）は変わらない。**続く追加実装（同日）** で逆方向も足した。`apps/desktop/src/saveToLocal.ts` の `saveCurrentMapToLocal()` が `FileAdapter.saveFileAs()`（ネイティブ保存ダイアログ・書き込み・最近使ったファイルへの記録は既存実装のまま）を呼び、返ってきた `FileRef` で保存先をローカルへ切り替える。`Header` には `onSaveToLocal` prop を追加し、「このマップをローカルに保存」を Drive のマップを開いているときだけ出す。表示条件が「このマップをドライブに保存」（`currentFileOrigin !== 'cloud'`）とちょうど逆なので、メニューには常にどちらか一方だけが表示され、両方が同時に出ることはない |
+
+### 3.1-I OpenAI プロバイダ追加時の判断（Phase 39 実施中・2026-08-13）
+
+`docs/desktop/llm-abstraction.md` の記述（Claude・Ollamaの2実装を前提にした箇所）から意図的に変えた点、または実装時に確定した詳細です。**本節が優先されます。**
+
+| # | 事項 | 判断 |
+|---|---|---|
+| 1 | GitHub Copilot（GitHub Models）対応 | **見送り。** 当初 `models.github.ai` を OpenAI 互換エンドポイントとして実装し、Copilotサブスクリプションのユーザーにも対応する方針だったが、GitHub Models は2026年7月30日付けで終了しており、実際にエンドポイントを叩くと `{"error":{"code":"github_models_retirement_brownout", ...}}` が返ることを確認した。Copilot には他に公開APIが無く、`api.githubcopilot.com` はIDE向けの内部APIで公開仕様が無いため採用しない |
+| 2 | Web版からの直接呼び出し | **可能。** `api.openai.com` は CORS を許可しており（`Access-Control-Allow-Origin` がリクエスト元Originをエコー）、Ollama と異なり `HttpAdapter` 経由でWeb版のブラウザからも直接叩ける。プロバイダ切り替えUIの全プラットフォーム表示は別途進行中の `SettingsPanel` 改修で対応する |
+| 3 | 出力トークン数パラメータ | `max_tokens` ではなく `max_completion_tokens` を使用する。`max_tokens` は非推奨であるうえ reasoning 系モデルと非互換なため |
+| 4 | `temperature`/`response_format` の 400 フォールバック | reasoning 系モデルは `temperature` を指定すると 400 を返す（無視ではなくエラー）。HTTP 400 のときだけ `temperature` と `response_format` を落として1回だけ再送する。`OllamaProvider` が `think: false` で 400 のとき `think` を外して再送するのと同じ設計 |
+| 5 | `AIModelSelection` 型・`settingsStore.getActiveModelSelection()` | **削除。** どこからも呼ばれていないデッドコードだったため |
+| 6 | Web版のキー保管の一般化 | `apps/web/src/utils/encryption.ts` のストレージキーを論理キー別（`storageKey(key)`）にした。Claude APIキー（論理キー `'apiKey'`）だけは旧キー名 `ideamap-apikey-mp` を維持し、既存ユーザーのデータをそのまま読めるようにしている |
+| 7 | Drive への設定同期 | **対象外のまま。** `saveSettingsToDrive`/`loadSettingsFromDrive` は Claude APIキー・Claudeモデルのみを扱う従来の実装のまま変更していない（`docs/design.md` §4.3） |
+
+詳細な実装方針（SSE・`max_completion_tokens`・400フォールバック・`json_object`）は `docs/desktop/llm-abstraction.md` §3.5 を参照。
 
 ### 3.1-B `LLMProvider` 実装時の4つの変更（Phase 32 実施済み・2026-08-05）
 
@@ -230,6 +247,8 @@ graph LR
 | 37 🔨 | デスクトップ固有UX（ファイル関連付け・D&D・ウィンドウ状態・外部変更検知・共有URL代替） | 3日 | platform-integration §3.4〜3.7 | 「ネイティブアプリらしさ」。実装済み・CDP+PowerShellでの実機確認済み。エクスプローラでの実ダブルクリック起動・実ドロップ操作・macOS実機は未確認。差分は §3.1-G |
 | 38 🔨 | デスクトップ版 Google Drive 連携（ループバック + PKCE） | 3日 | platform-integration §3.8 | Web版とのクラウド同期。実装・型検査・Rustテスト（13件）は通過済み。**Google Cloud Console でのデスクトップ用クライアントID発行と、実機での認可〜Drive読み書きの確認が未了**。差分は §3.1-H |
 
+**Phase 39（2026-08-13〜、OpenAI プロバイダ追加）** は当初のロードマップに無かった追加フェーズです。LLMプロバイダに Claude・Ollama に続く3つ目として OpenAI を追加するもので、Web版・デスクトップ版共通のコア変更（`packages/core`）が中心のため、上表・上記 mermaid 図（Tauri 固有機能の段階導入）には含めていません。詳細は `docs/implementation-plan.md` Phase 39、設計判断は §3.1-I を参照。
+
 ### 4.1 順序についての判断
 
 **Phase 32（LLM抽象化）を Phase 33（モノレポ移行）より先に置いています。** 理由は、LLM抽象化は既存の単一プロジェクト構成のままでも完結し、Web版に単独で価値（エラー処理の統一、`AbortSignal` の実装漏れ修正）を返すためです。移行時は `git mv` するだけで済みます。逆順でも成立しますが、大きな構造変更（Phase 33）の前に小さく安全な変更で足場を固める方を推奨します。
@@ -254,6 +273,8 @@ Phase 33（モノレポ移行）を飛ばし、既存 `ideamap/` をそのまま
 | 11 | `multipart/related` を文字列で手組みしたアップロードを Google Drive API が受け付けるか（`FormData` からの置き換え）。**Web版・デスクトップ版の両方の保存経路が変わるため、どちらでも実機確認が要る** | 38 | README §3.1-H #8 |
 | 12 | Tauri の WebView で `crypto.subtle` が使えるか（＝セキュアコンテキストか）。使えるなら PKCE のチャレンジ計算を Rust に置く必要はなくなる。現状は Rust 側で計算して回避している | 38 | README §3.1-H #2 |
 | 13 | OAuth 同意画面の公開ステータスが「Testing」の間はリフレッシュトークンが7日で失効する。実運用では「In production」への変更が必要 | 38 | README §3.1-H #7 |
+| 14 | 実際のOpenAI APIキーでの実機疎通（アイデア提案・AIチャット・マップ分析・接続提案・クラスタ提案のAI機能5種） | 39 | implementation-plan Phase 39 |
+| 15 | reasoning系モデル（oシリーズ等）で `temperature` 指定時の400エラー→フォールバック再送が実際に機能すること | 39 | llm-abstraction §3.5 |
 
 #### Phase 34 で解消した項目（2026-08-07・Windows 11 実機）
 

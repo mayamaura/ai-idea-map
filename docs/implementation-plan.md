@@ -1987,6 +1987,51 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
+### Phase 39: OpenAI プロバイダ対応 🔨 実装済み（確認中）
+
+**目標**: LLMプロバイダに Claude・Ollama に続く3つ目として OpenAI を追加し、OpenAI の APIキーを持つユーザーにも対応する。
+
+> 参照: `docs/desktop/llm-abstraction.md` §3.5、`docs/desktop/README.md` §3.1-I。
+
+#### タスク
+- [x] `OpenAIProvider`（`packages/core/src/llm/openaiProvider.ts`）を新規実装。`POST https://api.openai.com/v1/chat/completions` を呼ぶ。`listModels()` は `GET /v1/models` から動的取得し、IDのプレフィックス（`gpt-`/`o\d`）判定と除外パターンでチャット用モデルだけに絞り込む
+- [x] 出力トークン数指定を `max_tokens` ではなく `max_completion_tokens` に統一（`max_tokens` は非推奨かつ reasoning 系モデルと非互換のため）
+- [x] `completeJson` は `response_format: { type: 'json_object' }` を使用。`capabilities.structuredOutput` は `'prompt-only'`
+- [x] reasoning 系モデルが `temperature` 指定で 400 を返す問題への対応として、HTTP 400 かつ `temperature`/`response_format` を含むリクエストのときだけそれらを外して1回だけ再送するフォールバックを実装（`OllamaProvider` の `think` フォールバックと同方式）
+- [x] ストリーミング（SSE、`data: {...}` 行 / `data: [DONE]` 終端、`choices[0].delta.content` が差分）を実装
+- [x] `packages/core/src/types/index.ts` の `LLMProviderId` に `'openai'` を追加
+- [x] `AIModelSelection` 型と `settingsStore.getActiveModelSelection()` を削除（どこからも呼ばれていないデッドコードだったため）
+- [x] `LLMError.provider` / `LLMProvider.id` にハードコードされていた `'claude' | 'ollama'` の union を `LLMProviderId` の import に統一（二重定義の解消）
+- [x] `settingsStore` に `openaiApiKey`（`SecretAdapter` 管理・非永続）・`openaiModel`（永続化）を追加。`storeProviderSecret()` ヘルパーで Claude 以外のプロバイダの秘密情報の保存先選択（OSキーチェーン／マスターパスワード暗号化／メモリのみ）を共通化
+- [x] `initApiKey` / `unlockApiKey` / `setMasterPassword` を Claude・OpenAI 両キー対応に拡張（Claudeキーが無くても OpenAI キーだけ保管されている場合があるため、両方の有無を見てから解錠を促す）
+- [x] `providerFactory.ts`（`ProviderSettings` / `getActiveProvider` / `isProviderReady`）と `packages/ui/src/hooks/useActiveProvider.ts` を OpenAI 対応に更新
+- [x] `ApiKeyRequired` を `isOllama` の二値分岐から `Record<LLMProviderId, {...}>` の文言テーブルに変更（プロバイダ追加時の文言追加漏れを型エラーで検出できるようにした）
+- [x] Web版のキー保管（`apps/web/src/utils/encryption.ts` / `apps/web/src/platform/secret.web.ts`）を論理キー別に一般化。Claude APIキー（論理キー `'apiKey'`）だけは旧 localStorage キー名（`ideamap-apikey-mp`）を維持し既存ユーザーのデータをそのまま読めるようにした。関数名を `hasStoredSecret` / `setStoredSecretWithPassword` / `getStoredSecretWithPassword` / `clearStoredSecret` に改名（いずれも第1引数に論理キーを取る）
+- [x] デスクトップ版 `apps/desktop/src-tauri/capabilities/ai-http.json` の `allow` に `https://api.openai.com/*` を追加（`tauri.conf.json` の CSP は変更なし。plugin-http は Rust 側から発行するため WebView の CSP を通らない）
+- [x] 設定UI（`packages/ui/src/components/panels/SettingsPanel.tsx`）にOpenAIセクション（APIキー入力・接続テストによる動的モデル取得・`LLMError.kind` 別のエラー案内）を追加。プロバイダ切り替えUIをデスクトップ限定から全プラットフォーム表示に変更し、Ollamaの選択肢だけ `http.canAccessLocalServers` で出し分けるようにした（`showProviderSwitch` → `canUseOllama` に用途変更）。Claude/OpenAI 共通のAPIキー入力を `ApiKeyField` として切り出して再利用。ollama.com の Web検索セクションはデスクトップ限定のまま維持
+- [x] `OpenAIProvider` の自己チェック（`packages/core/verify-openai.mts`、`pnpm check:openai`）を追加。`HttpAdapter` を差し替えて SSEパース（チャンク途中分割・累積・`[DONE]`終端）・400フォールバック（再送は1回だけ）・エラー分類・`listModels` の絞り込み・system プロンプト変換の9項目を検証する。テストランナーは導入せず `node:assert` と既存の `jiti` のみで動く
+
+#### 調査結果（設計判断）
+- **api.openai.com は CORS を許可している**。preflight を実測すると `Access-Control-Allow-Origin` にリクエスト元 Origin をそのままエコーし、`access-control-allow-headers: authorization,content-type` / `access-control-allow-methods: GET, OPTIONS, POST` を返す。Ollama と異なり、Web版のブラウザからも `HttpAdapter` 経由で直接呼び出せる
+- **GitHub Copilot（GitHub Models）対応は見送った**。当初 `models.github.ai` を OpenAI 互換エンドポイントとして実装する方針だったが、GitHub Models は2026年7月30日に完全終了しており、実際にエンドポイントを叩くと `{"error":{"code":"github_models_retirement_brownout", ...}}` が返る。Copilotには他に公開APIが無く、`api.githubcopilot.com` はIDE用の内部APIで公開仕様が無いため採用しない
+
+**完了条件**: 型検査・ビルドが通過し、OpenAIプロバイダでAI機能5種（アイデア提案・AIチャット・マップ分析・接続提案・クラスタ提案）が動作すること。
+
+**現状**: 設定UIを含めてコード実装は完了し、`pnpm typecheck` / `pnpm build` / `pnpm check:openai`（自己チェック9項目）を通過している。`pnpm lint` はリポジトリ既存の13件のエラーが残るが、今回追加・変更したファイルからの指摘は無い。実機での疎通確認は未実施。
+
+#### 残りの手動確認項目
+- 実際のOpenAI APIキーでのアイデア提案・AIチャット・マップ分析・接続提案・クラスタ提案の動作確認
+- 既定モデル `gpt-5.1` が実在するIDか（実キーでの `GET /v1/models` で確認する。無効なら `DEFAULT_OPENAI_MODEL` を差し替える）
+- `listModels()` の絞り込み条件が、実際の `/v1/models` の一覧に対して妥当か（チャット用モデルの取りこぼし・不要なモデルの混入）
+- reasoning系モデル（o-シリーズ等）で `temperature` 指定時の400エラー→フォールバック再送が実際に機能すること
+- Web版ブラウザからの直接呼び出し（CORS許可）が実機で機能すること
+- デスクトップ版から `https://api.openai.com` への到達確認（capability追加後）
+- 設定UIでのプロバイダ切替・接続テスト・モデル取得のE2E確認
+- Web版のキー保管の一般化（`encryption.ts`／`secret.web.ts`）による、既存ユーザーの Claude APIキーの読み込み継続（旧localStorageキー名を維持しているための回帰確認）
+- Web版で Claude と OpenAI の両方のキーを保管したときの、マスターパスワードによる一括解錠（`unlockApiKey`）
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。

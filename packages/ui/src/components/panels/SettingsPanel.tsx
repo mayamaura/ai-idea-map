@@ -7,8 +7,11 @@ import {
   DEFAULT_CATEGORIES,
   OllamaProvider,
   OllamaWebSearchClient,
+  OpenAIProvider,
+  DEFAULT_OPENAI_MODEL,
   LLMError,
   type ModelInfo,
+  type LLMProviderId,
 } from '@ideamap/core'
 
 interface DriveSyncSectionProps {
@@ -398,6 +401,107 @@ function SuggestionCountField() {
   )
 }
 
+interface ApiKeyFieldProps {
+  /** 保存済みキーの有無。マスク表示の初期値に使う */
+  hasKey: boolean
+  onSave: (key: string) => void
+  placeholder: string
+  /** マスターパスワード方式でロック中か。ロック中は入力欄の代わりに解錠ボタンを出す */
+  locked: boolean
+  onUnlockClick: () => void
+  /** OSキーチェーンで保護されているか。保存先の案内文言をプロバイダ共通で出し分ける */
+  isKeychainBacked: boolean
+  /** 未設定時の注意書き・発行リンクなどプロバイダ固有の内容。フィールドの下に描画する */
+  children?: ReactNode
+}
+
+/**
+ * APIキー入力欄（ロック中の解錠ボタン分岐 / 表示切り替え / 保存・変更ボタン）。
+ * Claude・OpenAI のどちらもマスターパスワードで保護される同じ仕組みなので共通化する。
+ */
+function ApiKeyField({ hasKey, onSave, placeholder, locked, onUnlockClick, isKeychainBacked, children }: ApiKeyFieldProps) {
+  const [keyInput, setKeyInput] = useState(hasKey ? '••••••••••••••••' : '')
+  const [showKey, setShowKey] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+
+  const handleSave = () => {
+    if (keyInput && !keyInput.includes('•')) {
+      onSave(keyInput.trim())
+      setKeyInput('••••••••••••••••')
+    }
+    setIsEditing(false)
+  }
+
+  const handleEdit = () => {
+    setKeyInput('')
+    setIsEditing(true)
+  }
+
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">APIキー</label>
+      {locked ? (
+        // ロック中: 入力欄の代わりに解錠ボタンを表示
+        <button
+          onClick={onUnlockClick}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-sm rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          🔒 ロックを解除してAPIキーを使う
+        </button>
+      ) : (
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type={showKey && isEditing ? 'text' : 'password'}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              disabled={!isEditing}
+              placeholder={placeholder}
+              className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500"
+            />
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                {showKey
+                  ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                  : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                }
+              </button>
+            )}
+          </div>
+          {isEditing ? (
+            <button
+              onClick={handleSave}
+              className="px-3 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              保存
+            </button>
+          ) : (
+            <button
+              onClick={handleEdit}
+              className="px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              変更
+            </button>
+          )}
+        </div>
+      )}
+      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+        {isKeychainBacked
+          ? 'キーはこの端末のOSキーチェーンにのみ保存されます。サーバーには送信しません。'
+          : 'キーはこのブラウザにのみ保存されます。サーバーには送信しません。'}
+      </p>
+      {children}
+    </div>
+  )
+}
+
 type OllamaTestStatus = 'idle' | 'testing' | 'ok' | 'error'
 
 /** ローカルLLM（Ollama）の接続先・モデル選択。デスクトップ版でのみ描画される */
@@ -547,6 +651,159 @@ function OllamaSection() {
   )
 }
 
+type OpenAITestStatus = 'idle' | 'testing' | 'ok' | 'error'
+type OpenAIErrorKind = 'auth' | 'rateLimit' | 'connection' | 'other'
+
+/** OpenAI（クラウド）のAPIキー入力・接続テスト・モデル選択 */
+function OpenAISection() {
+  const { openaiApiKey, setOpenaiApiKey, openaiModel, setOpenaiModel, apiKeyLock } = useSettingsStore()
+  const { setSettingsOpen } = useUIStore()
+  // isPassphraseFree は実行中に変わらないプラットフォーム固有値なので遅延初期化で一度だけ読む
+  const [isKeychainBacked] = useState(() => getPlatform().secret.isPassphraseFree)
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [status, setStatus] = useState<OpenAITestStatus>('idle')
+  const [errorKind, setErrorKind] = useState<OpenAIErrorKind>('other')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const handleShowUnlockModal = () => {
+    // 設定パネルを閉じてモーダルを表示（dismissMasterPasswordPrompt をリセット）
+    useSettingsStore.setState({ masterPasswordPromptDismissed: false })
+    setSettingsOpen(false)
+  }
+
+  const handleTest = async () => {
+    if (!openaiApiKey) return
+    setStatus('testing')
+    try {
+      const list = await new OpenAIProvider(openaiApiKey, openaiModel).listModels()
+      setModels(list)
+      setStatus('ok')
+      // 選択中モデルが一覧に無ければ先頭に寄せる（初回セットアップの手数を減らす）
+      if (list.length > 0 && !list.some((m) => m.id === openaiModel)) setOpenaiModel(list[0].id)
+    } catch (e) {
+      setModels([])
+      setStatus('error')
+      setErrorKind(
+        e instanceof LLMError && (e.kind === 'auth' || e.kind === 'rateLimit' || e.kind === 'connection')
+          ? e.kind
+          : 'other',
+      )
+      setErrorMessage(e instanceof Error ? e.message : 'OpenAIへの接続に失敗しました')
+    }
+  }
+
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">OpenAI</h3>
+      <div className="space-y-3">
+        <ApiKeyField
+          hasKey={!!openaiApiKey}
+          onSave={setOpenaiApiKey}
+          placeholder="sk-..."
+          locked={apiKeyLock === 'locked'}
+          onUnlockClick={handleShowUnlockModal}
+          isKeychainBacked={isKeychainBacked}
+        >
+          <div className="mt-1.5 space-y-1">
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              ⚠️ <ExternalLink href="https://platform.openai.com/settings/organization/limits">Usage limits</ExternalLink> で利用上限を設定することを推奨します。
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              🔑 このアプリ専用のAPIキーを発行して使うことを推奨します。
+            </p>
+          </div>
+          {!openaiApiKey && apiKeyLock !== 'locked' && (
+            <div className="mt-2 p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                ⚠️ APIキーが未設定です。AI拡張機能を使うには
+                <ExternalLink href="https://platform.openai.com/api-keys" className="ml-0.5">platform.openai.com</ExternalLink>
+                でキーを発行してください。
+              </p>
+            </div>
+          )}
+        </ApiKeyField>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void handleTest()}
+            disabled={status === 'testing' || !openaiApiKey}
+            className="px-3 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors flex-shrink-0"
+          >
+            {status === 'testing' ? '確認中…' : '接続テスト'}
+          </button>
+          {status === 'ok' && models.length > 0 && (
+            <p className="text-xs text-green-600 dark:text-green-400">
+              ✅ 接続成功 / {models.length}個のモデルが見つかりました
+            </p>
+          )}
+        </div>
+
+        {status === 'error' && (
+          <div className="p-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-xs text-red-700 dark:text-red-300">⚠️ {errorMessage}</p>
+            {errorKind === 'auth' && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">
+                APIキーが正しいか、<ExternalLink href="https://platform.openai.com/api-keys">platform.openai.com</ExternalLink> で有効なキーか確認してください。
+              </p>
+            )}
+            {errorKind === 'rateLimit' && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">
+                レート制限、または利用上限（課金枠）に達している可能性があります。
+                <ExternalLink href="https://platform.openai.com/settings/organization/limits">Usage limits</ExternalLink> を確認してください。
+              </p>
+            )}
+            {errorKind === 'connection' && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">
+                ネットワーク接続を確認してください。
+              </p>
+            )}
+          </div>
+        )}
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-gray-500 dark:text-gray-400">使用モデル</label>
+            {models.length > 0 && (
+              <button
+                onClick={() => void handleTest()}
+                className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                🔄 一覧を更新
+              </button>
+            )}
+          </div>
+          {models.length > 0 ? (
+            <select
+              value={openaiModel}
+              onChange={(e) => setOpenaiModel(e.target.value)}
+              className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 dark:bg-gray-700 dark:text-gray-100"
+            >
+              {!models.some((m) => m.id === openaiModel) && <option value="">（未選択）</option>}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          ) : (
+            // モデル一覧を未取得の間は現在値（未選択ならデフォルト）を表示だけする
+            <select
+              value={openaiModel || DEFAULT_OPENAI_MODEL}
+              disabled
+              className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
+            >
+              <option value={openaiModel || DEFAULT_OPENAI_MODEL}>{openaiModel || DEFAULT_OPENAI_MODEL}</option>
+            </select>
+          )}
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+            接続テストを実行すると利用可能なモデル一覧を取得できます。
+          </p>
+        </div>
+
+        <SuggestionCountField />
+      </div>
+    </section>
+  )
+}
+
 /** ollama.com の Web Search APIキー設定。プロバイダ選択とは独立（Claude利用時も使える） */
 function WebSearchSection() {
   const { webSearchApiKey, setWebSearchApiKey, webSearchEnabled, setWebSearchEnabled } =
@@ -680,30 +937,21 @@ export function SettingsPanel({ accessToken, showCloudSync = true, extraSections
     edgeStyle, setEdgeStyle,
   } = useSettingsStore()
 
-  const [keyInput, setKeyInput] = useState(apiKey ? '••••••••••••••••' : '')
-  const [showKey, setShowKey] = useState(false)
-  const [isEditingKey, setIsEditingKey] = useState(false)
   // 実行中に変わらない値なので遅延初期化で一度だけ読む。
   // レンダー本体で getPlatform() を呼ぶと setPlatform() 前の評価に晒されるため避ける
   const [isKeychainBacked] = useState(() => getPlatform().secret.isPassphraseFree)
   // ブラウザからは Ollama 側の OLLAMA_ORIGINS 設定に依存して安定提供できないため、
-  // プロバイダ切り替えUIはローカルサーバーへ到達できるプラットフォームでのみ出す
-  const [showProviderSwitch] = useState(() => getPlatform().http.canAccessLocalServers)
+  // Ollama はローカルサーバーへ到達できるプラットフォームでのみ選択肢に出す。
+  // Claude / OpenAI は api.anthropic.com・api.openai.com どちらもCORSを許可しているため常に選べる
+  const [canUseOllama] = useState(() => getPlatform().http.canAccessLocalServers)
 
   if (!isSettingsOpen) return null
 
-  const handleKeySave = () => {
-    if (keyInput && !keyInput.includes('•')) {
-      setApiKey(keyInput.trim())
-      setKeyInput('••••••••••••••••')
-    }
-    setIsEditingKey(false)
-  }
-
-  const handleKeyEdit = () => {
-    setKeyInput('')
-    setIsEditingKey(true)
-  }
+  const providerOptions: { id: LLMProviderId; label: string; hint: string }[] = [
+    { id: 'claude', label: 'Claude API', hint: 'クラウド・従量課金' },
+    { id: 'openai', label: 'OpenAI', hint: 'クラウド・従量課金' },
+    ...(canUseOllama ? [{ id: 'ollama' as const, label: 'Ollama', hint: 'ローカル・無料' }] : []),
+  ]
 
   const handleShowUnlockModal = () => {
     // 設定パネルを閉じてモーダルを表示（dismissMasterPasswordPrompt をリセット）
@@ -728,99 +976,46 @@ export function SettingsPanel({ accessToken, showCloudSync = true, extraSections
         </div>
 
         <div className="px-6 py-5 space-y-6">
-          {/* AIプロバイダ切り替え（デスクトップ版のみ） */}
-          {showProviderSwitch && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">AIプロバイダ</h3>
-              <div className="flex gap-2">
-                {([
-                  { id: 'claude', label: 'Claude API', hint: 'クラウド・従量課金' },
-                  { id: 'ollama', label: 'Ollama', hint: 'ローカル・無料' },
-                ] as const).map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setLlmProvider(p.id)}
-                    className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                      llmProvider === p.id
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-                        : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <span className="block font-medium">{p.label}</span>
-                    <span className="block text-xs opacity-70">{p.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
+          {/* AIプロバイダ切り替え。Claude / OpenAI は CORS 許可済みで常に選べる。Ollama はローカルサーバーへ到達できる環境のみ */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">AIプロバイダ</h3>
+            <div className={`grid gap-2 ${canUseOllama ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {providerOptions.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setLlmProvider(p.id)}
+                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    llmProvider === p.id
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                      : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span className="block font-medium">{p.label}</span>
+                  <span className="block text-xs opacity-70">{p.hint}</span>
+                </button>
+              ))}
+            </div>
+          </section>
 
           {/* Ollama 設定（デスクトップ版で Ollama を選んでいるときのみ） */}
           {llmProvider === 'ollama' && <OllamaSection />}
+
+          {/* OpenAI 設定 */}
+          {llmProvider === 'openai' && <OpenAISection />}
 
           {/* Claude API キー */}
           {llmProvider === 'claude' && (
           <section>
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Claude API</h3>
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">APIキー</label>
-                {apiKeyLock === 'locked' ? (
-                  // ロック中: 入力欄の代わりに解錠ボタンを表示
-                  <button
-                    onClick={handleShowUnlockModal}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-sm rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    🔒 ロックを解除してAPIキーを使う
-                  </button>
-                ) : (
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type={showKey && isEditingKey ? 'text' : 'password'}
-                        value={keyInput}
-                        onChange={(e) => setKeyInput(e.target.value)}
-                        disabled={!isEditingKey}
-                        placeholder="sk-ant-..."
-                        className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500"
-                      />
-                      {isEditingKey && (
-                        <button
-                          type="button"
-                          onClick={() => setShowKey(!showKey)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200"
-                        >
-                          {showKey
-                            ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                            : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                          }
-                        </button>
-                      )}
-                    </div>
-                    {isEditingKey ? (
-                      <button
-                        onClick={handleKeySave}
-                        className="px-3 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
-                      >
-                        保存
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleKeyEdit}
-                        className="px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        変更
-                      </button>
-                    )}
-                  </div>
-                )}
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
-                  {isKeychainBacked
-                    ? 'キーはこの端末のOSキーチェーンにのみ保存されます。サーバーには送信しません。'
-                    : 'キーはこのブラウザにのみ保存されます。サーバーには送信しません。'}
-                </p>
+              <ApiKeyField
+                hasKey={!!apiKey}
+                onSave={setApiKey}
+                placeholder="sk-ant-..."
+                locked={apiKeyLock === 'locked'}
+                onUnlockClick={handleShowUnlockModal}
+                isKeychainBacked={isKeychainBacked}
+              >
                 <div className="mt-1.5 space-y-1">
                   <p className="text-xs text-gray-400 dark:text-gray-500">
                     ⚠️ <ExternalLink href="https://console.anthropic.com/">Anthropic Console</ExternalLink> で利用上限（使用上限）を設定することを推奨します。
@@ -838,7 +1033,7 @@ export function SettingsPanel({ accessToken, showCloudSync = true, extraSections
                     </p>
                   </div>
                 )}
-              </div>
+              </ApiKeyField>
 
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">使用モデル</label>
@@ -857,8 +1052,8 @@ export function SettingsPanel({ accessToken, showCloudSync = true, extraSections
           </section>
           )}
 
-          {/* Web検索（ブラウザからは CORS で叩けないためデスクトップ版のみ） */}
-          {showProviderSwitch && <WebSearchSection />}
+          {/* Web検索（ollama.com のサービスで、ブラウザからは CORS で叩けないためデスクトップ版のみ） */}
+          {canUseOllama && <WebSearchSection />}
 
           {/* 設定のDrive同期。マスターパスワード設定を兼ねるので、キーチェーンに載せていて
               パスワードの概念がない環境（デスクトップ版）では出さない。

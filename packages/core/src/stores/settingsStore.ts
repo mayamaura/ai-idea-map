@@ -2,14 +2,43 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform } from '@ideamap/platform'
-import type { Theme, AIModelSelection, LLMProviderId, NodeShape, EdgeStyle, Category } from '../types'
+import type { Theme, LLMProviderId, NodeShape, EdgeStyle, Category } from '../types'
 import { encryptWithPassword, decryptWithPassword } from '../crypto/passwordCrypto'
 import { DEFAULT_OLLAMA_BASE_URL } from '../llm/ollamaProvider'
 
 /** SecretAdapter に渡す秘密情報の論理キー */
 const API_KEY_SECRET = 'apiKey'
+/** OpenAI APIキー。Claude APIキーとは別物なので別スロットで保管する */
+const OPENAI_KEY_SECRET = 'openaiApiKey'
 /** ollama.com の Web Search API キー。Claude APIキーとは別物なので別スロットで保管する */
 const WEB_SEARCH_KEY_SECRET = 'webSearchApiKey'
+
+/**
+ * Claude 以外のプロバイダの認証情報を保管する。
+ * 保存先の選び方（OSキーチェーン / マスターパスワード暗号化 / メモリのみ）は setApiKey と揃えるが、
+ * apiKeyLock は Claude APIキー専用の状態なので触らない。
+ */
+function storeProviderSecret(
+  secretKey: string,
+  value: string,
+  syncPassword: string,
+): { needsMasterPasswordSetup?: boolean } {
+  const { secret } = getPlatform()
+  if (!value) {
+    void secret.clearSecret(secretKey)
+    return {}
+  }
+  if (secret.isPassphraseFree) {
+    void secret.setSecret(secretKey, value)
+    return {}
+  }
+  if (syncPassword) {
+    void secret.setSecret(secretKey, value, syncPassword)
+    return {}
+  }
+  // マスターパスワード未設定: メモリのみで保持し設定を促す
+  return { needsMasterPasswordSetup: true }
+}
 
 /** クラウド上に置くアプリ設定ファイルの中身（Web版は Drive の IdeaMap/settings.json） */
 export interface AppSettingsPayload {
@@ -66,9 +95,13 @@ export const DEFAULT_CATEGORIES: Category[] = [
 
 interface SettingsState {
   apiKey: string
-  /** 使用するLLMプロバイダ。Web版は常に 'claude'（切り替えUIを出さない） */
+  /** 使用するLLMプロバイダ。Ollama はローカルサーバーへ到達できる環境（デスクトップ版）でのみ選べる */
   llmProvider: LLMProviderId
   claudeModel: string
+  /** OpenAI APIキー。SecretAdapter に預けるので永続化はしない */
+  openaiApiKey: string
+  /** OpenAI の使用モデル（/v1/models の id）。未選択は ''（既定モデルにフォールバック） */
+  openaiModel: string
   /** Ollama の使用モデル（/api/tags の name）。未選択は '' */
   ollamaModel: string
   ollamaBaseUrl: string
@@ -96,12 +129,12 @@ interface SettingsState {
   setApiKey: (key: string) => void
   setLlmProvider: (provider: LLMProviderId) => void
   setClaudeModel: (model: string) => void
+  setOpenaiApiKey: (key: string) => void
+  setOpenaiModel: (model: string) => void
   setOllamaModel: (model: string) => void
   setOllamaBaseUrl: (url: string) => void
   setWebSearchApiKey: (key: string) => void
   setWebSearchEnabled: (enabled: boolean) => void
-  /** llmProvider に応じて claudeModel / ollamaModel のどちらかを返す */
-  getActiveModelSelection: () => AIModelSelection
   setSuggestionCount: (count: number) => void
   setAutoSave: (enabled: boolean) => void
   setTheme: (theme: Theme) => void
@@ -130,6 +163,7 @@ type PersistedSettings = Pick<
   SettingsState,
   | 'llmProvider'
   | 'claudeModel'
+  | 'openaiModel'
   | 'ollamaModel'
   | 'ollamaBaseUrl'
   | 'webSearchEnabled'
@@ -149,6 +183,8 @@ export const useSettingsStore = create<SettingsState>()(
       apiKey: '',
       llmProvider: 'claude',
       claudeModel: DEFAULT_CLAUDE_MODEL,
+      openaiApiKey: '',
+      openaiModel: '',
       ollamaModel: '',
       ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
       webSearchApiKey: '',
@@ -194,6 +230,11 @@ export const useSettingsStore = create<SettingsState>()(
 
       setLlmProvider: (provider) => set({ llmProvider: provider }),
       setClaudeModel: (model) => set({ claudeModel: model }),
+
+      setOpenaiApiKey: (key) =>
+        set({ openaiApiKey: key, ...storeProviderSecret(OPENAI_KEY_SECRET, key, get().syncPassword) }),
+
+      setOpenaiModel: (model) => set({ openaiModel: model }),
       setOllamaModel: (model) => set({ ollamaModel: model }),
       setOllamaBaseUrl: (url) => set({ ollamaBaseUrl: url }),
 
@@ -209,14 +250,6 @@ export const useSettingsStore = create<SettingsState>()(
 
       setWebSearchEnabled: (enabled) => set({ webSearchEnabled: enabled }),
 
-      getActiveModelSelection: () => {
-        const { llmProvider, claudeModel, ollamaModel } = get()
-        return {
-          provider: llmProvider,
-          model: llmProvider === 'ollama' ? ollamaModel : claudeModel,
-        }
-      },
-
       setSuggestionCount: (count) => set({ suggestionCount: count }),
       setAutoSave: (enabled) => set({ autoSave: enabled }),
       setTheme: (theme) => set({ theme }),
@@ -224,9 +257,11 @@ export const useSettingsStore = create<SettingsState>()(
       setNodeShape: (shape) => set({ nodeShape: shape }),
 
       setMasterPassword: (password) => {
-        const { apiKey } = get()
+        const { apiKey, openaiApiKey } = get()
         const { secret } = getPlatform()
         set({ syncPassword: password })
+        // Claude 以外のキーも同じマスターパスワードで保管し直す（旧形式が存在するのはClaudeキーだけ）
+        if (openaiApiKey) void secret.setSecret(OPENAI_KEY_SECRET, openaiApiKey, password)
         if (apiKey) {
           // メモリ上の apiKey を新形式で再暗号化して旧形式を削除
           void secret.setSecret(API_KEY_SECRET, apiKey, password).then(async () => {
@@ -270,15 +305,24 @@ export const useSettingsStore = create<SettingsState>()(
           if (searchKey) set({ webSearchApiKey: searchKey })
           // 解錠の概念が無いので起動時にそのまま読み出す。
           // apiKeyLock を 'locked' にしないことで MasterPasswordModal は一度も出ない
-          const key = await secret.getSecret(API_KEY_SECRET)
+          const [key, openaiKey] = await Promise.all([
+            secret.getSecret(API_KEY_SECRET),
+            secret.getSecret(OPENAI_KEY_SECRET),
+          ])
           set({
             apiKey: key ?? '',
+            openaiApiKey: openaiKey ?? '',
             apiKeyLock: key ? 'unlocked' : 'none',
             needsMasterPasswordSetup: false,
           })
           return
         }
-        if (await secret.hasSecret(API_KEY_SECRET)) {
+        // Claudeキーが無くても OpenAI キーだけ保管されていることがあるので、両方見てから解錠を促す
+        const hasStored = await Promise.all([
+          secret.hasSecret(API_KEY_SECRET),
+          secret.hasSecret(OPENAI_KEY_SECRET),
+        ])
+        if (hasStored.some(Boolean)) {
           // 新形式キーあり: ロック状態にしてモーダルが解錠を促す
           set({ apiKeyLock: 'locked' })
         } else if (await secret.hasLegacySecret(API_KEY_SECRET)) {
@@ -296,9 +340,20 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       unlockApiKey: async (password) => {
+        const { secret } = getPlatform()
         try {
-          const key = await getPlatform().secret.getSecret(API_KEY_SECRET, password)
-          set({ apiKey: key ?? '', syncPassword: password, apiKeyLock: 'unlocked' })
+          // 保管中のキーはすべて同じマスターパスワードで暗号化されているのでまとめて復号する。
+          // パスワードが誤っていれば復号側が throw するため、1件でも保管があれば検証になる
+          const [key, openaiKey] = await Promise.all([
+            secret.getSecret(API_KEY_SECRET, password),
+            secret.getSecret(OPENAI_KEY_SECRET, password),
+          ])
+          set({
+            apiKey: key ?? '',
+            openaiApiKey: openaiKey ?? '',
+            syncPassword: password,
+            apiKeyLock: 'unlocked',
+          })
           return true
         } catch {
           return false
@@ -366,6 +421,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state): PersistedSettings => ({
         llmProvider: state.llmProvider,
         claudeModel: state.claudeModel,
+        openaiModel: state.openaiModel,
         ollamaModel: state.ollamaModel,
         ollamaBaseUrl: state.ollamaBaseUrl,
         webSearchEnabled: state.webSearchEnabled,

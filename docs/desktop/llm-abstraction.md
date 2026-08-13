@@ -7,6 +7,7 @@
 > **先に [README.md](README.md) を読んでください。** ドキュメント間で結論が食い違う箇所は README §3 の裁定が優先されます。本書に関係する裁定は次の2点です。
 > - 本書はモノレポ移行前の構成（`src/services/llm/`）を前提に書かれています。**移行後の配置は `packages/core/src/llm/`** です。パス対応表は README §3.3 にあります。
 > - `packages/core` は `fetch` を直接呼べません。`ClaudeProvider`/`OllamaProvider` の HTTP 呼び出しは必ず `getPlatform().http`（`HttpAdapter`、[architecture.md](architecture.md) §3）経由にしてください。Web版は `fetch`、デスクトップ版は `@tauri-apps/plugin-http` に解決され、**Ollama への到達経路はこの1箇所に閉じ込められます**。本書中の直接 `fetch` を使ったコード例は、この Adapter 経由に読み替えてください。ただし「Rust経由だからCORSは無関係」ではありません。`tauri-plugin-http` は webview の Origin ヘッダを自動付与するため、本番ビルドでは別途 Origin を落とす対応が必要でした（§6.4 の訂正・バグ修正2026-08-09参照）。
+> - 本書はClaude・Ollamaの2実装を前提に書かれていますが、**Phase 39 で3つ目の実装 `OpenAIProvider` を追加しました**（§3.5）。GitHub Copilot（GitHub Models）対応の見送りを含む設計判断は README §3.1-I にあります。
 
 ---
 
@@ -203,6 +204,8 @@ export interface LLMProvider {
 ```
 
 `completeJson` の第2引数 `schema` を省略可能にしているのは、Claude はスキーマを渡しても使い道がなく（プロンプト内の指示文だけが効く）、Ollama 側もスキーマ無しで `format: "json"` の緩いJSONモードにフォールバックできるようにするため。呼び出し側（5つのAI機能）は原則スキーマを渡す運用にし、Claude実装側はそれを無視する。
+
+> **Phase 39 で `LLMError.provider` / `LLMProvider.id` の型を `'claude' | 'ollama'` のハードコード union から、`packages/core/src/types/index.ts` の `LLMProviderId`（実体は `'claude' | 'ollama' | 'openai'`）の import に統一しました。** 二重定義の解消であり、Claude/Ollama側の挙動は変わりません。
 
 ### 2.6 スコープ外: Web検索（Phase 35 追加実装・2026-08-08）
 
@@ -593,6 +596,30 @@ export async function chatWithMap(
 
 Ollama のモデルごとの実際のコンテキスト長は `/api/show` の `model_info["<family>.context_length"]` から取得できる（フィールド名はモデルファミリーによって異なる、例: `llama.context_length`、`qwen2.context_length`）。ただし本設計では `OllamaProvider.capabilities.maxContextTokens` を固定値 8192 とし、将来的に `OllamaProvider` の生成時に `/api/show` を1回呼んで動的に上書きする拡張余地を残すに留める（初期実装のスコープ外）。**モデルファミリーごとのフィールド名の網羅は未確認**。
 
+### 3.5 `OpenAIProvider`（Phase 39 で追加・2026-08-13）
+
+Claude・Ollama に続く3つ目の実装。OpenAI の Chat Completions API（`POST https://api.openai.com/v1/chat/completions`）を呼ぶ。実装は `packages/core/src/llm/openaiProvider.ts`（モノレポ移行後の配置。§3.3の対応表参照）。
+
+主な設計判断（Claude/Ollamaとの差分）:
+
+| 観点 | `OpenAIProvider` の実装 | 理由 |
+|---|---|---|
+| 出力トークン数 | `max_tokens` ではなく `max_completion_tokens` を送る | `max_tokens` は非推奨であるうえ reasoning 系モデル（o-シリーズ等）と非互換 |
+| 構造化出力 | `response_format: { type: 'json_object' }` を指定し、応答から最初の `{...}` を正規表現抽出する。`capabilities.structuredOutput` は Claude と同じ `'prompt-only'`（`json_object` はスキーマを取らないため） | Ollama の `format` にスキーマを渡す方式とは異なり、OpenAI の `json_object` は「JSONで返す」ことしか制約できない |
+| `temperature`/`response_format` の 400 フォールバック | reasoning 系モデルは `temperature` を指定すると 400 を返す（無視ではなくエラー）。HTTP 400 が返り、かつ送信済みリクエストボディに `temperature` または `response_format` が含まれるときだけ、それらを外して1回だけ再送する | `OllamaProvider` が `think: false` で 400 が返ったとき `think` を外して再送するのと同じ設計（本書§3.2該当箇所） |
+| ストリーミング | SSE（`data: {...}` の行が並び `data: [DONE]` で終端）。`choices[0].delta.content` が差分 | OpenAI の Chat Completions API の標準的なストリーミング形式 |
+| モデル一覧 | `GET /v1/models` を呼び、IDが `gpt-` または `o` + 数字で始まるものだけを候補にし、`embedding\|whisper\|tts\|dall-e\|moderation\|audio\|realtime\|transcribe\|image\|instruct\|sora` を含むIDを除外する | `/v1/models` は埋め込み・音声・画像モデルまで返し、用途を判別できるフィールドを持たないため |
+| `maxContextTokens` | モデルごとに異なるが `capabilities` はコンストラクタ時点で確定させる必要があるため、UI表示専用の代表値（400,000）を固定で持つ | `OllamaProvider` と同じ制約（本書§3.4） |
+| 既定モデル | `DEFAULT_OPENAI_MODEL = 'gpt-5.1'`。実際の選択肢は `listModels()` の動的一覧から選ぶ | 初回起動時などモデル未選択時のフォールバック |
+
+**CORSはOllamaと違って問題にならない。** `api.openai.com` へのpreflightを実測したところ、`Access-Control-Allow-Origin` にリクエスト元Originをそのままエコーし、`access-control-allow-headers: authorization,content-type` / `access-control-allow-methods: GET, OPTIONS, POST` を返した。したがって Web版のブラウザから `HttpAdapter` 経由で直接叩けるため、Ollamaのように「デスクトップ版限定」にする理由がない（Web版でのプロバイダ切り替えUI公開は別途進行中。§6.1参照）。
+
+**GitHub Copilot（GitHub Models）対応は見送った。** 当初 `models.github.ai` をOpenAI互換エンドポイントとして実装し、Copilotサブスクリプションのユーザーにも対応する方針だったが、GitHub Models は2026年7月30日付けで終了しており、実際にエンドポイントを叩くと `{"error":{"code":"github_models_retirement_brownout", ...}}` が返ることを確認した。Copilotには他に公開APIが無く、`api.githubcopilot.com` はIDE向けの内部APIで公開仕様が無いため採用しなかった（詳細は README §3.1-I）。
+
+デスクトップ版の `ai-http` capability には `https://api.openai.com/*` を追加した（§6.4、`docs/design.md` §18.5）。
+
+エラー分類・実機での動作確認状況は `docs/design.md` §9.6、`docs/implementation-plan.md` Phase 39 を参照。
+
 ---
 
 ## 4. プロンプト戦略の差
@@ -826,6 +853,8 @@ export function isDesktopRuntime(): boolean {
 `SettingsPanel.tsx` では `isDesktopRuntime()` が `false` の間は現行の「Claude API」セクションのみを表示し、`true` のときだけプロバイダ切り替えUIを追加で描画する。これにより、単一のコードベース（`ideamap/`）を Web ビルドと Tauri ビルドの両方で共用できる。
 
 > **Phase 35 では採用せず、`HttpAdapter.canAccessLocalServers` にした（[README.md](README.md) §3.1-E）。** `'__TAURI_INTERNALS__' in window` のようなランタイム種別の直接判定は、README §3.2 の「`setPlatform()` 注入に統一」という裁定と衝突するため、Adapter 経由の判定に一本化した。判定対象自体（Web=非表示・Desktop=表示）は変わらない。
+
+> **Phase 39 でこの前提の一部が変わりつつあります（未確定）。** OpenAI は Ollama と異なりWeb版のブラウザからも直接呼び出せるため（§3.5）、プロバイダ切り替えUIそのものをデスクトップ限定にする現在の設計は、Ollamaの選択肢だけを `HttpAdapter.canAccessLocalServers` で出し分ける形に見直し中です。設定UI（`SettingsPanel.tsx`）側の実装は別作業として進行中のため、本節は結論が確定し次第あらためて更新します。
 
 ### 6.2 プロバイダ切り替えUI（デスクトップ版のみ）
 

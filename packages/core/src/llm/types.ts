@@ -3,6 +3,7 @@
  * Claude / Ollama など個別プロバイダの差は LLMProvider の実装内に閉じ込め、
  * 呼び出し側（aiService・UI）はこのファイルの型だけを見る。
  */
+import type { LLMProviderId } from '../types'
 
 export interface LLMMessage {
   role: 'user' | 'assistant'
@@ -70,7 +71,7 @@ export type LLMErrorKind =
 
 export class LLMError extends Error {
   readonly kind: LLMErrorKind
-  readonly provider: 'claude' | 'ollama'
+  readonly provider: LLMProviderId
   readonly statusCode?: number
   /** parse エラー時、UIで「AIの生レスポンスをコピー」できるよう保持する */
   readonly rawResponse?: string
@@ -79,7 +80,7 @@ export class LLMError extends Error {
     kind: LLMErrorKind,
     message: string,
     opts: {
-      provider: 'claude' | 'ollama'
+      provider: LLMProviderId
       statusCode?: number
       rawResponse?: string
       cause?: unknown
@@ -97,7 +98,7 @@ export class LLMError extends Error {
 }
 
 export interface LLMProvider {
-  readonly id: 'claude' | 'ollama'
+  readonly id: LLMProviderId
   readonly capabilities: ProviderCapabilities
 
   /** 非ストリーミングのテキスト補完 */

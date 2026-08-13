@@ -103,12 +103,13 @@ ai-idea-map/
 │   │       │   ├── uiStore.ts       # UI状態。currentFileId・currentFileOrigin の永続化は StorageAdapter 経由
 │   │       │   ├── settingsStore.ts # 設定状態。APIキーは SecretAdapter、Drive 同期は注入
 │   │       │   └── mapSnapshot.ts   # buildMapFile(mapId) — 保存用スナップショットの組み立て（Phase 38）
-│   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動 → Phase 35 で Ollama 追加）
+│   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動 → Phase 35 で Ollama 追加 → Phase 39 で OpenAI 追加）
 │   │       │   ├── types.ts         # LLMProvider / LLMRequest / LLMError / isAbortError ほか
 │   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / AIParseError
 │   │       │   ├── claudeProvider.ts # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
 │   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
-│   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35）
+│   │       │   ├── openaiProvider.ts # OpenAIProvider（/v1/chat/completions・/v1/models、Phase 39）
+│   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35、Phase 39 で OpenAI 対応）
 │   │       │   └── aiService.ts     # AI機能5関数（旧 claudeService.ts）
 │   │       ├── services/driveService.ts # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
 │   │       ├── layout/
@@ -327,8 +328,10 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | 状態 | 型 | 説明 |
 |------|-----|------|
 | `apiKey` | `string` | Claude APIキー（メモリ上・永続化しない） |
-| `llmProvider` | `LLMProviderId` | `claude \| ollama`。Web版は常に `'claude'`（切り替えUIを出さない）（Phase 35） |
+| `llmProvider` | `LLMProviderId` | `claude \| ollama \| openai`（Phase 39 で `openai` を追加）。Web版は常に `'claude'`（切り替えUIを出さない）（Phase 35）。設定UI側の全プラットフォーム対応は別途進行中 |
 | `claudeModel` | `string` | `claude-sonnet-5 \| claude-haiku-4-5-20251001`（旧 `aiModel` を改名。Phase 35） |
+| `openaiApiKey` | `string` | OpenAI APIキー（メモリ上・永続化しない、`SecretAdapter` の `openaiApiKey` スロットに保管）（Phase 39） |
+| `openaiModel` | `string` | OpenAI の使用モデル（`/v1/models` の `id`）。未選択は `''`（`OpenAIProvider` が既定モデル `DEFAULT_OPENAI_MODEL`＝`'gpt-5.1'` にフォールバック）（Phase 39） |
 | `ollamaModel` | `string` | Ollama の使用モデル（`/api/tags` の `name`）。未選択は `''`（Phase 35） |
 | `ollamaBaseUrl` | `string` | Ollama の接続先URL。既定値は `OllamaProvider.DEFAULT_OLLAMA_BASE_URL`（`http://localhost:11434`）（Phase 35） |
 | `webSearchApiKey` | `string` | ollama.com の Web Search APIキー（メモリ上・永続化しない、`SecretAdapter` の `webSearchApiKey` スロットに保管。Claude用の `apiKey` スロットとは別）（Phase 35 追加実装） |
@@ -348,19 +351,24 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 **永続化（`persist` ミドルウェア、Phase 34 で StorageAdapter 経由に変更）:**
 - `storage` は `createJSONStorage(() => ({ getItem/setItem/removeItem }))` で `getPlatform().storage` に委譲する（Web=localStorage、Desktop=`@tauri-apps/plugin-store`）
 - `skipHydration: true`。ストア生成時には自動復元されず、`stores/bootstrap.ts` の `restorePersistedState()`（§4.4）を各アプリの `main.tsx` が最初のレンダー前に `await` する
-- `partialize` で `apiKey` / `webSearchApiKey`（Phase 35 追加実装） / `syncPassword` / ロック状態を除いた項目のみ永続化
-- `version: 2`（Phase 35。Phase 29〜34 は `version: 1`）+ `migrate`: v1→v2 で `aiModel` を `llmProvider`（常に `'claude'` で初期化）・`claudeModel`・`ollamaModel`・`ollamaBaseUrl` に分割する。`claudeModel` は `normalizeClaudeModel`（旧 `normalizeAiModel` を改名）で現行IDへ読み替える。廃止した `claude-sonnet-4-6` や未知の値は既定モデル（`claude-sonnet-5`）へ倒す。Drive から設定を読み込む `loadSettingsFromDrive` も同じ関数を通す。**Ollama の接続先URL・モデルは Drive 同期対象に含めない**（端末ローカルのサービスを指すため、他デバイスに同期しても意味がない）
+- `partialize` で `apiKey` / `openaiApiKey`（Phase 39） / `webSearchApiKey`（Phase 35 追加実装） / `syncPassword` / ロック状態を除いた項目のみ永続化（`openaiModel` は永続化対象）
+- `version: 2`（Phase 35。Phase 29〜34 は `version: 1`）+ `migrate`: v1→v2 で `aiModel` を `llmProvider`（常に `'claude'` で初期化）・`claudeModel`・`ollamaModel`・`ollamaBaseUrl` に分割する。`claudeModel` は `normalizeClaudeModel`（旧 `normalizeAiModel` を改名）で現行IDへ読み替える。廃止した `claude-sonnet-4-6` や未知の値は既定モデル（`claude-sonnet-5`）へ倒す。Drive から設定を読み込む `loadSettingsFromDrive` も同じ関数を通す。**Ollama の接続先URL・モデルは Drive 同期対象に含めない**（端末ローカルのサービスを指すため、他デバイスに同期しても意味がない）。**OpenAI の APIキー・使用モデルも Drive 同期対象に含めない**（Phase 39。`saveSettingsToDrive`/`loadSettingsFromDrive` は Claude APIキー・Claudeモデルのみを扱う従来のまま）。`openaiModel` を永続化フィールドに加えたが初期値は `''` のため、`version` は 2 のまま据え置き `migrate` の変更は不要だった
 
-**APIキー管理アクション（Phase 27 / Phase 34 で `SecretAdapter.isPassphraseFree` 分岐を追加）:**
+**APIキー管理アクション（Phase 27 / Phase 34 で `SecretAdapter.isPassphraseFree` 分岐を追加 / Phase 39 で OpenAI キーを対応に追加）:**
 - `secret.isPassphraseFree` が `true`（デスクトップ版のOSキーチェーン）のときは、マスターパスワードの概念を経由しない。`setApiKey` は `syncPassword` を無視して `secret.setSecret(key)` にそのまま預け、即座に `apiKeyLock: 'unlocked'` にする。`initApiKey` も起動時に `secret.getSecret()` を読むだけで `apiKeyLock` を `'locked'` にしないため、`MasterPasswordModal` は一度も表示されない
-- `initApiKey()` — 起動時に呼ぶ（旧 `loadApiKey` を置換）。`isPassphraseFree` でない場合: 新形式キーあり→`locked`、旧形式（ハードコード鍵）あり→自動移行・`unlocked`・`needsMasterPasswordSetup=true`、なし→`none`
-- `unlockApiKey(password)` — マスターパスワードで復号し `unlocked` にする
-- `setMasterPassword(password)` — マスターパスワードを設定し、メモリ上の apiKey を新形式で再暗号化して旧形式を削除
+- `initApiKey()` — 起動時に呼ぶ（旧 `loadApiKey` を置換）。`isPassphraseFree` でない場合: Claude・OpenAI いずれかの新形式キーあり→`locked`、旧形式（ハードコード鍵、Claudeキーのみ存在）あり→自動移行・`unlocked`・`needsMasterPasswordSetup=true`、なし→`none`（Phase 39: Claudeキーが無くても OpenAI キーだけ保管されている場合があるため、両方の有無を見てから判定する）
+- `unlockApiKey(password)` — マスターパスワードで Claude・OpenAI 両方のキーをまとめて復号し `unlocked` にする（Phase 39。同じマスターパスワードで暗号化されているため、1件でも保管があればパスワード検証になる）
+- `setMasterPassword(password)` — マスターパスワードを設定し、メモリ上の apiKey・openaiApiKey を新形式で再暗号化する（旧形式が存在するのは Claude キーのみのため、削除は Claude キーだけ行う）
 - `dismissMasterPasswordPrompt()` — 設定促進をセッション中スキップ
 
-**モデル選択アクション（Phase 35）:**
-- `setLlmProvider(provider)` / `setClaudeModel(model)` / `setOllamaModel(model)` / `setOllamaBaseUrl(url)`
-- `getActiveModelSelection()` — `llmProvider` に応じて `claudeModel` / `ollamaModel` のどちらかを `AIModelSelection` として返すセレクタ。`packages/core/src/llm/providerFactory.ts` の `getActiveProvider(settings)` / `isProviderReady(settings)` がこれと同じ4項目（`llmProvider` / `apiKey` / `claudeModel` / `ollamaModel` / `ollamaBaseUrl`）を使って `LLMProvider` インスタンスと準備状態を導出する（§9.0.1）
+**OpenAIキー管理アクション（Phase 39）:**
+- `storeProviderSecret(secretKey, value, syncPassword)` — Claude 以外のプロバイダの秘密情報を保管する内部ヘルパー。保存先の選び方（OSキーチェーン／マスターパスワード暗号化／メモリのみ保持して `needsMasterPasswordSetup` を立てる）は `setApiKey` と同じ規則に揃えている。`apiKeyLock` は Claude APIキー専用の状態なので触らない
+- `setOpenaiApiKey(key)` — `storeProviderSecret()` 経由で `SecretAdapter` の `openaiApiKey` スロットに保管
+- `setOpenaiModel(model)` — 選択モデルを更新（`persist` 対象）
+
+**モデル選択アクション（Phase 35・Phase 39 で OpenAI 対応を追加）:**
+- `setLlmProvider(provider)` / `setClaudeModel(model)` / `setOpenaiModel(model)` / `setOllamaModel(model)` / `setOllamaBaseUrl(url)`
+- `packages/core/src/llm/providerFactory.ts` の `getActiveProvider(settings)` / `isProviderReady(settings)`（§9.0.1）が `llmProvider` / `apiKey` / `claudeModel` / `openaiApiKey` / `openaiModel` / `ollamaModel` / `ollamaBaseUrl` の7項目から `LLMProvider` インスタンスと準備状態を導出する。**旧 `getActiveModelSelection()` セレクタと `AIModelSelection` 型はどこからも呼ばれていなかったため Phase 39 で削除した**（§6）
 
 **Web検索キー管理アクション（Phase 35 追加実装）:**
 - `setWebSearchApiKey(key)` — `secret.isPassphraseFree`（デスクトップ版のOSキーチェーン）のときだけ `secret.setSecret('webSearchApiKey', key)` に保管する。Web版では保管先を持たせない。キーを空にすると `webSearchEnabled` も自動で `false` に戻す
@@ -561,7 +569,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 - 適用先: `ConfirmDialog`（初期フォーカス＝確定ボタン）/ `InputDialog`（＝入力欄）/ `NodeDetailPanel` / `KeyboardShortcutsModal` / `MasterPasswordModal`
 - モーダルが重なった場合（詳細パネルの上に確認ダイアログ等）は、DOM 上で最後にある `[role="dialog"]` を最前面とみなし、そこだけがトラップを効かせる
 
-### 5.7 ApiKeyRequired（packages/ui/src/components/common/ApiKeyRequired.tsx）（Phase 29 / Phase 35 でプロバイダ分岐を追加）
+### 5.7 ApiKeyRequired（packages/ui/src/components/common/ApiKeyRequired.tsx）（Phase 29 / Phase 35 でプロバイダ分岐を追加 / Phase 39 で OpenAI 分岐を追加）
 
 AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPanel / MapAnalysisPanel / AIChatPanel）が表示する空状態。3パネルで重複していたマークアップを共通化したもの。
 
@@ -569,7 +577,9 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 |---|---|---|
 | `onOpenSettings` | `() => void` | 「設定を開く」押下時の処理。呼び出し元パネルを閉じて設定パネルを開く |
 | `className` | `string` | 配置差分の吸収用。既定は `'flex-1 p-6'`、AISuggestionPanel のみ `'px-5 py-10'` |
-| `providerId` | `LLMProviderId`（既定 `'claude'`） | Phase 35 追加。`'ollama'` のときはアイコンを 🔑→🖥️ に、文言を「使用するOllamaモデルが未選択です／設定画面の『AIプロバイダ』で接続テストを実行し、モデルを選んでください」に切り替える |
+| `providerId` | `LLMProviderId`（既定 `'claude'`） | Phase 35 追加。文言をプロバイダごとに切り替える |
+
+**Phase 39 で `isOllama` の二値分岐から `Record<LLMProviderId, { icon, title, hint }>` の文言テーブル（`MISSING_SETUP`）に変更した。** プロバイダを追加したとき文言の追加漏れを型エラーで検出できる。`ollama` は 🖥️「使用するOllamaモデルが未選択です／設定画面の『AIプロバイダ』で接続テストを実行し、モデルを選んでください」、`openai` は 🔑「OpenAI APIキーが必要です／AI機能を使うには OpenAI の APIキーを設定してください」（`claude` と同じ 🔑 アイコン）。
 
 ボタン配色は `primary-600` に統一（旧 AIChatPanel の `blue-500` から変更）。呼び出し元3パネルは `useActiveProvider()` の `providerId` をそのまま渡す（§9.0.1）。
 
@@ -628,13 +638,7 @@ interface Category {
   description?: string
 }
 
-type LLMProviderId = 'claude' | 'ollama'
-
-// UI・サービス層が扱う「今アクティブなプロバイダ + モデルID」の組。Phase 34 以前の AIModel（Claude専用 union）を置き換える（Phase 35）
-interface AIModelSelection {
-  provider: LLMProviderId
-  model: string         // Claude: 'claude-sonnet-5' 等の固定ID / Ollama: 'gemma3:12b' など /api/tags の name
-}
+type LLMProviderId = 'claude' | 'ollama' | 'openai'  // Phase 39 で 'openai' 追加
 
 interface IdeaNodeData extends Record<string, unknown> {
   title: string        // ノードタイトル（旧 text から Phase 7 でリネーム）
@@ -818,14 +822,16 @@ aiService.ts             … プロンプト構築・戻り値整形（5関数�
 
 **`LLMProvider` の4メソッド**
 
-| メソッド | 用途 | Claude 実装 | Ollama 実装（Phase 35） |
-|---|---|---|---|
-| `complete(req, signal?)` | 非ストリーミング補完 | `messages.create` | `POST /api/chat`（`stream: false`）。`think: false` を付与 |
-| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答から最初の `{...}` を正規表現抽出し `safeParseJson`。`schema` は無視（`structuredOutput: 'prompt-only'`） | `format` に `schema`（省略時は `'json'`）を渡し制約付きデコードさせる。`temperature: 0` を明示指定 |
-| `stream(req, onText, signal?)` | ストリーミング補完 | `messages.stream` + `.on('text')`。`onText` には**累積テキスト**を渡す | NDJSON を `ReadableStream` から手動パース（改行区切りで1行1JSONオブジェクト）。行ごとの `message.content` を累積して渡す |
-| `listModels()` | モデル一覧 | 固定リスト（`supportsModelListing: false`） | `GET /api/tags` + `GET /api/ps`（ロード済み判定）。`ModelInfo.contextTokens` は `/api/tags` の `details.context_length`（Ollama 0.32系以降が返す）から取得 |
+| メソッド | 用途 | Claude 実装 | Ollama 実装（Phase 35） | OpenAI 実装（Phase 39） |
+|---|---|---|---|---|
+| `complete(req, signal?)` | 非ストリーミング補完 | `messages.create` | `POST /api/chat`（`stream: false`）。`think: false` を付与 | `POST /v1/chat/completions`（`stream: false`）。出力上限は `max_tokens` ではなく `max_completion_tokens` |
+| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答から最初の `{...}` を正規表現抽出し `safeParseJson`。`schema` は無視（`structuredOutput: 'prompt-only'`） | `format` に `schema`（省略時は `'json'`）を渡し制約付きデコードさせる。`temperature: 0` を明示指定 | `response_format: { type: 'json_object' }` を指定し、応答から最初の `{...}` を正規表現抽出（`structuredOutput: 'prompt-only'`。`json_object` はスキーマを取らないため `schema` 引数は無視） |
+| `stream(req, onText, signal?)` | ストリーミング補完 | `messages.stream` + `.on('text')`。`onText` には**累積テキスト**を渡す | NDJSON を `ReadableStream` から手動パース（改行区切りで1行1JSONオブジェクト）。行ごとの `message.content` を累積して渡す | SSE（`data: {...}` の行が並び `data: [DONE]` で終端）を `ReadableStream` から手動パース。`choices[0].delta.content` を累積して渡す |
+| `listModels()` | モデル一覧 | 固定リスト（`supportsModelListing: false`） | `GET /api/tags` + `GET /api/ps`（ロード済み判定）。`ModelInfo.contextTokens` は `/api/tags` の `details.context_length`（Ollama 0.32系以降が返す）から取得 | `GET /v1/models` を呼び、ID が `gpt-` または `o` + 数字で始まるものだけを候補にし、埋め込み・音声・画像系（`embedding`/`whisper`/`tts`/`dall-e` 等）を除外して絞り込む（§9.1.3） |
 
 `OllamaProvider` は `complete`/`completeJson`/`stream` すべてに `think: false` を送る。思考モデル（qwen3 系など）は思考トークンが `num_predict` の枠を食い、出力が `done_reason: 'length'` で途中停止することを実測で確認したため（`ClaudeProvider` が `thinking: { type: 'disabled' }` を送るのと同じ理由）。`think` を解釈しないモデル・バージョンの組み合わせに備え、HTTP 400 が返ったときだけ `think` を外して1回だけ再送するフォールバックを持つ。
+
+`OpenAIProvider` も同じ設計のフォールバックを持つ（Phase 39）。reasoning 系モデル（o-シリーズ等）は `temperature` を指定すると 400 を返す（無視ではなくエラー）ため、HTTP 400 が返り、かつ送信済みボディに `temperature` または `response_format` が含まれるときだけ、それらを外して1回だけ再送する。
 
 **設計判断（`docs/desktop/llm-abstraction.md` からの意図的な差分。Phase 32 分＋Phase 35 分。詳細は `docs/desktop/README.md` §3.1-B・§3.1-E）**
 
@@ -836,7 +842,7 @@ aiService.ts             … プロンプト構築・戻り値整形（5関数�
 - **`completeJson` の `temperature: 0` は Ollama のみに適用する**（Phase 35）。`llm-abstraction.md` §4.2 は「両方」としていたが、Web版の挙動を Phase 34 以前と一致させることを優先し `ClaudeProvider` 側は変更していない。
 - **Phase 32 の移行用アダプタ（`toLegacySuggestionParseError` / `toLegacyAnalysisParseError`）は Phase 35 で削除した。** エラーは `LLMError` に一本化し、UIの「生レスポンスをコピー」導線は `LLMError.rawResponse` から直接取る（`MapAnalysisPanel.tsx`）。
 
-### 9.0.1 プロバイダの解決（`providerFactory.ts` / `useActiveProvider`、Phase 35）
+### 9.0.1 プロバイダの解決（`providerFactory.ts` / `useActiveProvider`、Phase 35・Phase 39 で OpenAI 対応）
 
 ```typescript
 // packages/core/src/llm/providerFactory.ts
@@ -846,12 +852,14 @@ interface ProviderSettings {
   claudeModel: string
   ollamaModel: string
   ollamaBaseUrl: string
+  openaiApiKey: string
+  openaiModel: string
 }
-function getActiveProvider(s: ProviderSettings): LLMProvider   // llmProvider に応じて ClaudeProvider / OllamaProvider を生成
-function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKey !== '' / Ollama: ollamaModel !== ''
+function getActiveProvider(s: ProviderSettings): LLMProvider   // llmProvider に応じて ClaudeProvider / OllamaProvider / OpenAIProvider を生成
+function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKey !== '' / Ollama: ollamaModel !== '' / OpenAI: openaiApiKey !== ''
 ```
 
-`packages/ui/src/hooks/useActiveProvider.ts` は上記2関数を `settingsStore` に接続する共通フック。`useShallow` で該当5項目だけを購読し `{ provider, isReady, providerId }` を返す。`AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` はいずれもこのフックから `provider` を取得して `aiService.ts` の各関数に渡す（Phase 34 以前の `apiKey`/`aiModel` の直接購読を置き換えた）。
+`packages/ui/src/hooks/useActiveProvider.ts` は上記2関数を `settingsStore` に接続する共通フック。`useShallow` で該当7項目だけを購読し `{ provider, isReady, providerId }` を返す。`AISuggestionPanel` / `AIChatPanel` / `MapAnalysisPanel` はいずれもこのフックから `provider` を取得して `aiService.ts` の各関数に渡す（Phase 34 以前の `apiKey`/`aiModel` の直接購読を置き換えた）。
 
 ### 9.1 ブラウザからの直接呼び出し
 
@@ -885,6 +893,12 @@ function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKe
 `DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'` は `ollamaProvider.ts` にあり、`settingsStore` の `ollamaBaseUrl` の初期値・`migrate` の補完値として使う。
 
 `/api/tags` と `/api/ps` のタイムアウト（5秒）には **`AbortSignal.timeout()` を使ってはいけない**。`tauri-plugin-http` は signal の abort を受けるとレスポンスボディを解放する（`fetch_cancel_body`）ため、読み終わったあとにタイマーが発火すると解放済みリソースの二重解放になり、デスクトップ実機で `The resource id ... is invalid` の未処理例外が出る。`AbortController` ＋ `setTimeout` にして、応答を読み切った時点で `clearTimeout` する（`OllamaProvider.getWithTimeout()`）。
+
+### 9.1.3 OpenAI のモデル一覧（Phase 39）
+
+`OpenAIProvider.listModels()` は `GET /v1/models` を呼び、返ってきた ID を機械的に絞り込む。`/v1/models` は埋め込み・音声・画像モデルまで含み用途を判別できるフィールドを持たないため、ID のプレフィックス（`/^(gpt-|o\d)/`）で候補を絞ったうえで、`embedding|whisper|tts|dall-e|moderation|audio|realtime|transcribe|image|instruct|sora` のいずれかを含む ID を除外する（`NON_CHAT_PATTERN`）。タイムアウト（10秒）は §9.1.2 の `OllamaProvider` と同じ理由で `AbortController` ＋ `setTimeout` を使う。
+
+`DEFAULT_OPENAI_MODEL = 'gpt-5.1'` は初回のみ使う既定値で、実際の選択肢は `listModels()` の動的一覧から選ぶ。`capabilities.maxContextTokens` はモデルごとに異なるが `ProviderCapabilities` はコンストラクタ時点で確定させる必要があるため、`OllamaProvider`（固定値 8192）と同じ制約でUI表示専用の代表値（`FALLBACK_MAX_CONTEXT_TOKENS = 400_000`）を固定で持つ。
 
 ### 9.2 プロンプト設計
 
@@ -970,6 +984,19 @@ export function toFriendlyAIError(e: unknown): string
 | 他の非2xxレスポンス | `unknown` | 「Ollamaがエラーを返しました（HTTP \<status\>）」 |
 
 Node から `OllamaProvider` を直接動かし、404・到達不可（`http://127.0.0.1:9`）・`completeJson()` の中断の3パターンで上記どおりの `kind` になることを確認済み（2026-08-07・Ollama 0.32.6）。
+
+**`OpenAIProvider` のエラー分類（Phase 39）:**
+
+| 条件 | `kind` | メッセージ |
+|---|---|---|
+| `http.request()` が例外を投げ、`signal?.aborted` でない | `connection` | 「OpenAIに接続できませんでした。ネットワーク接続を確認してください。」 |
+| HTTP 401 / 403 | `auth` | 「OpenAIの認証に失敗しました。APIキーが有効か設定画面で確認してください。」 |
+| HTTP 404 | `notFound` | 「モデル「\<model\>」が見つかりません。設定画面で使用モデルを選び直してください。」 |
+| HTTP 429 | `rateLimit` | エラーレスポンスの `error.message`（無ければ「OpenAIのレート制限に達しました。しばらく待ってから再試行してください。」）。頻度超過と課金枠切れの両方が429で返るため原因の切り分けは応答本文に委ねる |
+| `signal?.aborted` | `aborted` | 「キャンセルされました」（`name` は `'AbortError'`） |
+| 他の非2xxレスポンス | `unknown` | エラーレスポンスの `error.message`（無ければ「OpenAIがエラーを返しました（HTTP \<status\>）」） |
+
+HTTP 400 のときは §9.0 の `temperature`/`response_format` フォールバック再送を先に試み、それでも失敗したら上表のとおり通常のエラー分類にかかる。
 
 ### 9.7 updateLastChatMessage（uiStore — Phase 23）
 
@@ -1071,20 +1098,22 @@ export interface WebSearchOptions {
 
 ### 10.1 新形式（Phase 27〜）: マスターパスワード方式
 
-- ストレージキー: `localStorage['ideamap-apikey-mp']`（JSON `{ v: 2, encrypted, salt }`）
+- ストレージキー: 論理キーごとに別スロット（`storageKey(key)`）。**Claude APIキー（論理キー `'apiKey'`）だけは既存ユーザーのデータをそのまま読めるよう旧キー名 `localStorage['ideamap-apikey-mp']` を維持**し、それ以外（Phase 39 の `'openaiApiKey'` 等）は `localStorage['ideamap-secret-<key>-mp']` を使う（JSON `{ v: 2, encrypted, salt }` は共通）
 - 暗号化: PBKDF2（100k iterations, SHA-256）+ AES-GCM 256bit
-- パスワード: ユーザーが任意に設定するマスターパスワード（Drive同期と共用の `syncPassword`）
-- マスターパスワード未設定時は apiKey をメモリのみで保持（セッション終了で消える）
+- パスワード: ユーザーが任意に設定するマスターパスワード（Drive同期と共用の `syncPassword`）。全論理キーで共通のパスワードを使う
+- マスターパスワード未設定時はメモリのみで保持（セッション終了で消える）
 - サーバーへの送信なし
 
-**ヘルパー関数（export）:**
-- `hasStoredApiKey()` — 新形式キーの有無
-- `hasLegacyApiKey()` — 旧形式キーの有無（移行チェック用）
+**ヘルパー関数（export、Phase 39 で論理キー別に一般化・改名）:**
+- `hasStoredSecret(key)` — 新形式キーの有無（旧 `hasStoredApiKey()` を改名し `key` 引数を追加）
+- `hasLegacyApiKey()` — 旧形式キーの有無（移行チェック用。旧形式が存在するのは Claude キーのみのため key 引数は無いまま）
 - `getLegacyApiKey()` — 旧形式を復号して返す（自動移行用）
 - `clearLegacyApiKey()` — 旧形式キーとsaltを削除
-- `setStoredApiKeyWithPassword(key, password)` — 新形式で保存
-- `getStoredApiKeyWithPassword(password)` — 新形式から復号（誤パスワードは throw）
-- `clearStoredApiKey()` — 新形式キーを削除
+- `setStoredSecretWithPassword(key, value, password)` — 新形式で保存（旧 `setStoredApiKeyWithPassword(key, password)` を改名し `key` 引数を追加）
+- `getStoredSecretWithPassword(key, password)` — 新形式から復号（誤パスワードは throw、旧 `getStoredApiKeyWithPassword(password)` を改名）
+- `clearStoredSecret(key)` — 新形式キーを削除（旧 `clearStoredApiKey()` を改名）
+
+`apps/web/src/platform/secret.web.ts`（`webSecretAdapter`）はこれらの関数をそのまま呼ぶ薄いラッパーで、`SecretAdapter.getSecret`/`setSecret`/`clearSecret` の `key` 引数を上記の論理キーへ渡す（Phase 39 以前は `key` 引数を無視して常に Claude キー扱いだった）。現状この経路を使うのは Claude APIキー（`'apiKey'`）と OpenAI APIキー（`'openaiApiKey'`）の2種類（`webSearchApiKey` はデスクトップ版のOSキーチェーン専用でWeb版には保管先が無い、§4.3）。
 
 ### 10.2 旧形式（Phase 27 以前）: ハードコードパスフレーズ（非推奨・移行専用）
 
@@ -1609,7 +1638,7 @@ ai-idea-map/
 | `main-window` | ウィンドウの基本操作（タイトル変更・閉じる・破棄）、`dialog`（open/save/ask/message）、クリップボード書き込み、外部URLオープン、`store` |
 
 | `file-access` | `fs`（読み書き・mkdir・remove・stat・exists）。`fs:scope` は `$APPCONFIG` と `$APPLOCALDATA` 配下のみに限定する |
-| `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`https://ollama.com/api/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している。`https://ollama.com/api/*` は Web検索API（`/api/web_search`）向けに Phase 35 の追加実装で加えた（§9.10） |
+| `ai-http` | `http:default` に AIプロバイダの通信先のみ許可（`https://api.anthropic.com/*`・`https://api.openai.com/*`（Phase 39）・`https://ollama.com/api/*`・`http://localhost:*/*`・`http://127.0.0.1:*/*`）。ポート部分はワイルドカードにしており、設定UIで Ollama の接続先URLのポートを変更できる（Phase 35。ホストは localhost 系に限定したままなので攻撃面は localhost 上のサービスに限られる）。Ollama・OpenAI 用に別ファイルを作らず、Anthropic API と同じ「AIプロバイダへの通信」として統合している。`https://ollama.com/api/*` は Web検索API（`/api/web_search`）向けに Phase 35 の追加実装で加えた（§9.10） |
 | `google-drive`（Phase 38） | `http:default` に `https://oauth2.googleapis.com/*`（トークン交換・失効）・`https://www.googleapis.com/*`（Drive API）のみ許可。認可画面自体は `opener` で OS 既定ブラウザに出すため `accounts.google.com` はここに含めない（§18.9） |
 
 **外部URLオープンのスコープ**: `opener:allow-open-url` は文字列でそのまま並べると**URLスコープが空になり `openUrl()` が全て拒否される**。`{ "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }, { "url": "http://*" }] }` の形で書く（Phase 35 追加実装で修正。プラグインの `opener:default` は `mailto:` / `tel:` とファイルマネージャ起動も含むため、本アプリは必要な http/https だけに絞っている）。
@@ -1626,8 +1655,8 @@ ai-idea-map/
 |---|---|
 | 1. アーキテクチャ概要 | Web版/デスクトップ版の2構成に書き換え |
 | 3. プロジェクト構成 | モノレポ構成に書き換え |
-| 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9）。Web検索（`LLMProvider` の外側の独立機能）を Phase 35 の追加実装で反映（§9.10〜9.11） |
-| 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要 |
+| 9. Claude API連携設計 | 見出しは既に「AI連携設計」化済み。`LLMProvider` と `OllamaProvider` の反映は Phase 35 で完了（§9.0〜9.9）。Web検索（`LLMProvider` の外側の独立機能）を Phase 35 の追加実装で反映（§9.10〜9.11）。`OpenAIProvider` を Phase 39 で追加（§9.0〜9.1.3・§9.6） |
+| 10. APIキー暗号化設計 | `SecretAdapter` 経由に。デスクトップはOSキーチェーンで暗号化不要。Phase 39 で論理キー別（Claude／OpenAI）に一般化 |
 | 12. Google Drive連携設計 | REST 呼び出し（§12.2・§12.3）は Phase 38 で `packages/core` に共通化。認証・UIは Web版が本章、デスクトップ版が §18.9 に別記 |
 
 ### 18.7 ビルド・配布・自動更新（`apps/desktop`、Phase 36）

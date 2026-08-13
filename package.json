@@ -13,6 +13,7 @@
     "preview": "pnpm --filter @ideamap/web preview",
     "lint": "eslint .",
     "typecheck": "tsc -b",
+    "check:openai": "jiti packages/core/verify-openai.mts",
     "sync-version": "node scripts/sync-version.mjs",
     "check-version": "node scripts/sync-version.mjs --check"
   },

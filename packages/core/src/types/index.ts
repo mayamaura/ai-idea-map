@@ -9,17 +9,7 @@ export interface Category {
   description?: string
 }
 
-export type LLMProviderId = 'claude' | 'ollama'
-
-/**
- * UI・サービス層が扱う「今アクティブなプロバイダ + モデルID」の組。
- * Phase 34 以前の `AIModel`（Claude専用 union）を置き換える。
- */
-export interface AIModelSelection {
-  provider: LLMProviderId
-  /** Claude: 'claude-sonnet-5' 等の固定ID / Ollama: 'gemma3:12b' など /api/tags の name */
-  model: string
-}
+export type LLMProviderId = 'claude' | 'ollama' | 'openai'
 
 export interface IdeaNodeData extends Record<string, unknown> {
   title: string

@@ -1,42 +1,41 @@
 import type { SecretAdapter } from '@ideamap/platform'
 import {
-  hasStoredApiKey,
+  hasStoredSecret,
   hasLegacyApiKey,
   getLegacyApiKey,
   clearLegacyApiKey,
-  setStoredApiKeyWithPassword,
-  getStoredApiKeyWithPassword,
-  clearStoredApiKey,
+  setStoredSecretWithPassword,
+  getStoredSecretWithPassword,
+  clearStoredSecret,
 } from '../utils/encryption'
 
 /**
  * Web版の秘密情報の保管。マスターパスワード（PBKDF2 + AES-GCM）で暗号化して
  * localStorage に置く既存方式をそのまま使う。
  *
- * 保管している秘密情報は Claude APIキーの1件だけなので、`key` 引数は
- * インタフェース互換のために受け取るだけで分岐には使っていない。
- * 2件目が必要になったら encryption.ts 側をキー別に一般化する。
+ * 論理キーごとに別スロットへ保存するが、暗号化に使うマスターパスワードは全キーで共通。
+ * 旧形式（Phase 27 以前）が存在するのは Claude APIキーだけなので、legacy 系は key を見ない。
  */
 export const webSecretAdapter: SecretAdapter = {
   isPassphraseFree: false,
 
-  async hasSecret() {
-    return hasStoredApiKey()
+  async hasSecret(key) {
+    return hasStoredSecret(key)
   },
 
-  async getSecret(_key, passphrase) {
+  async getSecret(key, passphrase) {
     if (!passphrase) throw new Error('マスターパスワードが必要です')
     // パスワード誤りは復号側が throw する。呼び出し元で解錠失敗として扱う
-    return getStoredApiKeyWithPassword(passphrase)
+    return getStoredSecretWithPassword(key, passphrase)
   },
 
-  async setSecret(_key, value, passphrase) {
+  async setSecret(key, value, passphrase) {
     if (!passphrase) throw new Error('マスターパスワードが必要です')
-    await setStoredApiKeyWithPassword(value, passphrase)
+    await setStoredSecretWithPassword(key, value, passphrase)
   },
 
-  async clearSecret() {
-    clearStoredApiKey()
+  async clearSecret(key) {
+    clearStoredSecret(key)
   },
 
   async hasLegacySecret() {

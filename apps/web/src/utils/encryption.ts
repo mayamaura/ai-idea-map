@@ -46,16 +46,22 @@ async function decryptLegacyApiKey(ciphertext: string): Promise<string> {
 
 // ---- 新形式ストレージ（マスターパスワード方式） ----
 
-const MP_KEY_STORAGE = 'ideamap-apikey-mp'
+/**
+ * 論理キーごとの localStorage キー名。Claude APIキー（'apiKey'）だけは
+ * 既存ユーザーの保存済みデータをそのまま読めるよう旧キー名を維持する。
+ */
+function storageKey(key: string): string {
+  return key === 'apiKey' ? 'ideamap-apikey-mp' : `ideamap-secret-${key}-mp`
+}
 
-interface StoredApiKeyV2 {
+interface StoredSecretV2 {
   v: 2
   encrypted: string
   salt: number[]
 }
 
-export function hasStoredApiKey(): boolean {
-  return localStorage.getItem(MP_KEY_STORAGE) !== null
+export function hasStoredSecret(key: string): boolean {
+  return localStorage.getItem(storageKey(key)) !== null
 }
 
 export function hasLegacyApiKey(): boolean {
@@ -77,24 +83,28 @@ export function clearLegacyApiKey(): void {
   localStorage.removeItem(LEGACY_SALT_STORAGE)
 }
 
-export async function setStoredApiKeyWithPassword(apiKey: string, password: string): Promise<void> {
-  if (!apiKey) {
-    localStorage.removeItem(MP_KEY_STORAGE)
+export async function setStoredSecretWithPassword(
+  key: string,
+  value: string,
+  password: string
+): Promise<void> {
+  if (!value) {
+    localStorage.removeItem(storageKey(key))
     return
   }
-  const { encrypted, salt } = await encryptWithPassword(apiKey, password)
-  const record: StoredApiKeyV2 = { v: 2, encrypted, salt }
-  localStorage.setItem(MP_KEY_STORAGE, JSON.stringify(record))
+  const { encrypted, salt } = await encryptWithPassword(value, password)
+  const record: StoredSecretV2 = { v: 2, encrypted, salt }
+  localStorage.setItem(storageKey(key), JSON.stringify(record))
 }
 
-export async function getStoredApiKeyWithPassword(password: string): Promise<string> {
-  const stored = localStorage.getItem(MP_KEY_STORAGE)
+export async function getStoredSecretWithPassword(key: string, password: string): Promise<string> {
+  const stored = localStorage.getItem(storageKey(key))
   if (!stored) return ''
-  const record = JSON.parse(stored) as StoredApiKeyV2
+  const record = JSON.parse(stored) as StoredSecretV2
   // パスワード誤りは decryptWithPassword が throw するのでそのまま伝播させる
   return decryptWithPassword(record.encrypted, password, record.salt)
 }
 
-export function clearStoredApiKey(): void {
-  localStorage.removeItem(MP_KEY_STORAGE)
+export function clearStoredSecret(key: string): void {
+  localStorage.removeItem(storageKey(key))
 }
