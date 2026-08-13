@@ -178,6 +178,13 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchEnd}
     >
+      {/* ドロップ接続のガイド: ドラッグ中のノードが自ノードに重なっている間だけ表示（ズーム非依存） */}
+      <NodeToolbar isVisible={isDropTarget} position={Position.Top} offset={8}>
+        <div className="bg-emerald-500 text-white text-xs font-medium px-2.5 py-1.5 rounded-md shadow-md whitespace-nowrap pointer-events-none">
+          ドロップでこのアイデアを親にして接続
+        </div>
+      </NodeToolbar>
+
       {/* カテゴリラベル（選択時のみ表示・ズーム非依存） */}
       <NodeToolbar isVisible={showCategoryLabel} position={Position.Top} align="start" offset={6}>
         <div className="flex items-center gap-1 bg-white/95 text-gray-600 px-2 py-1 rounded-md shadow-sm border border-gray-200 whitespace-nowrap pointer-events-none">

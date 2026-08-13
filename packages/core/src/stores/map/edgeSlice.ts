@@ -120,23 +120,24 @@ export const createEdgeSlice: MapSliceCreator<EdgeSlice> = (set, get) => ({
 
   // pushPast しない: このアクションは onNodeDragStop から呼ばれ、直前の onNodesChange(dragging:false) が
   // ドロップ直前のスナップショットを履歴に積み終えている。ここで積むと Undo 1回目が
-  // 「エッジだけ消えて重なった位置に戻る」中間状態になるため、相乗りさせて1回で丸ごと戻す
-  connectDroppedNode: (sourceId, targetId, returnPosition) =>
+  // 「エッジだけ消えて重なった位置に戻る」中間状態になるため、相乗りさせて1回で丸ごと戻す。
+  // エッジの向きは「重ねられた側（親）→ ドラッグした側（子）」: 新しいアイデアを親に重ねる操作が自然なため
+  connectDroppedNode: (droppedId, parentId, returnPosition) =>
     set((state) => {
-      if (sourceId === targetId) return {}
+      if (droppedId === parentId) return {}
       const already = state.edges.some(
         (e) =>
-          (e.source === sourceId && e.target === targetId) ||
-          (e.source === targetId && e.target === sourceId)
+          (e.source === droppedId && e.target === parentId) ||
+          (e.source === parentId && e.target === droppedId)
       )
       if (already) return {}
       return {
         edges: addEdge(
-          makeEdge({ source: sourceId, target: targetId, sourceHandle: null, targetHandle: null }),
+          makeEdge({ source: parentId, target: droppedId, sourceHandle: null, targetHandle: null }),
           state.edges
         ),
         nodes: state.nodes.map((n) =>
-          n.id === sourceId ? { ...n, position: returnPosition } : n
+          n.id === droppedId ? { ...n, position: returnPosition } : n
         ),
       }
     }),
