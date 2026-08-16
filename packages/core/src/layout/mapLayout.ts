@@ -97,9 +97,11 @@ const NODE_WIDTH = 192
 const NODE_HEIGHT = 64
 const LAYOUT_NODE_SIZE: Size = { width: NODE_WIDTH, height: NODE_HEIGHT }
 
-const RADIAL_BASE_RADIUS = 220
-const RADIAL_RADIUS_INCREMENT = 190
-const RADIAL_ARC_GAP = 60 // 同じリング上で隣り合うノードの間に最低限あけるすき間
+const RADIAL_MIN_STEP = 240 // 親→子の最短距離
+const RADIAL_GAP = 48 // サブツリー同士にあけるすき間
+// ルート以外が子を広げてよい最大角。実際の扇は「必要な角度の1.25倍」までしか使わないので、
+// 上限まで広がるのは子が多くて詰まっているときだけ。狭くすると代わりに子が遠くへ押し出される
+const RADIAL_SPREAD = (Math.PI * 4) / 3
 
 const GROUP_PADDING = 40
 const GROUP_LABEL_AREA = 36 // ラベルバッジ用の上部スペース
@@ -293,61 +295,116 @@ export async function applyRadialLayout(
   // ルート（入力エッジなし）を選択
   const rootId = topLevel.find((n) => !hasParent.has(n.id))?.id ?? topLevel[0].id
 
-  // 葉の数を計算（角度配分に使用）。ノード総数ではなく葉の数にすることで、
-  // 兄弟のくさび（角度範囲）の広さがそのサブツリーの「横幅」に比例する
-  const leafCount = new Map<string, number>()
-  const sizeVisited = new Set<string>()
-  function calcLeaves(id: string): number {
-    if (sizeVisited.has(id)) return 1
-    sizeVisited.add(id)
-    const children = (childrenOf.get(id) ?? []).filter((c) => !sizeVisited.has(c))
-    const leaves = children.length === 0 ? 1 : children.reduce((s, c) => s + calcLeaves(c), 0)
-    leafCount.set(id, leaves)
-    return leaves
+  // balloon レイアウト。各ノードは「自分のサブツリー全体を包む円」の半径を持ち、
+  // 子はその親を中心とするリング上に、円同士が重ならない角度間隔で並ぶ。
+  // 子が親のすぐ近くに固まるので、末端が親から離れすぎない。
+  const nodeById = new Map(topLevel.map((n) => [n.id, n]))
+  const enclosingRadius = (id: string) => {
+    const { width, height } = sizeOf(nodeById.get(id)!)
+    return Math.hypot(width, height) / 2
   }
-  const totalLeaves = calcLeaves(rootId)
 
-  // 半径の決め方が重なりを左右する。1葉あたりの弧の長さが最大ノード幅＋すき間を
-  // 下回らないところまで最初のリングを広げ、以降は最大ノード高さ分ずつ外へ離す。
-  const maxWidth = Math.max(...topLevel.map((n) => sizeOf(n).width))
-  const maxHeight = Math.max(...topLevel.map((n) => sizeOf(n).height))
-  const minArc = maxWidth + RADIAL_ARC_GAP
-  const baseRadius = Math.max(RADIAL_BASE_RADIUS, (totalLeaves * minArc) / (2 * Math.PI))
-  // リング間は「ノードの対角線」分あければ十分。中心からの距離が ringGap 違えば
-  // 2点の距離も必ず ringGap 以上になるので、角度を問わず重ならない
-  const ringGap = Math.max(RADIAL_RADIUS_INCREMENT, Math.hypot(maxWidth, maxHeight) + RADIAL_ARC_GAP)
-  const radiusAt = (depth: number) => baseRadius + (depth - 1) * ringGap
+  /**
+   * 距離 ra・rb に置いた2つの子サブツリー（円の半径 sa・sb）の円が触れ合わないために
+   * 要る角度。余弦定理を距離の条件 `chord ≧ sa + sb + GAP` について解いたもの。
+   */
+  const separation = (ra: number, rb: number, sa: number, sb: number) => {
+    const need = sa + sb + RADIAL_GAP
+    return Math.acos(Math.max(-1, Math.min(1, (ra * ra + rb * rb - need * need) / (2 * ra * rb))))
+  }
 
-  // 再帰的に子を配置
-  const positions = new Map<string, { x: number; y: number }>()
-  positions.set(rootId, { x: 0, y: 0 })
-
-  function layout(parentId: string, startAngle: number, totalAngle: number, depth: number) {
-    const children = (childrenOf.get(parentId) ?? []).filter((c) => !positions.has(c))
-    if (children.length === 0) return
-    const totalSize = children.reduce((s, c) => s + (leafCount.get(c) ?? 1), 0)
-    const radius = radiusAt(depth)
-    let angle = startAngle
-    for (const childId of children) {
-      const span = ((leafCount.get(childId) ?? 1) / totalSize) * totalAngle
-      const mid = angle + span / 2
-      // 親からの相対ではなく中心からの絶対半径で置く。こうするとくさびが交わらない限り
-      // 別サブツリー同士は決して重ならない
-      positions.set(childId, { x: Math.cos(mid) * radius, y: Math.sin(mid) * radius })
-      layout(childId, angle, span, depth + 1)
-      angle += span
+  /** 隣り合う子のあいだに要る角度。ルートは円周を一周するので末尾→先頭のぶんも要る */
+  const gapsBetween = (rings: number[], subRadii: number[], isRoot: boolean) => {
+    const gaps: number[] = []
+    for (let i = 0; i + 1 < rings.length; i++) {
+      gaps.push(separation(rings[i], rings[i + 1], subRadii[i], subRadii[i + 1]))
     }
+    const last = rings.length - 1
+    if (isRoot && last > 0) gaps.push(separation(rings[last], rings[0], subRadii[last], subRadii[0]))
+    return gaps
   }
 
-  layout(rootId, -Math.PI, 2 * Math.PI, 1)
+  const ringsOf = new Map<string, number[]>()
+  const subtreeRadius = new Map<string, number>()
+  const kidsOf = new Map<string, string[]>()
+  const measured = new Set<string>([rootId])
 
-  // 到達できなかったノード（非連結・孤立）を最外リングの外側に並べる
-  const maxRadius = Math.max(...[...positions.values()].map((p) => Math.hypot(p.x, p.y)))
-  let floatX = maxRadius + maxWidth
+  function measure(id: string, isRoot: boolean): number {
+    const found = (childrenOf.get(id) ?? []).filter((c) => !measured.has(c))
+    found.forEach((c) => measured.add(c)) // 同じノードが複数の親にぶら下がるのを防ぐ
+
+    const selfRadius = enclosingRadius(id)
+    if (found.length === 0) {
+      kidsOf.set(id, found)
+      subtreeRadius.set(id, selfRadius)
+      return selfRadius
+    }
+
+    // 大きいサブツリーを扇の中央（＝親の真正面）に、小さいものを端に寄せる。
+    // 端の子は親の横に回り込むので、そこに大きな枝が来ると全体が親の背後へはみ出す
+    const measuredRadii = found.map((c) => measure(c, false))
+    const order = found
+      .map((_, i) => i)
+      .sort((a, b) => measuredRadii[b] - measuredRadii[a])
+      .reduce<number[]>((acc, i, rank) => (rank % 2 === 0 ? [...acc, i] : [i, ...acc]), [])
+    const kids = order.map((i) => found[i])
+    kidsOf.set(id, kids)
+
+    // 子ごとに距離を変える。小さい枝は親のすぐそば、大きい枝だけ遠くに置ける
+    const subRadii = order.map((i) => measuredRadii[i])
+    let rings = subRadii.map((s) => Math.max(RADIAL_MIN_STEP, selfRadius + s + RADIAL_GAP))
+    const arc = isRoot ? Math.PI * 2 : RADIAL_SPREAD
+    const fits = () => gapsBetween(rings, subRadii, isRoot).reduce((s, g) => s + g, 0) <= arc
+    for (let i = 0; i < 100 && !fits(); i++) rings = rings.map((r) => r * 1.12)
+
+    ringsOf.set(id, rings)
+    const radius = Math.max(...rings.map((r, i) => r + subRadii[i]))
+    subtreeRadius.set(id, radius)
+    return radius
+  }
+  measure(rootId, true)
+
+  const positions = new Map<string, { x: number; y: number }>()
+
+  function place(
+    id: string,
+    pos: { x: number; y: number },
+    awayAngle: number,
+    isRoot: boolean
+  ): void {
+    positions.set(id, pos)
+    const kids = kidsOf.get(id) ?? []
+    if (kids.length === 0) return
+
+    const rings = ringsOf.get(id)!
+    const subRadii = kids.map((c) => subtreeRadius.get(c)!)
+    const gaps = gapsBetween(rings, subRadii, isRoot)
+    const needed = gaps.reduce((s, g) => s + g, 0)
+
+    // ルートは円周いっぱいに散らす。それ以外は必要角の1.25倍までに留めて、
+    // サブツリーを親の反対方向にまとまった扇として広げる
+    const spread = isRoot ? Math.PI * 2 : Math.min(RADIAL_SPREAD, needed * 1.25)
+    const scale = needed > 0 ? spread / needed : 0
+    let angle = isRoot ? -Math.PI / 2 : awayAngle - spread / 2
+
+    kids.forEach((kid, i) => {
+      const childPos = {
+        x: pos.x + Math.cos(angle) * rings[i],
+        y: pos.y + Math.sin(angle) * rings[i],
+      }
+      place(kid, childPos, angle, false)
+      if (i < gaps.length) angle += gaps[i] * scale
+    })
+  }
+  place(rootId, { x: 0, y: 0 }, 0, true)
+
+  // 到達できなかったノード（非連結・孤立）は木全体の外側に並べる
+  const extent = subtreeRadius.get(rootId)! + RADIAL_GAP
+  let floatX = extent + NODE_WIDTH
   for (const node of topLevel) {
     if (!positions.has(node.id)) {
       positions.set(node.id, { x: floatX, y: 0 })
-      floatX += maxWidth + RADIAL_ARC_GAP
+      floatX += sizeOf(node).width + RADIAL_GAP
     }
   }
 

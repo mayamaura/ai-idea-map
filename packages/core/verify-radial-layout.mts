@@ -44,6 +44,27 @@ function tree(breadth: number, depth: number) {
   return { nodes, edges }
 }
 
+/**
+ * 末端（子を持たないノード）が親のすぐそばに置かれること。
+ * 深さで半径を決めていた頃はここが数百px単位で開き、放射状に見えなかった。
+ * 上位のノードほど大きなサブツリーを抱えるぶん親から離れるのは想定どおりなので、末端だけを見る。
+ */
+function assertLeavesNearParent(laid: Node<IdeaNodeData>[], edges: Edge[], label: string) {
+  const MAX = 400
+  const pos = new Map(laid.map((n) => [n.id, n.position]))
+  const hasChild = new Set(edges.map((e) => e.source))
+  let longest = 0
+  for (const e of edges) {
+    if (hasChild.has(e.target)) continue
+    const a = pos.get(e.source)!
+    const b = pos.get(e.target)!
+    const d = Math.hypot(a.x - b.x, a.y - b.y)
+    longest = Math.max(longest, d)
+    assert.ok(d <= MAX, `${label}: 末端 ${e.target} が親から ${d.toFixed(0)}px（上限 ${MAX}）`)
+  }
+  return longest
+}
+
 function assertNoOverlap(laid: Node<IdeaNodeData>[], label: string) {
   for (let i = 0; i < laid.length; i++) {
     for (let j = i + 1; j < laid.length; j++) {
@@ -69,11 +90,34 @@ async function main() {
     [2, 4],
     [3, 3],
   ] as const) {
+    const label = `breadth=${breadth} depth=${depth}`
     const { nodes, edges } = tree(breadth, depth)
     const laid = await applyRadialLayout(nodes, edges)
     assert.equal(laid.length, nodes.length)
-    assertNoOverlap(laid, `breadth=${breadth} depth=${depth} (${nodes.length}ノード)`)
-    console.log(`OK breadth=${breadth} depth=${depth} — ${nodes.length}ノードが重ならず配置された`)
+    assertNoOverlap(laid, `${label} (${nodes.length}ノード)`)
+    const longest = assertLeavesNearParent(laid, edges, label)
+    console.log(
+      `OK ${label} — ${nodes.length}ノードが重ならず配置され、末端は親から最大 ${longest.toFixed(0)}px`
+    )
+  }
+
+  // 実際のマップに近い、枝ごとに子の数が違う木
+  {
+    const nodes = [node('root')]
+    const edges: Edge[] = []
+    ;[3, 5, 4, 6].forEach((kids, b) => {
+      const branch = `branch${b}`
+      nodes.push(node(branch))
+      edges.push(edge('root', branch))
+      for (let i = 0; i < kids; i++) {
+        nodes.push(node(`${branch}.${i}`))
+        edges.push(edge(branch, `${branch}.${i}`))
+      }
+    })
+    const laid = await applyRadialLayout(nodes, edges)
+    assertNoOverlap(laid, '不揃いな枝')
+    const longest = assertLeavesNearParent(laid, edges, '不揃いな枝')
+    console.log(`OK 不揃いな枝 — ${nodes.length}ノード、末端は親から最大 ${longest.toFixed(0)}px`)
   }
 
   // 孤立ノード（エッジなし）も他と重ならないこと
