@@ -99,6 +99,7 @@ const LAYOUT_NODE_SIZE: Size = { width: NODE_WIDTH, height: NODE_HEIGHT }
 
 const RADIAL_BASE_RADIUS = 220
 const RADIAL_RADIUS_INCREMENT = 190
+const RADIAL_ARC_GAP = 60 // 同じリング上で隣り合うノードの間に最低限あけるすき間
 
 const GROUP_PADDING = 40
 const GROUP_LABEL_AREA = 36 // ラベルバッジ用の上部スペース
@@ -244,8 +245,24 @@ export async function applyRadialLayout(
   const { topLevel, childNodes } = prepareGroupLayouts(nodes, edges, 'LR', Dagre)
 
   if (topLevel.length === 0) return nodes
+
+  const sizeOf = (n: Node<IdeaNodeData>): Size =>
+    n.type === 'groupNode' &&
+    typeof n.style?.width === 'number' &&
+    typeof n.style?.height === 'number'
+      ? { width: n.style.width, height: n.style.height }
+      : LAYOUT_NODE_SIZE
+  // 座標は中心基準で計算し、最後に左上へ直す
+  const toTopLeft = (n: Node<IdeaNodeData>, p: { x: number; y: number }) => {
+    const { width, height } = sizeOf(n)
+    return { x: p.x - width / 2, y: p.y - height / 2 }
+  }
+
   if (topLevel.length === 1) {
-    return [...topLevel.map((n) => ({ ...n, position: { x: 0, y: 0 } })), ...childNodes]
+    return [
+      ...topLevel.map((n) => ({ ...n, position: toTopLeft(n, { x: 0, y: 0 }) })),
+      ...childNodes,
+    ]
   }
 
   // 子ノード→親グループのマップ（グループをまたぐエッジを親グループIDに解決するため）
@@ -276,60 +293,68 @@ export async function applyRadialLayout(
   // ルート（入力エッジなし）を選択
   const rootId = topLevel.find((n) => !hasParent.has(n.id))?.id ?? topLevel[0].id
 
-  // サブツリーサイズを計算（角度配分に使用）
-  const subtreeSize = new Map<string, number>()
+  // 葉の数を計算（角度配分に使用）。ノード総数ではなく葉の数にすることで、
+  // 兄弟のくさび（角度範囲）の広さがそのサブツリーの「横幅」に比例する
+  const leafCount = new Map<string, number>()
   const sizeVisited = new Set<string>()
-  function calcSize(id: string): number {
+  function calcLeaves(id: string): number {
     if (sizeVisited.has(id)) return 1
     sizeVisited.add(id)
-    const children = childrenOf.get(id) ?? []
-    const size = children.reduce((s, c) => s + calcSize(c), 1)
-    subtreeSize.set(id, size)
-    return size
+    const children = (childrenOf.get(id) ?? []).filter((c) => !sizeVisited.has(c))
+    const leaves = children.length === 0 ? 1 : children.reduce((s, c) => s + calcLeaves(c), 0)
+    leafCount.set(id, leaves)
+    return leaves
   }
-  calcSize(rootId)
+  const totalLeaves = calcLeaves(rootId)
+
+  // 半径の決め方が重なりを左右する。1葉あたりの弧の長さが最大ノード幅＋すき間を
+  // 下回らないところまで最初のリングを広げ、以降は最大ノード高さ分ずつ外へ離す。
+  const maxWidth = Math.max(...topLevel.map((n) => sizeOf(n).width))
+  const maxHeight = Math.max(...topLevel.map((n) => sizeOf(n).height))
+  const minArc = maxWidth + RADIAL_ARC_GAP
+  const baseRadius = Math.max(RADIAL_BASE_RADIUS, (totalLeaves * minArc) / (2 * Math.PI))
+  // リング間は「ノードの対角線」分あければ十分。中心からの距離が ringGap 違えば
+  // 2点の距離も必ず ringGap 以上になるので、角度を問わず重ならない
+  const ringGap = Math.max(RADIAL_RADIUS_INCREMENT, Math.hypot(maxWidth, maxHeight) + RADIAL_ARC_GAP)
+  const radiusAt = (depth: number) => baseRadius + (depth - 1) * ringGap
 
   // 再帰的に子を配置
   const positions = new Map<string, { x: number; y: number }>()
   positions.set(rootId, { x: 0, y: 0 })
 
-  function layout(
-    parentId: string,
-    parentPos: { x: number; y: number },
-    startAngle: number,
-    totalAngle: number,
-    radius: number
-  ) {
+  function layout(parentId: string, startAngle: number, totalAngle: number, depth: number) {
     const children = (childrenOf.get(parentId) ?? []).filter((c) => !positions.has(c))
     if (children.length === 0) return
-    const totalSize = children.reduce((s, c) => s + (subtreeSize.get(c) ?? 1), 0)
+    const totalSize = children.reduce((s, c) => s + (leafCount.get(c) ?? 1), 0)
+    const radius = radiusAt(depth)
     let angle = startAngle
     for (const childId of children) {
-      const size = subtreeSize.get(childId) ?? 1
-      const span = (size / totalSize) * totalAngle
+      const span = ((leafCount.get(childId) ?? 1) / totalSize) * totalAngle
       const mid = angle + span / 2
-      const pos = {
-        x: parentPos.x + Math.cos(mid) * radius,
-        y: parentPos.y + Math.sin(mid) * radius,
-      }
-      positions.set(childId, pos)
-      layout(childId, pos, angle, span, RADIAL_RADIUS_INCREMENT)
+      // 親からの相対ではなく中心からの絶対半径で置く。こうするとくさびが交わらない限り
+      // 別サブツリー同士は決して重ならない
+      positions.set(childId, { x: Math.cos(mid) * radius, y: Math.sin(mid) * radius })
+      layout(childId, angle, span, depth + 1)
       angle += span
     }
   }
 
-  layout(rootId, { x: 0, y: 0 }, -Math.PI, 2 * Math.PI, RADIAL_BASE_RADIUS)
+  layout(rootId, -Math.PI, 2 * Math.PI, 1)
 
-  // 到達できなかったノード（非連結・孤立）を右側に並べる
-  let floatX = RADIAL_BASE_RADIUS * 2 + 100
+  // 到達できなかったノード（非連結・孤立）を最外リングの外側に並べる
+  const maxRadius = Math.max(...[...positions.values()].map((p) => Math.hypot(p.x, p.y)))
+  let floatX = maxRadius + maxWidth
   for (const node of topLevel) {
     if (!positions.has(node.id)) {
       positions.set(node.id, { x: floatX, y: 0 })
-      floatX += NODE_WIDTH + 40
+      floatX += maxWidth + RADIAL_ARC_GAP
     }
   }
 
-  const laid = topLevel.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position }))
+  const laid = topLevel.map((n) => {
+    const p = positions.get(n.id)
+    return p ? { ...n, position: toTopLeft(n, p) } : n
+  })
   return [...applyGroupPushOut(laid), ...childNodes]
 }
 
