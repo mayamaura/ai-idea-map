@@ -919,12 +919,23 @@ function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKe
 
 `DEFAULT_OPENAI_MODEL = 'gpt-5.1'` は初回のみ使う既定値で、実際の選択肢は `listModels()` の動的一覧から選ぶ。`capabilities.maxContextTokens` はモデルごとに異なるが `ProviderCapabilities` はコンストラクタ時点で確定させる必要があるため、`OllamaProvider`（固定値 8192）と同じ制約でUI表示専用の代表値（`FALLBACK_MAX_CONTEXT_TOKENS = 400_000`）を固定で持つ。
 
-### 9.2 プロンプト設計
+### 9.2 プロンプト設計（`generateSuggestions` / `SuggestionRequest`）
 
-送信コンテキスト:
-1. **選択ノード**: `selectedNodeText`
-2. **接続ノード**: `connectedNodeTexts`（直接繋がる全ノード）
-3. **全体文脈**: `allNodeTexts.slice(0, 10)`（参考）
+`generateSuggestions(req: SuggestionRequest, signal?)` は `req` の各フィールドをプロンプトの各セクションへ機械的に対応させる。値が空・未指定のフィールドはセクションごと省略される。
+
+| プロンプトのセクション見出し | 由来フィールド |
+|---|---|
+| 【選択されたアイデア】＋【選択ノードの詳細メモ】 | `selectedNodeTitle` / `selectedNodeBody` |
+| 【つながっているアイデア】 | `connectedNodes`（選択ノードの1ホップ隣接ノード。タイトル＋本文先頭80字） |
+| 【マップ全体の文脈（参考）】 | `allNodeTitles`（先頭10件） |
+| 【あなたへの指示】 | `userInstruction` |
+| 【除外してほしいアイデア（重複禁止）】 | `excludedTexts` |
+| 【このアイデアは以下の親ノードの子として追加されます】＋【既存の兄弟アイデア（重複禁止）】 | `parentNodes` / `siblingNodes`（`mode === 'sibling'` のときのみ出力） |
+
+`AISuggestionPanel.buildBaseRequest()` が組み立てる `req.mode`（`'child' | 'sibling'`）によって、重複回避の相手（≒`excludedTexts` の由来）が変わる:
+- **子モード**（`mode: 'child'`）: 選択ノードの既存の子ノードのタイトルを `excludedTexts` として渡す。既存の子は `connectedNodes` にも含まれるが、そこでは親や無関係な接続先と混ざったフラットな一覧になり「重複禁止の相手」と認識されないため、`buildBaseRequest` が `excludedTexts` に明示的に渡し直している。
+- **兄弟モード**（`mode: 'sibling'`）: 既存の兄弟は `siblingNodes` 経由でプロンプトの「【既存の兄弟アイデア（重複禁止）】」に渡る（Phase 13）。`excludedTexts` はここでは使わない。
+- **個別再生成**（`handleRegenerate`）: モードに関わらず、上記の `excludedTexts` を**上書きせず**、同一バッチ内の他の提案タイトルを結合して渡す。
 
 提案タイプ: `関連 / 深掘り / 対比 / 応用`
 

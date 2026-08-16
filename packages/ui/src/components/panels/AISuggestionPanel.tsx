@@ -84,6 +84,15 @@ export function AISuggestionPanel() {
     )
     const siblingNodeObjects = nodes.filter((n) => siblingNodeIdSet.has(n.id))
 
+    // 子モードの重複相手は選択ノードの既存の子。connectedNodes にも含まれるが、
+    // そこでは親や無関係な接続先と混ざるため重複禁止の対象として明示し直す
+    const existingChildTitles =
+      addMode === 'child'
+        ? nodes
+            .filter((n) => edges.some((e) => e.source === selectedNode.id && e.target === n.id))
+            .map((n) => n.data.title)
+        : []
+
     return {
       provider,
       webSearch: webSearch.client,
@@ -98,6 +107,7 @@ export function AISuggestionPanel() {
       count: suggestionCount,
       categories,
       userInstruction: userInstruction || undefined,
+      excludedTexts: existingChildTitles.length > 0 ? existingChildTitles : undefined,
       mode: addMode,
       parentNodes:
         addMode === 'sibling'
@@ -178,7 +188,11 @@ export function AISuggestionPanel() {
       try {
         const baseReq = buildBaseRequest()
         if (!baseReq) return
-        const excludedTexts = aiSuggestions.filter((_, i) => i !== idx).map((s) => s.title)
+        // 既存の子（baseReq 由来）を落とさないよう、他の提案タイトルは上書きではなく追加する
+        const excludedTexts = [
+          ...(baseReq.excludedTexts ?? []),
+          ...aiSuggestions.filter((_, i) => i !== idx).map((s) => s.title),
+        ]
         const newSuggestions = await generateSuggestions({
           ...baseReq,
           count: 1,
