@@ -118,6 +118,8 @@ ai-idea-map/
 │   │       │   ├── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
 │   │       │   ├── mapReview.ts     # 放置ノードの構造的指標検出（findNeglectedNodeIds、Phase 47）
 │   │       │   ├── crossMapSearch.ts # マップ横断の全文検索（searchAcrossMaps、Phase 52）
+│   │       │   ├── mapMerge.ts      # 3方向マージ（mergeMapFiles/applyConflictResolutions、Phase 53）
+│   │       │   ├── mapMergeBase.ts  # マージ基準スナップショットの保持（saveMergeBase/getMergeBase、Phase 53）
 │   │       │   └── textToMap.ts     # AI抽出結果 → SerializedNode/Edge 変換（buildMapFragmentFromExtracted、Phase 44）
 │   │       ├── templates/mapTemplates.ts # 思考フレームワークのテンプレートマップ5種（Phase 46）
 │   │       ├── layout/
@@ -141,7 +143,7 @@ ai-idea-map/
 │           │   ├── toolbar/         # Toolbar（PC用）/ BottomNav（スマホ用）
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
 │           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired /
-│           │                        # TemplatePickerModal（Phase 46）
+│           │                        # TemplatePickerModal（Phase 46）/ MergeConflictDialog（Phase 53）
 │           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
 │           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）/
 │           │                        # useGlobalErrorLog（Phase 43）/ useSubtreeNodeIds（Phase 45）/
@@ -318,6 +320,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `contextMenu` | `ContextMenuState \| null` | 右クリックメニューの表示状態 |
 | `confirmDialog` | `ConfirmDialogState \| null` | 確認ダイアログの表示状態 |
 | `inputDialog` | `InputDialogState \| null` | 1行入力ダイアログの表示状態（`window.prompt` の代替）（Phase 30） |
+| `mergeConflictDialog` | `MergeConflictDialogState \| null` | 3方向マージの衝突解決ダイアログの表示状態（`{ conflicts: MergeConflict[]; onResolve: (choices) => void }`）（Phase 53、§25） |
 | `isSearchOpen` | `boolean` | 検索バーの開閉（Phase 8） |
 | `searchQuery` | `string` | 検索クエリ（IdeaNodeが参照してdim/highlight） |
 | `activeCategoryFilters` | `string[]` | フィルター中のカテゴリID（空=全表示、OR条件） |
@@ -601,6 +604,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 - `Enter` → 確認、`Escape` → キャンセル（ショートカット有効）。ただしボタンにフォーカスがある状態の `Enter` はボタン自身の click に任せ、二重実行を防ぐ（Phase 30）
 - `confirmDialog` 表示中はキャンバス操作ショートカット全体を抑制
 - `role="dialog"` / `aria-modal` / `aria-labelledby` を付与し、`useFocusTrap` で確定ボタンへ初期フォーカス＋Tab をダイアログ内に閉じ込める（Phase 30）
+- 中央の補助ボタン列は `ConfirmDialogState.secondaryActions?: Array<{ label: string; onClick: () => void }>`（Phase 53 で単一の `secondaryAction` から配列化。キャンセル・確定ボタンの間に表示順で並べる。呼び出し元は `NodeDetailPanel.tsx`「保存して閉じる」、`useAutoSave.ts` の保存衝突ダイアログ「最新版を読み込む」「マージを試す」（§12.5・§25））
 
 ### 5.6.1 InputDialog（packages/ui/src/components/common/InputDialog.tsx）（Phase 30）
 
@@ -622,8 +626,18 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 モーダル内に Tab フォーカスを閉じ込め、閉じたときに開く前の要素へフォーカスを戻す共通フック。`useFocusTrap(containerRef, active, initialFocusRef?)`。
 
-- 適用先: `ConfirmDialog`（初期フォーカス＝確定ボタン）/ `InputDialog`（＝入力欄）/ `NodeDetailPanel` / `KeyboardShortcutsModal` / `MasterPasswordModal`
+- 適用先: `ConfirmDialog`（初期フォーカス＝確定ボタン）/ `InputDialog`（＝入力欄）/ `NodeDetailPanel` / `KeyboardShortcutsModal` / `MasterPasswordModal` / `MergeConflictDialog`（＝「適用」ボタン、Phase 53）
 - モーダルが重なった場合（詳細パネルの上に確認ダイアログ等）は、DOM 上で最後にある `[role="dialog"]` を最前面とみなし、そこだけがトラップを効かせる
+
+### 5.6.3 MergeConflictDialog（packages/ui/src/components/common/MergeConflictDialog.tsx）（Phase 53）
+
+3方向マージ（§25）で自動統合できなかった衝突を1件ずつ解決させるダイアログ。`uiStore.openMergeConflictDialog({ conflicts, onResolve })` で開く。`App.tsx` に常設。
+
+- 衝突（ノード・エッジ）ごとに「自分の変更」／「相手の変更」をラジオボタンで選択する。既定選択は `mine`（マージ本体が真の衝突時に暫定採用している側と揃える）
+- 「すべて自分の変更を採用」「すべて相手の変更を採用」の一括選択ボタン
+- 「適用」で選択結果（`Record<conflictId, 'mine' | 'theirs'>`）を確定して `onResolve` を呼び、ダイアログを閉じる。キャンセル・`Escape`・背景クリックは選択を破棄して閉じるだけで、保存は行わない
+- `role="dialog"` / `aria-modal` / `aria-labelledby`、`useFocusTrap` で「適用」ボタンへ初期フォーカス
+- `z-[70]`（`ConfirmDialog` と同じ）。「マージを試す」ハンドラは非同期処理を挟んでからこのダイアログを開くため、開く時点で `ConfirmDialog` は既に閉じており重ならない
 
 ### 5.7 ApiKeyRequired（packages/ui/src/components/common/ApiKeyRequired.tsx）（Phase 29 / Phase 35 でプロバイダ分岐を追加 / Phase 39 で OpenAI 分岐を追加）
 
@@ -1550,8 +1564,9 @@ remote.mapId ≠ currentMapId → 衝突検出
 **衝突時の動作:**
 1. 自動保存を `isSuspended` フラグで一時停止
 2. `saveStatus = 'conflict'`（ヘッダーに「競合あり」オレンジ表示）
-3. `ConfirmDialog` に3択ボタンを表示（`ConfirmDialogState.secondaryAction` を利用）:
+3. `ConfirmDialog` に4択ボタンを表示（`ConfirmDialogState.secondaryActions`。Phase 53 で単一の `secondaryAction` から配列化し、中央に複数ボタンを並べられるようにした、§5.6）:
    - 「最新版を読み込む」: Drive から再ロードして自分の編集を破棄
+   - 「マージを試す」（Phase 53）: base/mine/theirs の3方向マージを試みる。詳細は §25
    - 「上書き保存」（danger）: チェックをスキップして PATCH を強制実行
    - 「キャンセル」: 自動保存停止のまま閉じる
 
@@ -2220,3 +2235,77 @@ export function searchAcrossMaps(query: string, entries: RecentFileEntry[]): Pro
 ### 24.7 SearchBar: 他のマップも検索（packages/ui/src/components/common/SearchBar.tsx）
 
 「他のマップも検索」チェックボックス（既定OFF。既存の即時ローカル検索と外部通信を伴う検索を混同させないための明示トグル）を追加した。ONかつクエリが空でないとき、400ms デバウンス（`CROSS_MAP_SEARCH_DEBOUNCE_MS`）後に `getPlatform().file.listRecent()`（現在のマップ＝`currentFileId` を除外）→ `searchAcrossMaps(query, entries)`（§24.2）を呼ぶ。結果は現在のマップの検索結果とは別セクションに、マップタイトルごとの見出し＋ヒットノード（最大5件、`HighlightText` でハイライト）で表示する。結果クリックで `openLinkedMap({ mapId, origin }, nodeId)`（§24.4）を呼び、検索バーを閉じてから対象マップ・ノードへ遷移する。
+
+---
+
+## 25. 非同期共同編集設計（3方向マージ、Phase 53）
+
+リアルタイム共同編集・自前バックエンドは実装しない（`docs/roadmap.md` §7.3）。代わりに、上書き保存前の `mapId` 衝突検出（§12.5）で衝突を検知したときに、保存前チェックの二択（上書き保存／最新版を読み込む）に加えて「マージを試す」を選べるようにし、base（前回読み込み/保存時点）・mine（自分の現在編集）・theirs（保存先の最新版）の3つを比較して片方のみの変更は自動採用、真に衝突する箇所だけをダイアログで解決する。Drive 共有フォルダ自体の共有設定（誰とフォルダを共有するか）は Google Drive の UI 側で行う前提とし、IdeaMap 側には共有設定UIを持たない。マージは `origin`（`'cloud'`/`'local'`）を問わず、`useAutoSave` の衝突ダイアログが出る場面すべてで使える。
+
+### 25.1 mapMergeBase.ts（packages/core/src/services/mapMergeBase.ts）
+
+`errorLog.ts`（§19）・`mapHistory.ts`（§22.1）と同じ「`StorageAdapter` 経由 + プロセス内メモリキャッシュ」パターンを踏襲するが、履歴ではなく `mapId` ごとに直近1件（前回読み込み/保存時点の内容）だけを上書き保持する。記録の失敗はアプリ動作に影響させない（このモジュールは決して throw しない）。
+
+```typescript
+export async function saveMergeBase(mapId: string, file: MapFile): Promise<void>
+export async function getMergeBase(mapId: string): Promise<MapFile | null>
+```
+
+- ストレージキーは `ideamap-merge-base-${mapId}`
+- **呼び出し箇所（3箇所）**: (1) `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()`（マップを開いた時点を base にする）、(2) `useAutoSave.ts` の `performSave` で保存成功時（`recordSnapshot` と同じ箇所、§12.4）、(3) `useAutoSave.ts` の衝突ダイアログ「最新版を読み込む」ハンドラ（読み込んだ内容がその時点の base になる）。加えてマージ結果の保存成功時（25.3）にも呼び、次回以降も繰り返しマージできるようにする
+- 検証: `packages/core/src/services/mapMergeBase.test.ts`。保存・取得・`mapId` ごとの分離・未保存時は `null` を返すことを検証する
+
+### 25.2 mapMerge.ts（packages/core/src/services/mapMerge.ts）
+
+```typescript
+export type MergeConflict =
+  | { kind: 'node'; id: string; base: SerializedNode | null; mine: SerializedNode | null; theirs: SerializedNode | null }
+  | { kind: 'edge'; id: string; base: SerializedEdge | null; mine: SerializedEdge | null; theirs: SerializedEdge | null }
+
+export function mergeMapFiles(
+  base: MapFile,
+  mine: MapFile,
+  theirs: MapFile
+): { merged: MapFile; conflicts: MergeConflict[] }
+
+export function applyConflictResolutions(
+  merged: MapFile,
+  conflicts: MergeConflict[],
+  choices: Record<string, 'mine' | 'theirs'>
+): MapFile
+```
+
+- **マージ単位**: ノード・エッジをそれぞれ `id` 単位で base/mine/theirs の3集合（`Map`）に読み、和集合の `id` ごとに比較する
+- **一致判定（`updatedAt` は対象外）**: ノードは `title`/`body`/`color`/`categoryId`/`x`/`y`/`width`/`height`/`parentId`/`url`/`image`/`linkedMapId`/`linkedMapOrigin`、エッジは `source`/`target`/`sourceHandle`/`targetHandle`/`label`/`bidirectional` の一致で判定する。`updatedAt` は編集のたびに変わるため一致判定に使うと毎回「変更あり」に誤検出する。片方が `null`（追加/削除）のときは両方 `null` のときだけ一致とみなす
+- **解決ルール**: `mineChanged = !equal(mine, base)`、`theirsChanged = !equal(theirs, base)` として、
+  - 両方 unchanged → `base` のまま採用
+  - 片方だけ changed → その値（追加・変更・削除いずれも含む）を採用
+  - 両方 changed かつ値が一致 → 衝突にせずその値を採用（同一の編集・同一の削除・同一の追加）
+  - 両方 changed かつ値が不一致 → `conflicts` に積み、`merged` 側は暫定的に `mine` を採用しておく（25.3 の選択結果で上書きされる前提）
+- **マップ全体のメタ情報**: `title`/`mapId`/`presentationNodeIds` 等は `mine`（自分側）をそのまま引き継ぐ（自分側を優先し変更しない）。`updatedAt` はマージ実行時刻で更新する
+- 検証: `packages/core/src/services/mapMerge.test.ts`。片方のみ変更・両方が同一の変更・真の衝突・片方削除+片方編集・双方追加・双方削除などのパターンを検証する
+
+### 25.3 結線: useAutoSave の「マージを試す」（packages/ui/src/hooks/useAutoSave.ts）
+
+`performSave` の衝突ダイアログ（§12.5）に追加した「マージを試す」の `onClick`:
+
+1. `getMergeBase(effectiveMapId)` を読む。`effectiveMapId` が無い、または base が未保存（この仕組みを初めて使う等）ならトースト「マージの基準データがないため、通常の方法で解決してください」を出し、従来の二択にとどめる
+2. `file.openFile(ref)` → `migrateMapFile` で theirs を取得し、`buildMapFile(effectiveMapId)` で mine を組み立て、`mergeMapFiles(base, mine, theirs)` を呼ぶ
+3. `conflicts` が空なら `applyAndSave(merged)`（内部ヘルパー）で `loadFromSerialized` → `setPresentationNodeIds`/`setMapTitle`/`setCurrentMapId` → `file.saveFile` → `recordSnapshot`/`saveMergeBase` まで即座に行い、成功したらトースト「マージが完了しました」を出す
+4. `conflicts` があれば `saveStatus` を `'conflict'` のままにし、`openMergeConflictDialog({ conflicts, onResolve })`（§5.6.3・§25.4）を開く。自動保存は選択が終わるまで停止したまま
+5. `onResolve(choices)` は `applyConflictResolutions(merged, conflicts, choices)` の結果を同じ `applyAndSave` に渡す
+
+### 25.4 uiStore: mergeConflictDialog（packages/core/src/stores/uiStore.ts、§4.2）
+
+```typescript
+export interface MergeConflictDialogState {
+  conflicts: MergeConflict[]
+  onResolve: (choices: Record<string, 'mine' | 'theirs'>) => void
+}
+```
+
+`openMergeConflictDialog(dialog)` / `closeMergeConflictDialog()` で開閉する。表示コンポーネントは `MergeConflictDialog`（§5.6.3）。
+
+### 25.5 ConfirmDialog: secondaryActions の配列化（packages/core/src/stores/uiStore.ts, packages/ui/src/components/common/ConfirmDialog.tsx）
+
+`ConfirmDialogState.secondaryAction?: { label: string; onClick: () => void }`（単一）を `secondaryActions?: Array<{ label: string; onClick: () => void }>` に変更した。「マージを試す」ボタンを衝突ダイアログの中央に追加するには最大3ボタン（キャンセル／secondary／confirm）構成では足りないため。`ConfirmDialog.tsx` の描画も単一ボタン前提から `secondaryActions?.map()` によるボタン列に変更し、既存呼び出し元（`NodeDetailPanel.tsx` の「保存して閉じる」、`useAutoSave.ts` の「最新版を読み込む」）は単一オブジェクトから1要素配列を渡す形に書き換えた（挙動は変えない）。詳細は §5.6。

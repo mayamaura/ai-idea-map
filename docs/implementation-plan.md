@@ -2517,46 +2517,52 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 53: 非同期共同編集（Drive 共有フォルダ経由）
+### Phase 53: 非同期共同編集（Drive 共有フォルダ経由） 🔨 実装済み（確認中）
 
 **目標**: リアルタイム共同編集・自前バックエンドは実装しない（`docs/roadmap.md` §8）。代わりに、Google Drive の共有フォルダ経由で複数人が非同期に編集したマップを、保存時の3方向マージ（base/mine/theirs）で可能な限り自動統合し、真に衝突する箇所だけをダイアログで解決する（v2.0「どこでも・つながる」の3つ目、`docs/roadmap.md` §7.3）。Drive 共有フォルダ自体の共有設定（誰とフォルダを共有するか）は Google Drive の UI 側で行う前提とし、IdeaMap 側には共有設定UIを作らない。
 
 **現状確認（起票時点）**: 衝突検知は `packages/ui/src/hooks/useAutoSave.ts` の `performSave` に既に実装されている（128-172行目）。上書き保存前に `FileAdapter.getMetadata(ref)`（Web・デスクトップとも Drive の `appProperties.mapId` またはファイル内 `mapId` を照合、`packages/platform/src/types.ts` の `getMetadata`）で保存先の `mapId` と現在編集中の `mapId` を比較し、不一致なら `openConfirmDialog` で「上書き保存」（`onConfirm`）／「最新版を読み込む」（`secondaryAction`）の二択＋キャンセルを提示する。`packages/core/src/stores/uiStore.ts` の `ConfirmDialogState.secondaryAction` は `{ label: string; onClick: () => void }` という**単一**オブジェクトで、コメントに「3択が必要な場合（衝突ダイアログ等）に使うオプションの中央ボタン」とある通り最大3ボタン（キャンセル／secondary／confirm）構成になっており、4択目（マージ）を追加する余地がない。`secondaryAction` の呼び出し元は現状2箇所（`NodeDetailPanel.tsx` の「保存して閉じる」、`useAutoSave.ts` の「最新版を読み込む」）のみ。3方向マージのための base スナップショット（前回読み込み・保存時点の内容）を保持する仕組みは存在しない。
 
 #### A. 検知導線の拡張: `ConfirmDialog` の複数アクション化
-- [ ] `packages/core/src/stores/uiStore.ts` の `ConfirmDialogState.secondaryAction`（単一の `{ label, onClick }`）を `secondaryActions?: Array<{ label: string; onClick: () => void }>` に変更する
-- [ ] `packages/ui/src/components/common/ConfirmDialog.tsx` の描画（76-83行目）を、単一ボタン前提から `secondaryActions.map()` によるボタン列に変更する
-- [ ] 既存呼び出し元2箇所（`packages/ui/src/components/panels/NodeDetailPanel.tsx` の「保存して閉じる」・`packages/ui/src/hooks/useAutoSave.ts` の「最新版を読み込む」）を、単一オブジェクトから1要素配列を渡す形に書き換える（挙動は変えない）
-- [ ] `useAutoSave.ts` の衝突ダイアログ（128-172行目）の `secondaryActions` に「マージを試す」ボタンを追加する（受け皿のみ。実装は E で結線する）
+- [x] `packages/core/src/stores/uiStore.ts` の `ConfirmDialogState.secondaryAction`（単一の `{ label, onClick }`）を計画通り `secondaryActions?: Array<{ label: string; onClick: () => void }>` に変更した（2026-08-17 実装）
+- [x] `packages/ui/src/components/common/ConfirmDialog.tsx` の描画を、単一ボタン前提から `secondaryActions?.map()` によるボタン列に変更した（2026-08-17 実装）
+- [x] 既存呼び出し元2箇所（`packages/ui/src/components/panels/NodeDetailPanel.tsx` の「保存して閉じる」・`packages/ui/src/hooks/useAutoSave.ts` の「最新版を読み込む」）を、計画通り単一オブジェクトから1要素配列を渡す形に書き換えた（挙動は変えていない）（2026-08-17 実装）
+- [x] `useAutoSave.ts` の衝突ダイアログの `secondaryActions` に「マージを試す」ボタンを追加した（E で結線まで実装済み、受け皿のみではない）（2026-08-17 実装）
 
 #### B. base スナップショットの保持
-- [ ] `packages/core/src/services/mapMergeBase.ts`（新規）に `saveMergeBase(mapId: string, file: MapFile): Promise<void>` / `getMergeBase(mapId: string): Promise<MapFile | null>` を実装する。`packages/core/src/services/errorLog.ts` と同じ「StorageAdapter 経由 + プロセス内メモリキャッシュ」パターンだが、リングバッファではなく `mapId` ごとに直近1件だけを上書き保持する。ストレージキーは `ideamap-merge-base-${mapId}`
-- [ ] `packages/core/src/services/mapMergeBase.test.ts` を作成する（保存・取得・`mapId` ごとの分離・未保存時は `null` を返すことを検証する）
-- [ ] 呼び出し箇所3つに `saveMergeBase` を配線する: (1) `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()`（マップを開いた時点を base にする）、(2) `useAutoSave.ts` の保存成功時（197行目付近。Phase 50 実装後は `recordSnapshot` の呼び出しと同じ箇所に並べる）、(3) `useAutoSave.ts` の衝突ダイアログ「最新版を読み込む」ハンドラ（読み込んだ内容がその時点の base になる）
+- [x] `packages/core/src/services/mapMergeBase.ts`（新規）に `saveMergeBase(mapId, file): Promise<void>` / `getMergeBase(mapId): Promise<MapFile | null>` を計画通り実装した。`errorLog.ts` と同じ「StorageAdapter 経由 + プロセス内メモリキャッシュ」パターンで、`mapId` ごとに直近1件だけを上書き保持する。ストレージキーは `ideamap-merge-base-${mapId}`（2026-08-17 実装）
+- [x] `packages/core/src/services/mapMergeBase.test.ts` を作成した（2026-08-17 実装）
+- [x] 呼び出し箇所4つに `saveMergeBase` を配線した: (1) `useFileDashboard.ts` の `openLoadedMap()`、(2) `useAutoSave.ts` の保存成功時（`recordSnapshot` と同じ箇所）、(3) `useAutoSave.ts` の衝突ダイアログ「最新版を読み込む」ハンドラ。**起票の3箇所に加え、(4) マージ結果の保存成功時（E の `applyAndSave` 内）にも配線した**（起票時点では E のマージ保存経路への配線が明記されていなかった点の実装上の補完、docs 訂正）（2026-08-17 実装）
 
 #### C. 3方向マージロジック
-- [ ] `packages/core/src/services/mapMerge.ts`（新規）に `mergeMapFiles(base: MapFile, mine: MapFile, theirs: MapFile): { merged: MapFile; conflicts: MergeConflict[] }` を実装する。ノード・エッジをそれぞれ id 単位で base/mine/theirs の3集合比較する: base にあり mine/theirs 双方から消えていれば削除を採用、片方だけが base と異なる内容（追加・変更を含む）ならその内容を採用、双方が base と異なりかつ内容も異なる（片方の削除ともう片方の変更を含む）場合は `conflicts` に積み `merged` 側は暫定的に mine を採用しておく（D の選択結果で上書きされる前提）。内容の一致判定は `updatedAt` を除くフィールド（`title`/`body`/`color`/`categoryId`/`x`/`y`/`width`/`height`/`parentId`/`url`/`image`。Phase 52 実装後は `linkedMapId`/`linkedMapOrigin` も含む）で行う（`updatedAt` は編集のたびに変わるため一致判定に使うと誤検出する）
-- [ ] `MergeConflict` 型（`{ kind: 'node' | 'edge'; id: string; base: T | null; mine: T | null; theirs: T | null }`）を定義する
-- [ ] `packages/core/src/services/mapMerge.test.ts` を作成する（片方のみ変更・両方が同一の変更・真の衝突・片方削除+片方編集・双方追加・双方削除の各パターンを検証する）
+- [x] `packages/core/src/services/mapMerge.ts`（新規）に `mergeMapFiles(base, mine, theirs): { merged: MapFile; conflicts: MergeConflict[] }` を計画通り実装した。ノード・エッジをそれぞれ id 単位で base/mine/theirs の3集合比較し、片方だけが base と異なる内容（追加・変更・削除いずれも含む）ならその内容を採用、双方が base と異なり内容も一致しなければ `conflicts` に積み `merged` 側は暫定的に mine を採用する。**「base にあり双方から消えていれば削除を採用」は専用の特別扱いではなく、上記の一般ルール（両方 unchanged/changed の判定に `null` も値として含める）に自然に包含される形で実装した**（起票では削除を個別ケースのように記載していたが、実装は分岐を増やしていない、docs 訂正）。一致判定フィールドは計画通り `updatedAt` を除く `title`/`body`/`color`/`categoryId`/`x`/`y`/`width`/`height`/`parentId`/`url`/`image`/`linkedMapId`/`linkedMapOrigin`（2026-08-17 実装）
+- [x] `MergeConflict` 型を定義した。**起票の `{ kind: 'node' | 'edge'; id; base: T | null; mine: T | null; theirs: T | null }`（`kind` によらず同じ形）ではなく、`kind: 'node'` と `kind: 'edge'` を判別可能ユニオンにした**（`SerializedNode`/`SerializedEdge` を1つの型パラメータに混ぜると `MergeConflictDialog` 側で `title`/`label` に安全にアクセスできないため。実質的な情報量は起票と同じ）（2026-08-17 実装、docs 訂正）
+- [x] `packages/core/src/services/mapMerge.test.ts` を作成した（2026-08-17 実装）
 
 #### D. 衝突解決ダイアログ
-- [ ] `packages/core/src/stores/uiStore.ts` に `mergeConflictDialog: { conflicts: MergeConflict[]; onResolve: (choices: Record<string, 'mine' | 'theirs'>) => void } | null` と `openMergeConflictDialog`/`closeMergeConflictDialog` を追加する
-- [ ] `packages/ui/src/components/common/MergeConflictDialog.tsx`（新規）を作成する。`conflicts` を1件ずつ「自分の内容 / 相手の内容」を並べて表示し、対象ごとにラジオボタンで選択、「適用」で `choices` を確定して `onResolve` を呼ぶ
-- [ ] `packages/ui/src/App.tsx` に `<MergeConflictDialog />` を追加し、`packages/ui/src/index.ts` から export する
+- [x] `packages/core/src/stores/uiStore.ts` に `mergeConflictDialog: MergeConflictDialogState | null`（`{ conflicts: MergeConflict[]; onResolve: (choices) => void }`）と `openMergeConflictDialog`/`closeMergeConflictDialog` を計画通り追加した（2026-08-17 実装）
+- [x] `packages/ui/src/components/common/MergeConflictDialog.tsx`（新規）を計画通り作成した。衝突ごとに自分/相手をラジオボタンで選択（一括選択ボタンつき）、「適用」で `choices` を確定して `onResolve` を呼ぶ（2026-08-17 実装）
+- [x] `packages/ui/src/App.tsx` に `<MergeConflictDialog />` を追加し、`packages/ui/src/index.ts` から export した（2026-08-17 実装）
 
 #### E. 結線: 「マージを試す」の実装
-- [ ] `useAutoSave.ts` の衝突ダイアログに追加した「マージを試す」の `onClick` を実装する: `getMergeBase(currentMapId)` を読み、base がなければ（この仕組みを初めて使う等）マージ不可としてトースト表示のうえ従来の二択にとどめる。base があれば `file.openFile(ref)` で theirs を取得 → `migrateMapFile` → `buildMapFile()` で mine を組み立て → `mergeMapFiles(base, mine, theirs)` を呼ぶ。`conflicts` が空なら即座に `loadFromSerialized(merged.nodes, merged.edges)` して保存・`saveMergeBase` 更新まで行う。`conflicts` があれば `openMergeConflictDialog` で選択させ、選択結果を `merged` に反映してから同様に適用・保存する
-- [ ] マージ適用後の `mapTitle`/`presentationNodeIds` の扱い（自分側を優先し変更しない）を実装する
+- [x] `useAutoSave.ts` の「マージを試す」の `onClick` を計画通り実装した: `getMergeBase(effectiveMapId)` が無ければトースト表示のうえ従来の二択にとどめ、あれば `file.openFile(ref)` → `migrateMapFile` で theirs、`buildMapFile()` で mine を組み立て `mergeMapFiles` を呼ぶ。`conflicts` が空なら即座に保存・`saveMergeBase` 更新まで行い、あれば `openMergeConflictDialog` で選択させてから同様に適用・保存する（2026-08-17 実装）
+- [x] マージ適用後の `mapTitle`/`presentationNodeIds` の扱い（自分側を優先し変更しない）を実装した。`mergeMapFiles` が `{ ...mine, nodes, edges, updatedAt }` を返すため、`title`/`presentationNodeIds` は mine の値がそのまま `finalFile` に残る形で実現している（2026-08-17 実装）
 
 #### F. 運用前提の明記
-- [ ] Drive 共有フォルダ自体の共有操作（フォルダを他ユーザーと共有する設定）は Google Drive の UI 側で行う前提であり、IdeaMap 側には共有設定UIを作らないことを `docs/design.md`・`docs/requirements.md` に明記する
-- [ ] マージ機能は `origin`（`'cloud'`/`'local'`）を問わず `useAutoSave` の衝突ダイアログが出る場面すべてで使えるが、想定ユースケースは Drive 共有フォルダ経由の非同期共同編集であることを明記する
+- [x] Drive 共有フォルダ自体の共有操作は Google Drive の UI 側で行う前提であり、IdeaMap 側には共有設定UIを作らないことを `docs/design.md` §25・`docs/requirements.md` §2.3.10 に明記した（2026-08-17、本ドキュメント同期で反映）
+- [x] マージ機能は `origin` を問わず `useAutoSave` の衝突ダイアログが出る場面すべてで使えるが、想定ユースケースは Drive 共有フォルダ経由の非同期共同編集であることを明記した（同上）
 
 #### G. ドキュメント更新
-- [ ] `docs/design.md` §12.5（mapId 衝突検出）を拡張し、三択（上書き／読み直し／マージ）のフローと `mapMerge.ts`/`mapMergeBase.ts` の設計を追記する。§6 に `MergeConflict` 型を追記する
-- [ ] `docs/requirements.md` に「非同期共同編集（3方向マージ）」の機能要件を追記する
+- [x] `docs/design.md` §12.5（mapId 衝突検出）を拡張し、四択（上書き／読み直し／マージ／キャンセル）のフローを追記した。`mapMerge.ts`/`mapMergeBase.ts` の設計は新設した §25「非同期共同編集設計（3方向マージ）」にまとめて記載した。**`MergeConflict` 型は §6（`types/index.ts` の型定義）ではなく §25.2 に記載した**（`MergeConflict` は `types/index.ts` ではなく `services/mapMerge.ts` で定義されており、§24.2 の `CrossMapSearchResult` を対応するサービスの節に記載した既存の慣習に合わせた、docs 訂正）（2026-08-17、本ドキュメント同期で反映）
+- [x] `docs/requirements.md` §2.3.10 に「非同期共同編集（Drive 共有フォルダ経由の3方向マージ）」の機能要件を追記した（2026-08-17、本ドキュメント同期で反映）
 
-**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。同じ `mapId` のファイルを2箇所で編集し保存すると衝突ダイアログに「マージを試す」が現れ、非衝突箇所は自動統合され、真に衝突する箇所だけ選択UIが出ること。マージ後の保存で base スナップショットが更新され、以後の衝突でも繰り返しマージできること。
+**残りの手動確認項目**:
+- [ ] 実際に2台の端末（または2つのブラウザプロファイル／2つの Google アカウント）で同じ Drive 共有フォルダ上のファイルを非同期に編集し、片方のみの変更が自動採用されて保存されることを確認する
+- [ ] 双方が同じノード（またはエッジ）を異なる内容に編集した状態で保存し、「マージを試す」から衝突解決ダイアログが表示され、自分/相手の選択（一括選択含む）どおりに適用・保存されることを確認する
+- [ ] マージ結果を保存した後、再度別の変更が衝突しても連続してマージできる（base が保存のたびに更新されている）ことを確認する
+- [ ] デスクトップ版でも同じフロー（Drive 経由・ローカルファイル経由の両方）で衝突検出とマージが動作することを確認する
+
+**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。同じ `mapId` のファイルを2箇所で編集し保存すると衝突ダイアログに「マージを試す」が現れ、非衝突箇所は自動統合され、真に衝突する箇所だけ選択UIが出ること。マージ後の保存で base スナップショットが更新され、以後の衝突でも繰り返しマージできること。**doc-sync 時点（2026-08-17）で `pnpm --filter @ideamap/core test` を実行し、テスト224件（コミットメッセージの記載どおり、`mapMerge.test.ts`・`mapMergeBase.test.ts` の新規追加分22件を含む）が通過することを確認した。** 実機（複数端末・複数 Google アカウント）でのマージ動作確認は上記「残りの手動確認項目」として未了のため、フェーズ見出しは `🔨 実装済み（確認中）` にとどめている。
 
 ---
 
