@@ -265,7 +265,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
   - `addConnectedNode`: グループ外分岐では `findFreePosition` を適用して重なり回避（Phase 21）
 - `addSiblingNode(nodeId)` — 兄弟ノードを作成してIDを返す（Phase 22）。親エッジがあれば同じ親の子として追加、なければ下方に独立ノード作成
 - `selectOnlyNode(id)` — 指定ノードのみ選択状態にする（履歴に積まない、矢印キー移動用）（Phase 22）
-- `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory` — ノード更新
+- `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory`, `updateNodeUrl`, `updateNodeImage` — ノード更新。この6アクションに加え `mergeNodes`（keep側）・`applyClusterCategory` を含む計8箇所で、対象ノードの `data.updatedAt` を `new Date().toISOString()` に刻印する（Phase 49。AIガーデナーの放置ノード判定 §9.4.3 で使う）
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
 - `copyNodes`, `paste` — コピー・ペースト（Phase 22: `copyNodes` は選択ノード間のエッジも保存、`paste` は `Map<oldId,newId>` でエッジを再生成）
@@ -279,7 +279,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 - `connectNodes(source, target)` — 接続モード方式のエッジ作成（Phase 26）。`onConnect` に委譲して履歴push・矢印マーカー付与・`addEdge` 重複排除を再利用。`source === target` のときは何もしない
 - `connectDroppedNode(droppedId, parentId, returnPosition)` — ドラッグ&ドロップ接続（Phase 40、§5.2.1）。重ねられた側（親）→ ドラッグした側（子）のエッジ追加と、ドラッグしたノードを `returnPosition`（ドラッグ開始位置）へ戻す処理を1回の `set` にまとめる。`pushPast` はしない（§8.2 の履歴相乗り）。`droppedId === parentId`、または既に接続済み（向き問わず）なら何もしない
 - `undo`, `redo` — 履歴操作
-- `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）
+- `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）。`updatedAt`/`url`/`image`（Phase 49）はそのまま往復させ、欠落している旧ファイルの値を捏造しない
 
 内部ヘルパー（Phase 29 で `packages/core/src/layout/groupGeometry.ts` に集約）:
 - `computePushOut(pos, measured, groupNodes, fallbackSize?)` — フリーノードをグループ枠外へ最小移動距離で押し出す。mapStore のドラッグ処理と `mapLayout.applyGroupPushOut` の両方から使う（Phase 29 で重複実装を統合。整列時は 192×64、ドラッグ時は 160×60 をフォールバックサイズに使う差分は引数で吸収）
@@ -326,6 +326,8 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `clusterSuggestions` | `ClusterSuggestion[]` | クラスタリング提案リスト（Phase 10） |
 | `gardenerSuggestions` | `GardenerSuggestion[]` | AIガーデナー（マップレビュー）の提案リスト（Phase 47） |
 | `isArtifactPanelOpen` | `boolean` | AI成果物生成パネル（`ArtifactPanel`）の開閉（Phase 45） |
+| `isHistoryPanelOpen` | `boolean` | バージョン履歴パネル（`HistoryPanel`）の開閉（Phase 50） |
+| `isTimelapsePlaying` | `boolean` | タイムラプス再生中フラグ（Phase 50）。`true` の間はキャンバスの編集操作・キーボードショートカット・ツールバー類をブロックする |
 | `isPersonaDebatePanelOpen` | `boolean` | ペルソナ壁打ちパネル（`PersonaDebatePanel`）の開閉（Phase 48）。対象ノードIDは `selectedNodeId` を再利用し、専用の状態は持たない |
 | `personaDebateResult` | `PersonaOpinion[]` | ペルソナ壁打ちのAI応答結果（Phase 48） |
 | `isPersonaDebateLoading` | `boolean` | ペルソナ壁打ちのAI呼び出し中フラグ（Phase 48） |
@@ -521,6 +523,10 @@ React Flow の主要設定:
 - AIノード (`createdBy === 'ai'`): `node-ai-generated` クラス（`✦` バッジ + pulse アニメーション）
 - ドロップ接続先候補（`dragOverNodeId === id`、Phase 40・§5.2.1）: 緑リング `outline: 3px solid #10b981` ＋ `NodeToolbar` によるガイドツールチップ「ドロップでこのアイデアを親にして接続」（ズーム非依存）
 
+**関連リンク・画像添付（Phase 49）:**
+- `data.image` があれば本文の下にサムネイル（`<img>`、`max-h-20 object-cover`）を表示する
+- `data.url` があれば `new URL(url).hostname` で取得したドメイン名をリンクチップ（`🔗 ドメイン名`）として表示する。不正なURL（`new URL()` が例外を投げる）はチップ自体を表示しない。クリックで `getPlatform().system.openExternalUrl(url)` を呼ぶ（`SystemAdapter.openExternalUrl` は既存メソッド。§5.10 の `ExternalLink` と同じ Adapter 経由だが、IdeaNode 自身がボタンとして実装しておりコンポーネント共有はしていない）
+
 **インライン編集（タイトルのみ）（Phase 22）:**
 - ダブルクリック / F2 / 右クリック「名前を変更」で `uiStore.editingNodeId` を設定 → textarea 表示
 - Enter (Shift なし) または blur でコミット、Escape で変更破棄
@@ -636,9 +642,18 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 
 実装上の要点:
 
-- 未コミット判定は `titleInput !== node.data.title || bodyInput !== (node.data.body ?? '')`。blur 済みの変更はストアへ反映され差分にならないため、確認が出るのは「入力途中で閉じたとき」だけになる。
-- 破棄経路では `skipBlurCommit` ref を立てて `handleTitleBlur` / `handleBodyBlur` を無効化する。**確認ダイアログを開く前に立てる**のが重要で、ダイアログへフォーカスが移る際の `blur` で先に保存されてしまうのを防ぐ。キャンセル時は false に戻す。
+- 未コミット判定は `titleInput !== node.data.title || bodyInput !== (node.data.body ?? '') || urlInput !== (node.data.url ?? '')`（Phase 49 で `urlInput` を追加）。blur 済みの変更はストアへ反映され差分にならないため、確認が出るのは「入力途中で閉じたとき」だけになる。
+- 破棄経路では `skipBlurCommit` ref を立てて `handleTitleBlur` / `handleBodyBlur` / `handleUrlBlur` を無効化する。**確認ダイアログを開く前に立てる**のが重要で、ダイアログへフォーカスが移る際の `blur` で先に保存されてしまうのを防ぐ。キャンセル時は false に戻す。
 - 背景クリックは `onClick` ではなく `onMouseDown` で受ける。`click` まで待つと先に `blur` が走り、破棄を選ぶ前に保存されてしまうため。
+
+**関連リンク・画像添付の入力欄（Phase 49）:**
+- URL欄はタイトル・本文と同じ blur-commit パターン（`urlInput` state → blur で `updateNodeUrl(id, urlInput.trim())`）
+- 画像は `<input type="file" accept="image/*">` で選択すると即座に `resizeImageToDataUrl()`（`packages/ui/src/utils/imageResize.ts`）→ `updateNodeImage(id, dataUrl)` を呼ぶ（blur 待ちなし・isDirty の対象外）。処理中は「処理中...」表示でボタンを無効化し、失敗時は `addToast('画像の処理に失敗しました', 'error')`。プレビュー右上の削除ボタンで `updateNodeImage(id, undefined)` を呼ぶ
+- `resizeImageToDataUrl(file, maxDimension = 640, maxBytes = 200_000)`: `FileReader`/`Image`/`<canvas>` というブラウザ標準APIのみで実装（Platform Adapter を介さない）。長辺を `maxDimension` にリサイズし、JPEG品質を 0.9 から 0.1 刻みで下げながら `toDataURL()` の文字列長が `maxBytes` 以下になるまで再エンコードする
+
+**設計判断（Phase 49）:**
+- **OGPタイトルの自動取得はしない。** Web版は外部サイトのHTML取得がブラウザのCORSで失敗し、`apps/web/vite.config.ts` の CSP `connect-src`（Anthropic/OpenAI/Google APIのみ許可）にも合致しない。デスクトップ版も `apps/desktop/src-tauri/capabilities/*.json` のホスト許可が既存 capability（`ai-http`/`google-drive` 等、§18.5）の用途に合わず、任意ドメインへの許可を広げるのは既存方針（許可範囲を機能単位に絞る）に反するため見送った
+- **画像は別ファイル管理せず data URL で埋め込む。** 添付画像は `.ideamap` / Drive保存 / 共有URL にそのままサイズが乗る（リサイズ後でも最大約200KB相当）。Drive上の別オブジェクト参照等の別ファイル管理は、Web版・デスクトップ版でストレージの扱いが大きく異なり過剰と判断し v1 では見送った。共有URLの `URL_SIZE_WARNING`（`apps/web/src/services/shareUrl.ts`、50000文字超で警告）は画像添付後も既存ロジックのまま機能する
 
 ### 5.9 WebSearchToggle / WebSearchSources（packages/ui/src/components/common/WebSearchToggle.tsx）・useWebSearch（packages/ui/src/hooks/useWebSearch.ts、Phase 35 追加実装）
 
@@ -683,6 +698,14 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 - **子ノード追加**: `handleAddSelected` が選択された意見それぞれについて `calcSuggestionPositions(selectedNode.position.x, selectedNode.position.y, count, nodes)` で位置を求めた `IdeaNode[]` と、選択ノードへの `makeEdge({ source: selectedNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })` の `Edge[]` を組み立て、`addNodesWithEdges`（§4.1）を1回呼ぶ。追加後は選択ノード＋新規ノード群へ `fitView` する
 - ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
 
+### 5.13 HistoryPanel（packages/ui/src/components/panels/HistoryPanel.tsx、Phase 50）
+
+保存のたびに記録されるバージョン履歴（`mapHistory.ts`、§22.1）の一覧・復元・タイムラプス再生の入口。`App.tsx` に常設し `uiStore.isHistoryPanelOpen` で開閉する。入口はヘッダーの「履歴」ボタン（§13 の抑制対象外、`Header.tsx` に「マップ分析」「成果物を作成」と同じデスクトップ幅ラベル付き・モバイル幅アイコンのみの2ボタン構成で追加）。
+
+- 開いたら `uiStore.currentMapId` を元に `getSnapshots(mapId)` を呼び、日時・ノード数/エッジ数の一覧を表示する。行をクリックすると開閉し、開いた行にタイトルとノードタイトル一覧（最大30件、以降は「他 n 件」表示）の読み取り専用プレビューを表示する（既存キャンバスは書き換えない）
+- **「この時点に復元」**: `openConfirmDialog` で確認 → 確定で、まず現在の状態を `recordSnapshot(currentMapId, buildMapFile(currentMapId))` で退避してから（復元により失われる直前の状態を残すため）、選択スナップショットを `loadFromSerialized(snapshot.mapFile.nodes, snapshot.mapFile.edges)` で復元し、`mapTitle`/`presentationNodeIds` も反映する。`documentSlice.ts` の `loadFromSerialized` は `past: [], future: []` で Undo 履歴を消す仕様のため、**この復元操作自体は Undo 1回では戻せない**。「取り消し」は直前状態を退避したスナップショットから再度復元する形で提供する
+- **「タイムラプス再生」**: 確認ダイアログ（Undo履歴が失われる旨の案内）→ `startTimelapse(snapshots)`（§22.3）を呼びパネルを閉じる
+
 ---
 
 ## 6. 型定義（packages/core/src/types/index.ts）
@@ -704,6 +727,9 @@ interface IdeaNodeData extends Record<string, unknown> {
   color: string        // hex カラーコード（カテゴリから派生）
   createdBy: 'user' | 'ai'
   categoryId?: string  // Category.id への参照
+  updatedAt?: string   // ノード単位の最終更新日時（ISO 8601）。旧ファイル由来は undefined（Phase 49）
+  url?: string         // 関連リンク（Phase 49）
+  image?: string       // 添付画像（data URL、クライアント側でリサイズ済み。Phase 49）
 }
 
 interface MapFile {
@@ -724,6 +750,9 @@ interface SerializedNode {
   color: string
   createdBy: 'user' | 'ai'
   categoryId?: string
+  updatedAt?: string   // ノード単位の最終更新日時（ISO 8601）。旧ファイル由来は undefined（Phase 49）
+  url?: string         // 関連リンク（Phase 49）
+  image?: string       // 添付画像（data URL、クライアント側でリサイズ済み。Phase 49）
 }
 
 interface SerializedEdge {
@@ -843,6 +872,29 @@ const EDGE_STYLE = { stroke: '#94a3b8', strokeWidth: 1.5 }
 ### 7.3 旧データ互換性
 
 ハンドルID未指定の旧保存データは読み込み時に `sourceHandle='right'`, `targetHandle='left'` をデフォルト設定してフォールバック。
+
+### 7.4 マップファイルのバージョニングとマイグレーション（packages/core/src/utils/mapFileCompat.ts、Phase 49）
+
+`readNodeTitle`/`readEdgeHandles`（§7.3 の実体、フィールド単位の後方互換ヘルパー）とは別に、`MapFile.version` を見てファイル全体をバージョン単位で移行する仕組みを同じファイルに持つ。
+
+```typescript
+export const CURRENT_MAP_FILE_VERSION = '1.0'
+
+export function migrateMapFile(file: MapFile): { file: MapFile; warning?: string }
+```
+
+- `version` が現行と同じ・または欠落しているファイルは、`version` を現行値に揃えて（値を捏造せず）そのまま返す
+- `version` が現行より古いファイルは、`MIGRATION_STEPS`（`{ from: string; migrate: (file: MapFile) => MapFile }[]`、バージョンごとの段階的変換関数を積む配列）を順に適用してから現行バージョンへ書き換える。**初回実装時点では現行バージョンより古い実データが存在しないため `MIGRATION_STEPS` は空**で、`migrateMapFile` は事実上「`version` を揃えるだけの恒等変換」になる。以後バージョンを上げるときはここへ1ステップずつ追加していく
+- `version` が現行より新しい（未知の将来バージョン）ファイルは、読み込み自体は試みたうえで `warning: 'このファイルは新しいバージョンで作成されています。一部のデータが読み込めない可能性があります'` を添えて返す
+- `buildMapFile()`（`packages/core/src/stores/mapSnapshot.ts`）は保存のたびに `version: CURRENT_MAP_FILE_VERSION` を書き込む。`ExportImportPanel.tsx` の `getMapFile()`（Markdown/JSONエクスポート用）も同じ定数を参照する
+
+**配線箇所（外部ファイル起源の `MapFile` を読み込むすべての経路）**: `migrateMapFile` を呼び、`warning` があれば `addToast(warning, 'info')` で通知する。
+- `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()`（Web版 Driveファイル選択・デスクトップ版ダッシュボード・`apps/desktop/src/openMap.ts` の Ctrl+O ダイアログの共通経路）
+- `apps/web/src/components/screens/FileOpenDashboard.tsx` の `handleResumeLocal()`（ローカル控えの再開）
+- `apps/web/src/components/panels/MapListPanel.tsx` の `handleLoad()`
+- `apps/web/src/WebApp.tsx` の `useShareUrlImport()`（共有URLインポート）
+- `packages/ui/src/hooks/useAutoSave.ts` の衝突ダイアログ `secondaryAction`（「最新版を読み込む」）
+- `packages/ui/src/services/exportService.ts` の `importFromJson()`（JSONファイルインポート）。戻り値が `MapFile` から `{ file: MapFile; warning?: string }` に変わったため、呼び出し元の `ExportImportPanel.tsx` も分割代入に合わせて変更済み
 
 ---
 
@@ -1072,7 +1124,7 @@ export interface GenerateArtifactRequest {
 ```typescript
 interface ReviewMapRequest {
   provider: LLMProvider
-  nodes: { id: string; title: string; body?: string; categoryId?: string; createdBy: 'user' | 'ai' }[]
+  nodes: { id: string; title: string; body?: string; categoryId?: string; createdBy: 'user' | 'ai'; updatedAt?: string }[]
   edges: { source: string; target: string }[]
   categories: Category[]
 }
@@ -1080,7 +1132,7 @@ interface ReviewMapRequest {
 
 `reviewMap(req, signal?)` は `findNeglectedNodeIds`（`packages/core/src/services/mapReview.ts`）の結果を「【放置されている可能性のあるノード（参考）】」セクションとしてプロンプトに埋め込んだ上で `completeJsonWithRetry` を呼び、`GARDENER_SCHEMA` に従う `{ suggestions: GardenerSuggestion[] }` を取得する。プロンプトには4種の提案（深掘り／統合／橋渡し／問いかけ）の判断基準を明記し、最大6件までに絞るよう指示する。放置ノードが1件もなければ参考セクション自体を省略する。`targetNodeIds` が配列でない要素は空配列に落とす（小型モデルの逸脱への防御）。
 
-`findNeglectedNodeIds(nodes, edges)` は「子ノードを持たない（`edges` の `source` に現れない）葉ノード」かつ「`body` が空、または `createdBy === 'ai'`」を満たすノードIDを返す純粋関数（LLM呼び出しなし）。`IdeaNodeData`/`SerializedNode` に更新時刻フィールドが無いため、時刻ベースの「放置期間」判定ではなく構造的指標で代替している。
+`findNeglectedNodeIds(nodes, edges)` は「子ノードを持たない（`edges` の `source` に現れない）葉ノード」を対象に、**ノードが `updatedAt`（Phase 49）を持つ場合は経過日数（`NEGLECTED_DAYS_THRESHOLD = 30`日）で判定し、持たない場合（旧ファイル由来）は従来どおり「`body` が空、または `createdBy === 'ai'`」の構造的指標にフォールバックする**純粋関数（LLM呼び出しなし）。呼び出し元 `MapAnalysisPanel.tsx` は `mapContext.nodes` に `updatedAt` を含めて渡す。
 
 ### 9.4.4 ペルソナ壁打ち会議（`debateNode`、Phase 48）
 
@@ -1450,6 +1502,7 @@ Phase 33 で `packages/ui` に汎用化され、Web版・デスクトップ版�
 - 保存ステータスは `uiStore.saveStatus` で管理しヘッダーに表示。表示は「保存済み · Drive」「保存済み · ローカル」形式（`isSignedIn && currentFileId` → Drive）。保存成功時に `uiStore.lastSavedAt` を更新し、ツールチップに最終保存時刻を表示
 - **未保存ガード（Phase 20 / Phase 33 で `SystemAdapter.onBeforeExit` に一般化）**: `App.tsx` が `saveStatus` が `unsaved`/`saving` のとき終了を止める。Web=`beforeunload`、Desktop=ウィンドウの `close-requested` イベント＋ネイティブ確認ダイアログ（`ask()`）
 - **保存ダイアログのキャンセル（Phase 34、デスクトップ版のみ発生）**: `saveFileAs` が `null` を返す（ユーザーがダイアログをキャンセル）と、失敗扱いにはせず `saveStatus` を `'unsaved'` に戻して次の操作を待つ
+- **バージョン履歴への記録（Phase 50）**: 保存が成功した直後（新規保存確定時・上書き保存成功時のどちらも通る1箇所）で `recordSnapshot(mapFile.mapId, mapFile)` を呼ぶ（§22.1）。保存先未確定のローカル控えのみの分岐（`createNewFileOnSave: false` のデバウンス保存）では呼ばない（正式な保存ではないため）
 
 ### 12.4.1 ローカル復元とファイルダッシュボード（Phase 20）
 
@@ -1517,6 +1570,7 @@ remote.mapId ≠ currentMapId → 衝突検出
 - マップ一覧パネル（`isMapListOpen`）
 - 確認ダイアログ（`confirmDialog`）
 - 右クリックメニュー（`contextMenu`）
+- タイムラプス再生中（`isTimelapsePlaying`、Phase 50）
 - フォーカスが `input` / `textarea` / `contentEditable` 上
 
 ---
@@ -1967,3 +2021,58 @@ SWOT分析／KPTふりかえり／なぜなぜ分析（5 Whys）／オズボー�
 **専用プロンプトを作らない設計**: 各ノードの `body` に「その欄に何を書くか」の記入ガイド文を持たせておく。既存のAI提案（`generateSuggestions` 等、§9.2）はノードの `body` をプロンプトの文脈にそのまま含めるため、テンプレート専用のプロンプト分岐を用意しなくてもフレームワークの観点に沿った提案が出る。
 
 利用側は `startNewMapFromTemplate(templateId)`（`packages/ui/src/hooks/useFileDashboard.ts`、§5.1.3）。検証は `packages/core/src/templates/mapTemplates.test.ts`（12件）で、テンプレートID・ノードIDの一意性、エッジが実在ノードのみを参照すること、ノード矩形が重ならないこと、全ノードに `body` があることを検証する。
+
+---
+
+## 22. バージョン履歴とタイムラプス再生（Phase 50）
+
+保存のたびにローカルへスナップショットを蓄積し、履歴パネル（`HistoryPanel`、§5.13）から閲覧・復元できる機能と、蓄積したスナップショットを古い順に再生する「タイムラプス再生」機能。Phase 49 で整備したスキーマバージョニング基盤（`MapFile.version`／`migrateMapFile`、§7.4）の上に構築する。
+
+### 22.1 mapHistory.ts（packages/core/src/services/mapHistory.ts）
+
+`errorLog.ts`（§19）と同じ「`StorageAdapter` 経由 + プロセス内メモリキャッシュ」パターンを踏襲するが、履歴はマップごとに肥大化するため、単一キーではなく `mapId` ごとにストレージキーを分離する（`ideamap-history-${mapId}`）。記録の失敗はアプリ動作に影響させない（このモジュールは決して throw しない）。
+
+```typescript
+export interface MapSnapshotEntry {
+  time: string      // ISO 8601
+  mapFile: MapFile
+}
+
+export function recordSnapshot(mapId: string, mapFile: MapFile): Promise<void>
+export function getSnapshots(mapId: string): Promise<readonly MapSnapshotEntry[]>
+export function clearSnapshots(mapId: string): Promise<void>
+```
+
+- **保持件数**: `mapId` ごとに最新 `MAX_ENTRIES = 20` 件（リングバッファ、超過分は古い順に `splice` で切り詰める）
+- **サイズ上限**: 1件あたり `MAX_ENTRY_SIZE = 2 * 1024 * 1024`（文字数換算、JSON文字列はほぼ1文字=1バイトの data URL が支配的なため十分な近似）を超える場合、`nodes` の `image` フィールドだけを省いて保存する（Phase 49 の画像添付でスナップショットが肥大化しうるため）。プレビュー・復元では画像が欠けるトレードオフを許容する
+- **無変更のスキップ**: `recordSnapshot` は直前のエントリと `nodes`/`edges` が JSON文字列比較で同一なら追記しない（無変更の保存が続いてもリングバッファを浪費しないため）
+- **呼び出し元**: `packages/ui/src/hooks/useAutoSave.ts` の `performSave` 内、保存が成功して `setSaveStatus('saved')` を呼ぶ箇所（新規保存確定時・上書き保存成功時のどちらも同じ1箇所を通る）。`canPersist` が false のローカル控えのみの分岐では呼ばない（§12.4）
+- **検証**: `packages/core/src/services/mapHistory.test.ts`。リングバッファの上限、サイズ上限超過時の `image` 省略、無変更時のスキップ、`mapId` ごとの分離を検証する
+
+### 22.2 HistoryPanel
+
+コンポーネント設計は §5.13 を参照。
+
+### 22.3 タイムラプス再生（packages/ui/src/services/timelapsePlayer.ts）
+
+再生開始（`HistoryPanel`）と停止（`IdeaCanvas` のオーバーレイ）がコンポーネントをまたぐため、React state ではなく `errorLog.ts` と同じ発想のモジュール内シングルトン（`timerId`／`restoreState`）でタイマーと再生前スナップショットを保持する。
+
+```typescript
+export function startTimelapse(snapshots: readonly MapSnapshotEntry[]): void
+export function stopTimelapse(): void
+```
+
+- `startTimelapse`: 現在の `nodes`/`edges`/`mapTitle` を `restoreState` に退避 → `uiStore.setTimelapsePlaying(true)` → スナップショットを古い順に `INTERVAL_MS = 800`ms 間隔で `loadFromSerialized(snapshot.mapFile.nodes, snapshot.mapFile.edges)` に適用する。最後まで再生し終えると自動的に終了処理（`finish()`）を呼ぶ
+- `stopTimelapse`（＝`finish()`）: タイマーを止め、`restoreState` から `loadFromSerialized`/`setMapTitle` で再生前の状態へ戻し、`setTimelapsePlaying(false)` にする。**この復元によって再生開始前の Undo 履歴（`past`/`future`）は失われる**（`loadFromSerialized` の既存仕様）。再生は読み取り専用の演出機能であり、実行前に `HistoryPanel` の確認ダイアログで「実行中のUndo履歴は再生後に失われます」旨を明示することで許容する
+
+**IdeaCanvas 側のブロック（`isTimelapsePlaying`、Phase 50）**:
+- `nodesDraggable`/`nodesConnectable`/`elementsSelectable` を `false` にする（`isPresentationMode` と同じ扱い）
+- ノードクリック・ダブルクリック・各種右クリックメニューのハンドラを早期 return で無効化する
+- `Toolbar`/`BottomNav`/`NodeActionBar` を非表示にする（発表モードと同じ非表示切り替え）
+- `useKeyboardShortcuts` の抑制条件に追加（§13）
+- 全面を覆う代わりに `pointer-events-none` の半透明バナー「⏱ タイムラプス再生中」＋独立した停止ボタン（`pointer-events-auto`）を `createPortal` で重ねる。既存の `PresentationMode`（`isPresentationMode` フラグで `App.tsx` が排他的に切り替える構成）とは異なり、タイムラプスはキャンバス自体の描画を使い回すためオーバーレイ方式にする
+- **既知の未対応範囲**: `NodeDetailPanel` など、キャンバス外に残る他パネル経由の編集操作は `isTimelapsePlaying` でガードしていない（選択ノードIDがスナップショット間で解決できる限り開き続けられる）。実運用で問題が出たら各パネルの編集操作にも `isTimelapsePlaying` ガードを追加する（実装コード中の `ponytail:` コメントに同旨の記載あり）
+
+### 22.4 Google Drive revisions 連携（未実装・優先度低）
+
+Drive revisions API（`GET /files/{fileId}/revisions`・`GET /files/{fileId}/revisions/{revisionId}?alt=media`）を使った変更履歴連携は起票のみで実装していない。`driveService.ts`（§12.2）には `listMapRevisions`/`loadMapRevision` に相当する関数は存在しない。Drive revisions の保持期間・世代数の運用挙動と、Web版 GIS トークンのスコープ（現状 `drive.file` 相当）で到達できるかが実機未確認のため、優先度を下げて `docs/implementation-plan.md` に起票のみ残している。
