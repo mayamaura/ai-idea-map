@@ -1,0 +1,31 @@
+# 依存パッケージの脆弱性・更新の継続監視（Phase 42）
+# セキュリティアップデートは即時、バージョン更新は週1でまとめて PR を作る
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # minor/patch は1本の PR にまとめてレビュー負荷を下げる（major は個別 PR）
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
