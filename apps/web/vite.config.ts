@@ -1,5 +1,6 @@
 import { defineConfig, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 /**
  * 本番ビルドの index.html に CSP メタタグを注入する（Phase 42）。
@@ -16,6 +17,8 @@ import react from '@vitejs/plugin-react'
  *   Ollama（localhost）は Web 版では UI から選択不可のため意図的に許可しない
  * - frame-src / gsi パス許可: Google 公式ガイドの推奨値
  * - frame-ancestors は <meta> では無効なため含めない（必要ならホスティング側ヘッダーで設定）
+ * - worker-src: Phase 51 の Service Worker（vite-plugin-pwa の generateSW 出力）は 'self' 配信の
+ *   ため、CSP3 の script-src フォールバックでも動くが明示しておく
  */
 const CSP_CONTENT = [
   "default-src 'self'",
@@ -25,6 +28,7 @@ const CSP_CONTENT = [
   "font-src 'self'",
   "connect-src 'self' https://api.anthropic.com https://api.openai.com https://www.googleapis.com https://accounts.google.com/gsi/",
   'frame-src https://accounts.google.com/gsi/',
+  "worker-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -49,7 +53,32 @@ const injectCsp: PluginOption = {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), injectCsp],
+  plugins: [
+    react(),
+    injectCsp,
+    VitePWA({
+      // 自動リロードだと編集中のマップが失われうるため、更新はユーザー操作（C のトースト）に委ねる
+      registerType: 'prompt',
+      // 既定のインライン登録スクリプトは CSP の script-src 'self'（unsafe-inline なし）に違反する。
+      // 登録は main.tsx から virtual:pwa-register 経由で明示的に行う
+      injectRegister: false,
+      // 開発時は Vite の HMR と衝突させない。CSP と同じく本番ビルドのみ有効化する
+      devOptions: { enabled: false },
+      manifest: {
+        name: 'IdeaMap',
+        short_name: 'IdeaMap',
+        description: 'AIと一緒に育てるアイデアマップアプリ',
+        theme_color: '#6d28d9',
+        background_color: '#f9fafb',
+        display: 'standalone',
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+    }),
+  ],
   base: '/ai-idea-map/',
   build: {
     rolldownOptions: {

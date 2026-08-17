@@ -244,6 +244,21 @@ export function useAutoSave(options: AutoSaveOptions) {
     }
   }, [credentialKey, scheduleSave])
 
+  // オフライン中の保存失敗は credentialKey（Web版はアクセストークン）が変化しないため、
+  // 上のエフェクトだけではオンライン復帰後も再送されない（Phase 51）。window の online
+  // イベントでも同じリトライを発火させる
+  useEffect(() => {
+    const onOnline = () => {
+      if (pendingRetryRef.current) {
+        failureCountRef.current = 0
+        pendingRetryRef.current = false
+        scheduleSave()
+      }
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [scheduleSave])
+
   // ノード・エッジの変更で保存
   useEffect(() => {
     const unsubscribe = useMapStore.subscribe(() => scheduleSave())

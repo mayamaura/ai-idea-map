@@ -29,6 +29,10 @@ export function WebApp() {
       remoteReady: accessToken !== null,
       credentialKey: accessToken,
       onSaveError: (err: unknown, attempt: number): 'retry' | 'handled' => {
+        // オフライン中の保存失敗はヘッダーのオフラインバナー（useOnlineStatus）が既に状態を
+        // 示しているため、fetch の TypeError のたびにトーストを重ねて出さない（Phase 51）。
+        // online イベント（useAutoSave 側）で復帰後に自動リトライされる
+        if (!navigator.onLine) return 'retry'
         const isAuthError = err instanceof Error && err.message.includes('401')
         if (!isAuthError) {
           useUIStore.getState().addToast('Googleドライブへの保存に失敗しました', 'error')
