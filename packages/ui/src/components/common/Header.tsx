@@ -44,7 +44,7 @@ export function Header({
   onSaveToLocal,
 }: HeaderProps) {
   // AI ストリーミング中の chatMessages 更新などで再描画されないよう、必要な値だけを購読する
-  const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setArtifactPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
+  const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setArtifactPanelOpen, setHistoryPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
     useShallow((s) => ({
       mapTitle: s.mapTitle,
       setMapTitle: s.setMapTitle,
@@ -57,6 +57,7 @@ export function Header({
       setMapListOpen: s.setMapListOpen,
       setAnalysisPanelOpen: s.setAnalysisPanelOpen,
       setArtifactPanelOpen: s.setArtifactPanelOpen,
+      setHistoryPanelOpen: s.setHistoryPanelOpen,
       setChatPanelOpen: s.setChatPanelOpen,
       setFileDashboardOpen: s.setFileDashboardOpen,
       openConfirmDialog: s.openConfirmDialog,
@@ -352,6 +353,29 @@ export function Header({
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </button>
+
+        {/* 履歴ボタン */}
+        <button
+          onClick={() => setHistoryPanelOpen(true)}
+          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors hidden sm:flex"
+          title="バージョン履歴・タイムラプス再生"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>履歴</span>
+        </button>
+        <button
+          onClick={() => setHistoryPanelOpen(true)}
+          className="p-2 rounded-lg text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors sm:hidden"
+          title="バージョン履歴・タイムラプス再生"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>
 

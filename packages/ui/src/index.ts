@@ -22,6 +22,7 @@ export { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
 export { AIChatPanel } from './components/panels/AIChatPanel'
 export { PresentationOrderPanel } from './components/panels/PresentationOrderPanel'
 export { ArtifactPanel } from './components/panels/ArtifactPanel'
+export { HistoryPanel } from './components/panels/HistoryPanel'
 
 export { PresentationMode } from './components/screens/PresentationMode'
 

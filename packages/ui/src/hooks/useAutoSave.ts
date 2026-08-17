@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import { useMapStore, useUIStore, useSettingsStore, buildMapFile, migrateMapFile, type MapFile } from '@ideamap/core'
+import { useMapStore, useUIStore, useSettingsStore, buildMapFile, migrateMapFile, recordSnapshot, type MapFile } from '@ideamap/core'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
@@ -194,6 +194,9 @@ export function useAutoSave(options: AutoSaveOptions) {
           failureCountRef.current = 0
           setSaveStatus('saved')
           useUIStore.getState().setLastSavedAt(new Date().toISOString())
+          // 新規保存確定時・上書き保存成功時のどちらもここを通る（!ref の分岐は id 確定のみ）。
+          // 保存先未確定のローカル控えのみの分岐（下の else）は正式な保存ではないため記録しない
+          void recordSnapshot(mapFile.mapId, mapFile)
         }
       } catch (err) {
         if (isMountedRef.current) {

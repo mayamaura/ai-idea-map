@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useMapStore, useUIStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
+import { stopTimelapse } from '../../services/timelapsePlayer'
 import { IdeaNode } from './IdeaNode'
 import { GroupNode } from './GroupNode'
 import { FloatingEdge } from './FloatingEdge'
@@ -196,6 +197,7 @@ export function IdeaCanvas() {
     connectingFromNodeId,
     setConnectingFromNodeId,
     addToast,
+    isTimelapsePlaying,
   } = useUIStore(
     useShallow((s) => ({
       selectedNodeId: s.selectedNodeId,
@@ -212,6 +214,7 @@ export function IdeaCanvas() {
       connectingFromNodeId: s.connectingFromNodeId,
       setConnectingFromNodeId: s.setConnectingFromNodeId,
       addToast: s.addToast,
+      isTimelapsePlaying: s.isTimelapsePlaying,
     }))
   )
   const { screenToFlowPosition, fitView } = useReactFlow()
@@ -230,6 +233,7 @@ export function IdeaCanvas() {
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (isTimelapsePlaying) return
       if (connectingFromNodeId) {
         if (connectingFromNodeId === node.id) {
           // 同ノードをタップしたら接続モードのみキャンセル
@@ -243,7 +247,7 @@ export function IdeaCanvas() {
       }
       setSelectedNodeId(node.id)
     },
-    [connectingFromNodeId, connectNodes, setConnectingFromNodeId, addToast, setSelectedNodeId]
+    [connectingFromNodeId, connectNodes, setConnectingFromNodeId, addToast, setSelectedNodeId, isTimelapsePlaying]
   )
 
   const handlePaneClick = useCallback(() => {
@@ -255,6 +259,8 @@ export function IdeaCanvas() {
 
   const handleDoubleClickOnPane = useCallback(
     (e: React.MouseEvent) => {
+      // タイムラプス再生中はキャンバスの内容がスナップショットに置き換わり続けるため編集不可にする
+      if (isTimelapsePlaying) return
       const target = e.target as HTMLElement
       if (!target.closest('.react-flow__node')) {
         const { x, y } = screenToFlowPosition({ x: e.clientX, y: e.clientY })
@@ -263,12 +269,13 @@ export function IdeaCanvas() {
         setEditingNodeId(newId)
       }
     },
-    [addNode, screenToFlowPosition, setSelectedNodeId, setEditingNodeId]
+    [addNode, screenToFlowPosition, setSelectedNodeId, setEditingNodeId, isTimelapsePlaying]
   )
 
   const handleNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault()
+      if (isTimelapsePlaying) return
       // 接続モード中は接続先の選択が目的。スマホの長押しはブラウザの contextmenu も発火させるため、
       // ここを塞がないとタップ操作の裏でメニューが開いてしまう
       if (connectingFromNodeId) return
@@ -276,15 +283,16 @@ export function IdeaCanvas() {
       const menuType = node.type === 'groupNode' ? 'group' : 'node'
       openContextMenu({ type: menuType, x: e.clientX, y: e.clientY, targetId: node.id })
     },
-    [openContextMenu, setSelectedNodeId, connectingFromNodeId]
+    [openContextMenu, setSelectedNodeId, connectingFromNodeId, isTimelapsePlaying]
   )
 
   const handleEdgeContextMenu = useCallback(
     (e: React.MouseEvent, edge: Edge) => {
       e.preventDefault()
+      if (isTimelapsePlaying) return
       openContextMenu({ type: 'edge', x: e.clientX, y: e.clientY, targetId: edge.id })
     },
-    [openContextMenu]
+    [openContextMenu, isTimelapsePlaying]
   )
 
   // ドロップ接続: ドラッグ開始位置（親相対座標）と現在の重なり先。
@@ -373,10 +381,11 @@ export function IdeaCanvas() {
   const handlePaneContextMenu = useCallback(
     (e: MouseEvent | React.MouseEvent) => {
       e.preventDefault()
+      if (isTimelapsePlaying) return
       const flowPosition = screenToFlowPosition({ x: e.clientX, y: e.clientY })
       openContextMenu({ type: 'pane', x: e.clientX, y: e.clientY, flowPosition })
     },
-    [openContextMenu, screenToFlowPosition]
+    [openContextMenu, screenToFlowPosition, isTimelapsePlaying]
   )
 
   // フォーカスモード: 選択ノードとその直接接続だけを明るく表示
@@ -477,6 +486,30 @@ export function IdeaCanvas() {
           </div>,
           document.body
         )}
+        {/* タイムラプス再生中オーバーレイ: PresentationMode と違いキャンバス描画自体は使い回すため、
+            全面を覆う代わりにバナーだけを重ねる。pointer-events-none で下のキャンバスの操作を妨げず、
+            編集の無効化は ReactFlow 側の nodesDraggable 等のフラグ・ツールバー非表示・キーボード
+            ショートカット抑制で行う。
+            ponytail: NodePanel/NodeDetailPanel など再生中も残る他パネル経由の編集は塞いでいない
+            （選択ノードIDがスナップショット間で解決できる限り開き続けられる）。実運用で問題が出たら
+            isTimelapsePlaying を各パネルの編集操作にもガードとして追加する */}
+        {isTimelapsePlaying && createPortal(
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 45 }}
+            className="pointer-events-none flex flex-col items-center gap-2 pt-4"
+          >
+            <div className="px-4 py-2 bg-black/70 text-white text-sm font-medium rounded-full shadow-lg">
+              ⏱ タイムラプス再生中
+            </div>
+            <button
+              onClick={() => stopTimelapse()}
+              className="pointer-events-auto px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-full shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              停止
+            </button>
+          </div>,
+          document.body
+        )}
         <div
           className="flex-1 relative"
           onDoubleClick={handleDoubleClickOnPane}
@@ -510,9 +543,9 @@ export function IdeaCanvas() {
             panOnScroll
             minZoom={0.1}
             maxZoom={3}
-            nodesDraggable={!isPresentationMode}
-            nodesConnectable={!isPresentationMode}
-            elementsSelectable={!isPresentationMode}
+            nodesDraggable={!isPresentationMode && !isTimelapsePlaying}
+            nodesConnectable={!isPresentationMode && !isTimelapsePlaying}
+            elementsSelectable={!isPresentationMode && !isTimelapsePlaying}
             panOnDrag={!isPresentationMode}
             // colorMode で Controls / MiniMap / 組み込みUIをテーマに合わせる
             colorMode={theme}
@@ -542,9 +575,11 @@ export function IdeaCanvas() {
             </div>
           )}
         </div>
-        {!isPresentationMode && <Toolbar />}
-        {!isPresentationMode && <BottomNav />}
-        {!isPresentationMode && <NodeActionBar />}
+        {/* タイムラプス再生中はツールバー類の編集操作（Undo/Redo・整列・追加）も塞ぐ。
+            画面遷移はせずキャンバス描画を使い回すため、発表モードと同じ非表示切り替えで済ませる */}
+        {!isPresentationMode && !isTimelapsePlaying && <Toolbar />}
+        {!isPresentationMode && !isTimelapsePlaying && <BottomNav />}
+        {!isPresentationMode && !isTimelapsePlaying && <NodeActionBar />}
       </div>
     </FocusStateContext.Provider>
   )

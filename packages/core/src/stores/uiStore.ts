@@ -104,6 +104,9 @@ interface UIState {
   gardenerSuggestions: GardenerSuggestion[]
   // AI成果物生成（Phase 45）
   isArtifactPanelOpen: boolean
+  // バージョン履歴・タイムラプス再生（Phase 50）
+  isHistoryPanelOpen: boolean
+  isTimelapsePlaying: boolean
   // ペルソナ壁打ち会議（Phase 48）。対象ノードIDは selectedNodeId を再利用する
   isPersonaDebatePanelOpen: boolean
   personaDebateResult: PersonaOpinion[]
@@ -173,6 +176,9 @@ interface UIState {
   setAnalysisPanelOpen: (open: boolean) => void
   // AI成果物生成
   setArtifactPanelOpen: (open: boolean) => void
+  // バージョン履歴・タイムラプス再生
+  setHistoryPanelOpen: (open: boolean) => void
+  setTimelapsePlaying: (playing: boolean) => void
   // ペルソナ壁打ち会議
   setPersonaDebatePanelOpen: (open: boolean) => void
   setPersonaDebateResult: (result: PersonaOpinion[]) => void
@@ -242,6 +248,8 @@ export const useUIStore = create<UIState>((set) => ({
   clusterSuggestions: [],
   gardenerSuggestions: [],
   isArtifactPanelOpen: false,
+  isHistoryPanelOpen: false,
+  isTimelapsePlaying: false,
   isPersonaDebatePanelOpen: false,
   personaDebateResult: [],
   isPersonaDebateLoading: false,
@@ -337,6 +345,8 @@ export const useUIStore = create<UIState>((set) => ({
   setExportPanelOpen: (open) => set({ isExportPanelOpen: open }),
   setAnalysisPanelOpen: (open) => set({ isAnalysisPanelOpen: open }),
   setArtifactPanelOpen: (open) => set({ isArtifactPanelOpen: open }),
+  setHistoryPanelOpen: (open) => set({ isHistoryPanelOpen: open }),
+  setTimelapsePlaying: (playing) => set({ isTimelapsePlaying: playing }),
   setPersonaDebatePanelOpen: (open) => set({ isPersonaDebatePanelOpen: open }),
   setPersonaDebateResult: (result) => set({ personaDebateResult: result }),
   setPersonaDebateLoading: (loading) => set({ isPersonaDebateLoading: loading }),

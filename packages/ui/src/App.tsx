@@ -13,6 +13,7 @@ import { ExportImportPanel, type ExportImportPanelProps } from './components/pan
 import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
 import { AIChatPanel } from './components/panels/AIChatPanel'
 import { ArtifactPanel } from './components/panels/ArtifactPanel'
+import { HistoryPanel } from './components/panels/HistoryPanel'
 import { PresentationMode } from './components/screens/PresentationMode'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
@@ -168,6 +169,7 @@ function AppInner({
           <MapAnalysisPanel />
           <AIChatPanel />
           <ArtifactPanel />
+          <HistoryPanel />
         </>
       )}
       <ToastContainer />
