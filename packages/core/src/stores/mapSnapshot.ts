@@ -1,4 +1,5 @@
 import type { MapFile } from '../types'
+import { CURRENT_MAP_FILE_VERSION } from '../utils/mapFileCompat'
 import { useMapStore } from './mapStore'
 import { useUIStore } from './uiStore'
 
@@ -16,7 +17,7 @@ export function buildMapFile(mapId: string): MapFile {
   const now = new Date().toISOString()
 
   return {
-    version: '1.0',
+    version: CURRENT_MAP_FILE_VERSION,
     mapId,
     title: mapTitle,
     createdAt: now,

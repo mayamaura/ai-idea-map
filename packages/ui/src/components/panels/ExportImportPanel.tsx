@@ -8,6 +8,7 @@ import {
   buildMapFragmentFromExtracted,
   toFriendlyAIError,
   isAbortError,
+  CURRENT_MAP_FILE_VERSION,
   type IdeaNodeData,
   type MapFile,
 } from '@ideamap/core'
@@ -74,7 +75,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
   const brainDumpAbortRef = useRef<AbortController | null>(null)
 
   const getMapFile = useCallback((): MapFile => ({
-    version: '1.0',
+    version: CURRENT_MAP_FILE_VERSION,
     // エクスポート時は現在の mapId を保持（なければ空文字でフォールバック）
     mapId: currentMapId ?? '',
     title: mapTitle,
@@ -125,7 +126,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const data = await importFromJson(file)
+      const { file: data, warning } = await importFromJson(file)
       openConfirmDialog({
         title: 'マップのインポート',
         message: `「${data.title}」をインポートします。現在のマップを置き換えますか？`,
@@ -135,6 +136,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
           loadFromSerialized(data.nodes, data.edges)
           setMapTitle(data.title)
           addToast(`「${data.title}」をインポートしました`, 'success')
+          if (warning) addToast(warning, 'info')
         },
       })
     } catch (err) {

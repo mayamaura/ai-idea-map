@@ -1,6 +1,7 @@
 import { memo, useRef, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflow/react'
+import { getPlatform } from '@ideamap/platform'
 import { useMapStore, useUIStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
 import { renderMarkdownSimple } from '../../utils/markdown'
@@ -15,6 +16,16 @@ function widthClass(text: string): string {
   if (text.length < 20) return 'min-w-20 max-w-32'
   if (text.length > 60) return 'min-w-32 max-w-64'
   return 'min-w-24 max-w-48'
+}
+
+/** 不正なURLはリンクチップを表示しないため、失敗時は null を返す */
+function getDomainLabel(url?: string): string | null {
+  if (!url) return null
+  try {
+    return new URL(url).hostname
+  } catch {
+    return null
+  }
 }
 
 function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>) {
@@ -157,6 +168,15 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const category = nodeCategoryId ? getCategoryById(nodeCategoryId) : undefined
   const showCategoryLabel = selected && category && category.id !== 'cat-none'
   const isInPresentation = presentationIndex !== -1
+  const domainLabel = getDomainLabel(nodeData.url)
+
+  const handleLinkClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (nodeData.url) void getPlatform().system.openExternalUrl(nodeData.url)
+    },
+    [nodeData.url]
+  )
 
   // 検索・フィルターの dim とフォーカスの dim は同じ要素にかかるため濃い方を採用する
   const opacity = Math.min(isDimmed ? 0.2 : 1, focusOpacity)
@@ -270,6 +290,25 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
                   style={{ maxHeight: '2.6rem' }}
                   dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(nodeData.body!) }}
                 />
+              )}
+              {/* 添付画像のサムネイル */}
+              {nodeData.image && (
+                <img
+                  src={nodeData.image}
+                  alt=""
+                  className="mt-1.5 w-full max-h-20 object-cover rounded-md"
+                />
+              )}
+              {/* URLリンクチップ（ドメイン名のみ表示、クリックで外部ブラウザ） */}
+              {domainLabel && (
+                <button
+                  onClick={handleLinkClick}
+                  title={nodeData.url}
+                  className="mt-1.5 flex items-center gap-1 text-[10px] text-primary-600 hover:underline truncate max-w-full"
+                >
+                  <span>🔗</span>
+                  <span className="truncate">{domainLabel}</span>
+                </button>
               )}
             </>
           )}

@@ -162,6 +162,43 @@ describe('nodeSlice', () => {
     expect(afterUndo.edges).toEqual(beforeEdges)
     expect(afterUndo.past.length).toBe(pastLen)
   })
+
+  describe('updatedAt の刻印（Phase 49）', () => {
+    it('updateNodeTitle/Body/Color/Category/Url/Image は対象ノードの updatedAt を更新する', () => {
+      const id = useMapStore.getState().addNode('タイトル', 0, 0)
+      expect(useMapStore.getState().nodes.find((n) => n.id === id)?.data.updatedAt).toBeUndefined()
+
+      const actions: Array<() => void> = [
+        () => useMapStore.getState().updateNodeTitle(id, '更新後タイトル'),
+        () => useMapStore.getState().updateNodeBody(id, '更新後本文'),
+        () => useMapStore.getState().updateNodeColor(id, '#123456'),
+        () => useMapStore.getState().updateNodeCategory(id, 'cat-1', '#abcdef'),
+        () => useMapStore.getState().updateNodeUrl(id, 'https://example.com'),
+        () => useMapStore.getState().updateNodeImage(id, 'data:image/jpeg;base64,xxx'),
+      ]
+      for (const action of actions) {
+        action()
+        expect(useMapStore.getState().nodes.find((n) => n.id === id)?.data.updatedAt).toBeDefined()
+      }
+    })
+
+    it('mergeNodes は keep 側ノードの updatedAt を更新する', () => {
+      const idA = useMapStore.getState().addNode('A', 0, 0)
+      const idB = useMapStore.getState().addNode('B', 200, 0)
+
+      useMapStore.getState().mergeNodes(idA, idB)
+
+      expect(useMapStore.getState().nodes.find((n) => n.id === idA)?.data.updatedAt).toBeDefined()
+    })
+
+    it('applyClusterCategory は対象ノードの updatedAt を更新する', () => {
+      const idA = useMapStore.getState().addNode('A', 0, 0)
+
+      useMapStore.getState().applyClusterCategory([idA], 'cat-1', '#abcdef')
+
+      expect(useMapStore.getState().nodes.find((n) => n.id === idA)?.data.updatedAt).toBeDefined()
+    })
+  })
 })
 
 describe('edgeSlice', () => {
@@ -331,6 +368,38 @@ describe('documentSlice', () => {
     expect(state.past).toEqual([])
     expect(state.future).toEqual([])
     expect(state.pendingFitView).toBe(true)
+  })
+
+  it('loadFromSerialized/getSerializedNodes: updatedAt/url/image を往復で保持する（Phase 49）', () => {
+    const nodes: SerializedNode[] = [
+      {
+        id: 'n1',
+        nodeType: 'idea',
+        title: 'ノード1',
+        x: 0,
+        y: 0,
+        color: '#fff',
+        createdBy: 'user',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        url: 'https://example.com',
+        image: 'data:image/jpeg;base64,xxx',
+      },
+      // 旧ファイル由来（updatedAt/url/image を持たない）ノードは undefined のまま保持する
+      { id: 'n2', nodeType: 'idea', title: 'ノード2', x: 100, y: 0, color: '#fff', createdBy: 'user' },
+    ]
+
+    useMapStore.getState().loadFromSerialized(nodes, [])
+    const serialized = useMapStore.getState().getSerializedNodes()
+
+    const n1 = serialized.find((n) => n.id === 'n1')
+    expect(n1?.updatedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(n1?.url).toBe('https://example.com')
+    expect(n1?.image).toBe('data:image/jpeg;base64,xxx')
+
+    const n2 = serialized.find((n) => n.id === 'n2')
+    expect(n2?.updatedAt).toBeUndefined()
+    expect(n2?.url).toBeUndefined()
+    expect(n2?.image).toBeUndefined()
   })
 
   it('reset: 初期状態（root ノード1個）に戻す', () => {

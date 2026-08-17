@@ -2,7 +2,7 @@ import { getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform } from '@ideamap/platform'
-import type { IdeaNodeData, MapFile, SerializedNode, SerializedEdge } from '@ideamap/core'
+import { migrateMapFile, type IdeaNodeData, type MapFile, type SerializedNode, type SerializedEdge } from '@ideamap/core'
 
 const EXPORT_WIDTH = 1920
 const EXPORT_HEIGHT = 1080
@@ -183,8 +183,8 @@ function buildMarkdown(
   return md
 }
 
-// JSON ファイルからインポート（バージョン互換チェック付き）
-export async function importFromJson(file: File): Promise<MapFile> {
+// JSON ファイルからインポート（バージョン互換チェック・マイグレーション付き）
+export async function importFromJson(file: File): Promise<{ file: MapFile; warning?: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -193,7 +193,7 @@ export async function importFromJson(file: File): Promise<MapFile> {
         if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
           throw new Error('Invalid format')
         }
-        resolve(data)
+        resolve(migrateMapFile(data))
       } catch {
         reject(new Error('JSONファイルの形式が無効です'))
       }

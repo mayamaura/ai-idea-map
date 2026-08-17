@@ -282,6 +282,7 @@ export function MapAnalysisPanel() {
           body: n.data.body,
           categoryId: n.data.categoryId,
           createdBy: n.data.createdBy,
+          updatedAt: n.data.updatedAt,
         })),
         edges: edges.map((e) => ({ source: e.source, target: e.target })),
         categories,

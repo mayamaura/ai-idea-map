@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { FileRef } from '@ideamap/platform'
-import { getMapTemplate, useMapStore, useUIStore, type MapFile } from '@ideamap/core'
+import { getMapTemplate, migrateMapFile, useMapStore, useUIStore, type MapFile } from '@ideamap/core'
 
 /**
  * 起動画面（ファイルダッシュボード）の共通部分。
@@ -47,12 +47,13 @@ export function startNewMapFromTemplate(templateId: string): void {
  *   マップを開いたときだけ 'cloud' を明示し、以後の保存を Drive へ向ける
  */
 export function openLoadedMap(
-  data: MapFile,
+  rawData: MapFile,
   fileId: string | null,
   fallbackTitle: string,
   origin?: FileRef['origin']
 ): void {
   const ui = useUIStore.getState()
+  const { file: data, warning } = migrateMapFile(rawData)
   useMapStore.getState().loadFromSerialized(data.nodes, data.edges)
   ui.setMapTitle(data.title || fallbackTitle)
   ui.setCurrentFileId(fileId, origin)
@@ -60,6 +61,7 @@ export function openLoadedMap(
   ui.setPresentationNodeIds(data.presentationNodeIds ?? [])
   ui.setSaveStatus(fileId ? 'saved' : 'unsaved')
   ui.setFileDashboardOpen(false)
+  if (warning) ui.addToast(warning, 'info')
 }
 
 /**

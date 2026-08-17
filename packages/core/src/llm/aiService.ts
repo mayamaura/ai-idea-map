@@ -471,7 +471,7 @@ JSON形式のみで回答してください（説明文不要）:
 
 interface ReviewMapRequest {
   provider: LLMProvider
-  nodes: { id: string; title: string; body?: string; categoryId?: string; createdBy: 'user' | 'ai' }[]
+  nodes: { id: string; title: string; body?: string; categoryId?: string; createdBy: 'user' | 'ai'; updatedAt?: string }[]
   edges: { source: string; target: string }[]
   categories: Category[]
 }

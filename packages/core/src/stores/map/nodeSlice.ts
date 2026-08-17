@@ -284,7 +284,7 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
   updateNodeTitle: (id, title) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, title } } : n
+        n.id === id ? { ...n, data: { ...n.data, title, updatedAt: new Date().toISOString() } } : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -293,7 +293,9 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
   updateNodeBody: (id, body) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, body: body || undefined } } : n
+        n.id === id
+          ? { ...n, data: { ...n.data, body: body || undefined, updatedAt: new Date().toISOString() } }
+          : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -302,7 +304,7 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
   updateNodeColor: (id, color) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, color } } : n
+        n.id === id ? { ...n, data: { ...n.data, color, updatedAt: new Date().toISOString() } } : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -311,7 +313,29 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
   updateNodeCategory: (id, categoryId, color) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, categoryId, color } } : n
+        n.id === id
+          ? { ...n, data: { ...n.data, categoryId, color, updatedAt: new Date().toISOString() } }
+          : n
+      ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  updateNodeUrl: (id, url) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === id
+          ? { ...n, data: { ...n.data, url: url || undefined, updatedAt: new Date().toISOString() } }
+          : n
+      ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
+  updateNodeImage: (id, image) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, image, updatedAt: new Date().toISOString() } } : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -388,7 +412,11 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
     set({
       nodes: state.nodes
         .filter((n) => n.id !== mergeId)
-        .map((n) => (n.id === keepId ? { ...n, data: { ...n.data, body: mergedBody || undefined } } : n)),
+        .map((n) =>
+          n.id === keepId
+            ? { ...n, data: { ...n.data, body: mergedBody || undefined, updatedAt: new Date().toISOString() } }
+            : n
+        ),
       edges: dedupedEdges,
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],
@@ -398,7 +426,9 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
   applyClusterCategory: (nodeIds, categoryId, color) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        nodeIds.includes(n.id) ? { ...n, data: { ...n.data, categoryId, color } } : n
+        nodeIds.includes(n.id)
+          ? { ...n, data: { ...n.data, categoryId, color, updatedAt: new Date().toISOString() } }
+          : n
       ),
       past: pushPast(state.past, snapshot(state.nodes, state.edges)),
       future: [],

@@ -32,6 +32,9 @@ export const createDocumentSlice: MapSliceCreator<DocumentSlice> = (set, get) =>
           color: n.color,
           createdBy: n.createdBy,
           categoryId: n.categoryId,
+          updatedAt: n.updatedAt,
+          url: n.url,
+          image: n.image,
         },
       }
     })
@@ -76,6 +79,9 @@ export const createDocumentSlice: MapSliceCreator<DocumentSlice> = (set, get) =>
         createdBy: n.data.createdBy,
         categoryId: n.data.categoryId,
         parentId: n.parentId || undefined,
+        updatedAt: n.data.updatedAt,
+        url: n.data.url,
+        image: n.data.image,
       }
     }),
 

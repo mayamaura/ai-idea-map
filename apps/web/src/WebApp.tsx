@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { App } from '@ideamap/ui'
-import { useUIStore, useMapStore } from '@ideamap/core'
+import { useUIStore, useMapStore, migrateMapFile } from '@ideamap/core'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { MapListPanel } from './components/panels/MapListPanel'
 import { FileOpenDashboard } from './components/screens/FileOpenDashboard'
@@ -73,9 +73,10 @@ export function WebApp() {
 /** 共有URL（?map=...）でアクセスされた場合にマップを取り込む。Web版だけの導線 */
 function useShareUrlImport() {
   useEffect(() => {
-    const mapData = parseMapFromUrl()
-    if (!mapData) return
+    const rawData = parseMapFromUrl()
+    if (!rawData) return
     clearMapFromUrl()
+    const { file: mapData, warning } = migrateMapFile(rawData)
     const ui = useUIStore.getState()
     ui.openConfirmDialog({
       title: '共有マップのインポート',
@@ -89,6 +90,7 @@ function useShareUrlImport() {
         ui.addToast(`「${mapData.title}」をインポートしました`, 'success')
         // ダッシュボードを閉じてインポートしたマップを表示（開いたままだと別マップ選択で上書きされる）
         ui.setFileDashboardOpen(false)
+        if (warning) ui.addToast(warning, 'info')
       },
     })
   }, [])

@@ -3,9 +3,10 @@ import { useShallow } from 'zustand/react/shallow'
 import { useUIStore, useMapStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { renderMarkdownSimple } from '../../utils/markdown'
+import { resizeImageToDataUrl } from '../../utils/imageResize'
 
 export function NodeDetailPanel() {
-  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setPersonaDebatePanelOpen, setSelectedNodeId, openConfirmDialog } = useUIStore(
+  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setPersonaDebatePanelOpen, setSelectedNodeId, openConfirmDialog, addToast } = useUIStore(
     useShallow((s) => ({
       isNodeDetailOpen: s.isNodeDetailOpen,
       nodeDetailId: s.nodeDetailId,
@@ -14,13 +15,16 @@ export function NodeDetailPanel() {
       setPersonaDebatePanelOpen: s.setPersonaDebatePanelOpen,
       setSelectedNodeId: s.setSelectedNodeId,
       openConfirmDialog: s.openConfirmDialog,
+      addToast: s.addToast,
     }))
   )
-  const { updateNodeTitle, updateNodeBody, updateNodeCategory, deleteNode } = useMapStore(
+  const { updateNodeTitle, updateNodeBody, updateNodeCategory, updateNodeUrl, updateNodeImage, deleteNode } = useMapStore(
     useShallow((s) => ({
       updateNodeTitle: s.updateNodeTitle,
       updateNodeBody: s.updateNodeBody,
       updateNodeCategory: s.updateNodeCategory,
+      updateNodeUrl: s.updateNodeUrl,
+      updateNodeImage: s.updateNodeImage,
       deleteNode: s.deleteNode,
     }))
   )
@@ -34,10 +38,13 @@ export function NodeDetailPanel() {
 
   const [titleInput, setTitleInput] = useState('')
   const [bodyInput, setBodyInput] = useState('')
+  const [urlInput, setUrlInput] = useState('')
   const [isPreview, setIsPreview] = useState(true)
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
+  const [isImageProcessing, setIsImageProcessing] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   // 破棄して閉じるとき、入力欄の DOM 削除に伴う blur で保存が走るのを防ぐ
   const skipBlurCommit = useRef(false)
 
@@ -45,8 +52,9 @@ export function NodeDetailPanel() {
     if (nodeData) {
       setTitleInput(nodeData.title)
       setBodyInput(nodeData.body ?? '')
+      setUrlInput(nodeData.url ?? '')
     }
-  }, [nodeDetailId, nodeData?.title, nodeData?.body])
+  }, [nodeDetailId, nodeData?.title, nodeData?.body, nodeData?.url])
 
   useEffect(() => {
     if (isNodeDetailOpen && titleRef.current) {
@@ -61,16 +69,19 @@ export function NodeDetailPanel() {
   // 未コミットの編集があるか（blur 済みの変更はストアに反映されるため差分にならない）
   const isDirty =
     Boolean(nodeData) &&
-    (titleInput !== (nodeData?.title ?? '') || bodyInput !== (nodeData?.body ?? ''))
+    (titleInput !== (nodeData?.title ?? '') ||
+      bodyInput !== (nodeData?.body ?? '') ||
+      urlInput !== (nodeData?.url ?? ''))
 
   // blur が走らない閉じ方（Ctrl+Enter・×ボタン）に対応するため閉じ処理を集約
   const commitAndClose = useCallback(() => {
     if (nodeDetailId) {
       if (titleInput.trim()) updateNodeTitle(nodeDetailId, titleInput.trim())
       updateNodeBody(nodeDetailId, bodyInput)
+      updateNodeUrl(nodeDetailId, urlInput.trim())
     }
     closeNodeDetail()
-  }, [nodeDetailId, titleInput, bodyInput, updateNodeTitle, updateNodeBody, closeNodeDetail])
+  }, [nodeDetailId, titleInput, bodyInput, urlInput, updateNodeTitle, updateNodeBody, updateNodeUrl, closeNodeDetail])
 
   const discardAndClose = useCallback(() => {
     skipBlurCommit.current = true
@@ -128,6 +139,35 @@ export function NodeDetailPanel() {
       updateNodeBody(nodeDetailId, bodyInput)
     }
   }, [nodeDetailId, bodyInput, updateNodeBody])
+
+  const handleUrlBlur = useCallback(() => {
+    if (skipBlurCommit.current) return
+    if (nodeDetailId) {
+      updateNodeUrl(nodeDetailId, urlInput.trim())
+    }
+  }, [nodeDetailId, urlInput, updateNodeUrl])
+
+  const handleImageSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (imageInputRef.current) imageInputRef.current.value = ''
+      if (!file || !nodeDetailId) return
+      setIsImageProcessing(true)
+      try {
+        const dataUrl = await resizeImageToDataUrl(file)
+        updateNodeImage(nodeDetailId, dataUrl)
+      } catch {
+        addToast('画像の処理に失敗しました', 'error')
+      } finally {
+        setIsImageProcessing(false)
+      }
+    },
+    [nodeDetailId, updateNodeImage, addToast]
+  )
+
+  const handleImageDelete = useCallback(() => {
+    if (nodeDetailId) updateNodeImage(nodeDetailId, undefined)
+  }, [nodeDetailId, updateNodeImage])
 
   const handleBodyKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -312,6 +352,54 @@ export function NodeDetailPanel() {
               />
             )}
             <p className="text-xs text-gray-400 mt-1">Markdown対応（# 見出し、**太字**、- リスト、`コード`）</p>
+          </div>
+
+          {/* URL */}
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">関連リンク</label>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onBlur={handleUrlBlur}
+              placeholder="https://example.com"
+              className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 placeholder-gray-400"
+            />
+          </div>
+
+          {/* 画像添付 */}
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">画像</label>
+            {nodeData.image ? (
+              <div className="relative inline-block">
+                <img src={nodeData.image} alt="" className="max-h-40 rounded-lg border border-gray-200 dark:border-gray-600" />
+                <button
+                  onClick={handleImageDelete}
+                  title="画像を削除"
+                  aria-label="画像を削除"
+                  className="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-gray-500 hover:text-red-500 shadow-sm transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                disabled={isImageProcessing}
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-sm border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-primary-400 hover:text-primary-600 transition-colors disabled:opacity-50"
+              >
+                {isImageProcessing ? '処理中...' : '画像を選択'}
+              </button>
+            )}
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => void handleImageSelect(e)}
+            />
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import { useMapStore, useUIStore, useSettingsStore, buildMapFile, type MapFile } from '@ideamap/core'
+import { useMapStore, useUIStore, useSettingsStore, buildMapFile, migrateMapFile, type MapFile } from '@ideamap/core'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
@@ -144,8 +144,9 @@ export function useAutoSave(options: AutoSaveOptions) {
                   onClick: async () => {
                     // 保存先から最新版を再ロード
                     const opened = await file.openFile(ref)
-                    const data = opened?.content as (MapFile & { mapId?: string }) | undefined
-                    if (!data) return
+                    const raw = opened?.content as (MapFile & { mapId?: string }) | undefined
+                    if (!raw) return
+                    const { file: data, warning } = migrateMapFile(raw)
                     loadFromSerialized(data.nodes, data.edges)
                     useUIStore.getState().setPresentationNodeIds(data.presentationNodeIds ?? [])
                     useUIStore.getState().setMapTitle(data.title || mapTitle)
@@ -153,6 +154,7 @@ export function useAutoSave(options: AutoSaveOptions) {
                     hasCheckedThisSessionRef.current = true
                     isSuspendedRef.current = false
                     setSS('saved')
+                    if (warning) useUIStore.getState().addToast(warning, 'info')
                   },
                 },
                 onConfirm: () => {

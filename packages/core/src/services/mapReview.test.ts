@@ -31,4 +31,27 @@ describe('findNeglectedNodeIds', () => {
     const nodes = [{ id: 'n1', body: '   ', createdBy: 'user' as const }]
     expect(findNeglectedNodeIds(nodes, [])).toEqual(['n1'])
   })
+
+  describe('updatedAt を持つノードは経過日数で判定する', () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+
+    it('放置期間（30日）を超えていれば、本文があっても放置ノードとして検出する', () => {
+      const nodes = [{ id: 'n1', body: '本文あり', createdBy: 'user' as const, updatedAt: daysAgo(31) }]
+      expect(findNeglectedNodeIds(nodes, [])).toEqual(['n1'])
+    })
+
+    it('放置期間（30日）以内なら、本文が空でも放置ノードとして検出しない', () => {
+      const nodes = [{ id: 'n1', createdBy: 'user' as const, updatedAt: daysAgo(1) }]
+      expect(findNeglectedNodeIds(nodes, [])).toEqual([])
+    })
+
+    it('子ノードを持つノードは、放置期間を超えていても検出しない', () => {
+      const nodes = [
+        { id: 'n1', createdBy: 'user' as const, updatedAt: daysAgo(60) },
+        { id: 'n2', body: '本文あり', createdBy: 'user' as const, updatedAt: daysAgo(1) },
+      ]
+      const edges = [{ source: 'n1', target: 'n2' }]
+      expect(findNeglectedNodeIds(nodes, edges)).toEqual([])
+    })
+  })
 })

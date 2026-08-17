@@ -17,6 +17,12 @@ export interface IdeaNodeData extends Record<string, unknown> {
   color: string
   createdBy: 'user' | 'ai'
   categoryId?: string
+  /** ノード単位の最終更新日時（ISO 8601）。旧ファイル由来のノードは undefined（Phase 49） */
+  updatedAt?: string
+  /** 関連リンク（Phase 49） */
+  url?: string
+  /** 添付画像（data URL、クライアント側でリサイズ済み。Phase 49） */
+  image?: string
 }
 
 export interface IdeaEdgeData {
@@ -49,6 +55,12 @@ export interface SerializedNode {
   width?: number
   height?: number
   parentId?: string
+  /** ノード単位の最終更新日時（ISO 8601）。旧ファイル由来のノードは undefined（Phase 49） */
+  updatedAt?: string
+  /** 関連リンク（Phase 49） */
+  url?: string
+  /** 添付画像（data URL、クライアント側でリサイズ済み。Phase 49） */
+  image?: string
 }
 
 export interface SerializedEdge {

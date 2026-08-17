@@ -41,6 +41,8 @@ export interface NodeSlice {
   updateNodeBody: (id: string, body: string) => void
   updateNodeColor: (id: string, color: string) => void
   updateNodeCategory: (id: string, categoryId: string, color: string) => void
+  updateNodeUrl: (id: string, url: string) => void
+  updateNodeImage: (id: string, image: string | undefined) => void
   deleteNode: (id: string) => void
   deleteNodes: (ids: string[]) => void
   deleteSelected: () => void

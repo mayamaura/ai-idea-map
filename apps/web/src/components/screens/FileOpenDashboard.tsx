@@ -8,6 +8,7 @@ import {
   loadMap,
   deleteMap,
   saveMap,
+  migrateMapFile,
   type MapFile,
   type DriveFile,
 } from '@ideamap/core'
@@ -56,13 +57,15 @@ export function FileOpenDashboard({
 
   const handleResumeLocal = () => {
     if (!localMap) return
-    loadFromSerialized(localMap.nodes, localMap.edges)
-    setMapTitle(localMap.title || '無題のマップ')
-    setCurrentMapId(localMap.mapId ?? null)
-    setPresentationNodeIds(localMap.presentationNodeIds ?? [])
+    const { file: data, warning } = migrateMapFile(localMap)
+    loadFromSerialized(data.nodes, data.edges)
+    setMapTitle(data.title || '無題のマップ')
+    setCurrentMapId(data.mapId ?? null)
+    setPresentationNodeIds(data.presentationNodeIds ?? [])
     setSaveStatus('saved')
     // currentFileId は localStorage から復元済みのため触らない（同じ Drive ファイルへの保存を継続）
     setFileDashboardOpen(false)
+    if (warning) addToast(warning, 'info')
   }
 
   const handleLoadDriveFile = async (file: DriveFile) => {

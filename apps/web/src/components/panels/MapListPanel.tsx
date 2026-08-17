@@ -5,6 +5,7 @@ import {
   listMaps,
   loadMap,
   deleteMap,
+  migrateMapFile,
   type MapFile,
   type DriveFile,
 } from '@ideamap/core'
@@ -14,7 +15,7 @@ interface MapListPanelProps {
 }
 
 export function MapListPanel({ accessToken }: MapListPanelProps) {
-  const { isMapListOpen, setMapListOpen, setMapTitle, setSaveStatus, setCurrentFileId, setCurrentMapId, setPresentationNodeIds } = useUIStore()
+  const { isMapListOpen, setMapListOpen, setMapTitle, setSaveStatus, setCurrentFileId, setCurrentMapId, setPresentationNodeIds, addToast } = useUIStore()
   const { loadFromSerialized, reset } = useMapStore()
 
   const [files, setFiles] = useState<DriveFile[]>([])
@@ -55,7 +56,8 @@ export function MapListPanel({ accessToken }: MapListPanelProps) {
     if (!accessToken) return
     setIsLoading(true)
     try {
-      const data = (await loadMap(accessToken, file.id)) as MapFile & { mapId?: string }
+      const raw = (await loadMap(accessToken, file.id)) as MapFile & { mapId?: string }
+      const { file: data, warning } = migrateMapFile(raw)
       loadFromSerialized(data.nodes, data.edges)
       setPresentationNodeIds(data.presentationNodeIds ?? [])
       setMapTitle(data.title || file.name.replace(/\.json$/, ''))
@@ -63,6 +65,7 @@ export function MapListPanel({ accessToken }: MapListPanelProps) {
       setCurrentMapId(data.mapId ?? null)
       setSaveStatus('saved')
       setMapListOpen(false)
+      if (warning) addToast(warning, 'info')
     } catch {
       setError('マップの読み込みに失敗しました')
     } finally {
