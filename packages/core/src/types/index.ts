@@ -105,6 +105,12 @@ export interface GardenerSuggestion {
   body?: string
 }
 
+/** ペルソナ壁打ち会議（Phase 48）。1ペルソナ分の意見（複数件になりうる） */
+export interface PersonaOpinion {
+  persona: string
+  opinions: { title: string; body: string }[]
+}
+
 export type Theme = 'light' | 'dark'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'

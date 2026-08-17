@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, GardenerSuggestion, ChatMessage } from '../types'
+import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, GardenerSuggestion, PersonaOpinion, ChatMessage } from '../types'
 
 /** 開いている Drive ファイルIDの永続化キー（リロード後も同じファイルへ保存を継続するため） */
 const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
@@ -104,6 +104,10 @@ interface UIState {
   gardenerSuggestions: GardenerSuggestion[]
   // AI成果物生成（Phase 45）
   isArtifactPanelOpen: boolean
+  // ペルソナ壁打ち会議（Phase 48）。対象ノードIDは selectedNodeId を再利用する
+  isPersonaDebatePanelOpen: boolean
+  personaDebateResult: PersonaOpinion[]
+  isPersonaDebateLoading: boolean
   // AIチャット
   isChatPanelOpen: boolean
   chatMessages: ChatMessage[]
@@ -169,6 +173,10 @@ interface UIState {
   setAnalysisPanelOpen: (open: boolean) => void
   // AI成果物生成
   setArtifactPanelOpen: (open: boolean) => void
+  // ペルソナ壁打ち会議
+  setPersonaDebatePanelOpen: (open: boolean) => void
+  setPersonaDebateResult: (result: PersonaOpinion[]) => void
+  setPersonaDebateLoading: (loading: boolean) => void
   // AIチャット
   setChatPanelOpen: (open: boolean) => void
   addChatMessage: (message: ChatMessage) => void
@@ -234,6 +242,9 @@ export const useUIStore = create<UIState>((set) => ({
   clusterSuggestions: [],
   gardenerSuggestions: [],
   isArtifactPanelOpen: false,
+  isPersonaDebatePanelOpen: false,
+  personaDebateResult: [],
+  isPersonaDebateLoading: false,
   isChatPanelOpen: false,
   chatMessages: [],
   isChatLoading: false,
@@ -326,6 +337,9 @@ export const useUIStore = create<UIState>((set) => ({
   setExportPanelOpen: (open) => set({ isExportPanelOpen: open }),
   setAnalysisPanelOpen: (open) => set({ isAnalysisPanelOpen: open }),
   setArtifactPanelOpen: (open) => set({ isArtifactPanelOpen: open }),
+  setPersonaDebatePanelOpen: (open) => set({ isPersonaDebatePanelOpen: open }),
+  setPersonaDebateResult: (result) => set({ personaDebateResult: result }),
+  setPersonaDebateLoading: (loading) => set({ isPersonaDebateLoading: loading }),
   setChatPanelOpen: (open) => set({ isChatPanelOpen: open }),
   addChatMessage: (message) =>
     set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-40) })),
@@ -347,6 +361,7 @@ export const useUIStore = create<UIState>((set) => ({
       isChatPanelOpen: false,
       isAnalysisPanelOpen: false,
       isArtifactPanelOpen: false,
+      isPersonaDebatePanelOpen: false,
       isSettingsOpen: false,
       isExportPanelOpen: false,
       isMapListOpen: false,

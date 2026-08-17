@@ -5,12 +5,13 @@ import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 export function NodeDetailPanel() {
-  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setSelectedNodeId, openConfirmDialog } = useUIStore(
+  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setPersonaDebatePanelOpen, setSelectedNodeId, openConfirmDialog } = useUIStore(
     useShallow((s) => ({
       isNodeDetailOpen: s.isNodeDetailOpen,
       nodeDetailId: s.nodeDetailId,
       closeNodeDetail: s.closeNodeDetail,
       setAIPanelOpen: s.setAIPanelOpen,
+      setPersonaDebatePanelOpen: s.setPersonaDebatePanelOpen,
       setSelectedNodeId: s.setSelectedNodeId,
       openConfirmDialog: s.openConfirmDialog,
     }))
@@ -164,6 +165,13 @@ export function NodeDetailPanel() {
     }
   }, [nodeDetailId, setSelectedNodeId, setAIPanelOpen])
 
+  const handlePersonaDebate = useCallback(() => {
+    if (nodeDetailId) {
+      setSelectedNodeId(nodeDetailId)
+      setPersonaDebatePanelOpen(true)
+    }
+  }, [nodeDetailId, setSelectedNodeId, setPersonaDebatePanelOpen])
+
   if (!isNodeDetailOpen || !node || !nodeData) return null
 
   const currentCategory = nodeData.categoryId ? getCategoryById(nodeData.categoryId) : undefined
@@ -198,6 +206,13 @@ export function NodeDetailPanel() {
             >
               <span>✦</span>
               <span>AI拡張</span>
+            </button>
+            <button
+              onClick={handlePersonaDebate}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-primary-600 dark:text-primary-400 font-medium hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+            >
+              <span>🎭</span>
+              <span>壁打ち</span>
             </button>
             <button
               onClick={commitAndClose}

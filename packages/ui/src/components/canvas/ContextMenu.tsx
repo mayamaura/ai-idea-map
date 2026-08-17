@@ -60,6 +60,7 @@ export function ContextMenu() {
     setSelectedNodeId,
     setEditingNodeId,
     setAIPanelOpen,
+    setPersonaDebatePanelOpen,
     openNodeDetail,
     openConfirmDialog,
     openInputDialog,
@@ -275,6 +276,16 @@ export function ContextMenu() {
                 if (targetId) {
                   setSelectedNodeId(targetId)
                   setAIPanelOpen(true)
+                }
+              })}
+            />
+            <MenuItem
+              icon="🎭"
+              label="ペルソナで壁打ち"
+              onClick={run(() => {
+                if (targetId) {
+                  setSelectedNodeId(targetId)
+                  setPersonaDebatePanelOpen(true)
                 }
               })}
             />

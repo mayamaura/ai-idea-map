@@ -561,6 +561,14 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
       future: [],
     })),
 
+  addNodesWithEdges: (nodes, edges) =>
+    set((state) => ({
+      nodes: [...state.nodes, ...nodes],
+      edges: [...state.edges, ...edges],
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
   setNodesNoHistory: (nodes) =>
     set({ nodes: syncGroupMeasured(nodes) }),
 

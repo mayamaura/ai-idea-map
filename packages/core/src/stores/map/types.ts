@@ -52,6 +52,12 @@ export interface NodeSlice {
   alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
   distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
   setNodes: (nodes: IdeaNode[]) => void
+  /**
+   * ノード配列とエッジ配列をまとめて1回の set で追加し、past に1回だけ積む（Phase 48）。
+   * ループで addNode/onConnect を繰り返すと1操作ごとに履歴が積まれ Undo が1ノードずつになるため、
+   * AIの複数意見の一括追加のような「1操作＝複数ノード＋エッジ」のケース向けに用意した汎用アクション
+   */
+  addNodesWithEdges: (nodes: IdeaNode[], edges: Edge[]) => void
   /** ノード配列をストアに反映するが、履歴には積まない（アニメーション途中フレーム用） */
   setNodesNoHistory: (nodes: IdeaNode[]) => void
   /** 最終フレームを確定し、整列前スナップショットを past に1回だけ積む */

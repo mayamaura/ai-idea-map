@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useMapStore } from './mapStore'
+import { makeEdge } from './map/constants'
+import type { IdeaNode } from './map/types'
 import type { SerializedEdge, SerializedNode } from '../types'
 
 // reset() は初期状態（root ノード1個・履歴なし）に戻す唯一の公開アクションなので、
@@ -131,6 +133,34 @@ describe('nodeSlice', () => {
     // スナップショット」が past に積まれることを検証する
     useMapStore.getState().undo()
     expect(useMapStore.getState().nodes.find((n) => n.id === id)?.position).toEqual({ x: 0, y: 0 })
+  })
+
+  it('addNodesWithEdges: 複数ノード・エッジを1回の set でまとめて追加し、past は1回だけ積む。Undo 1回で全て消える', () => {
+    const idA = useMapStore.getState().addNode('A', 0, 0)
+    const beforeNodes = useMapStore.getState().nodes
+    const beforeEdges = useMapStore.getState().edges
+    const pastLen = useMapStore.getState().past.length
+
+    const newNodes: IdeaNode[] = [
+      { id: 'opinion-1', type: 'ideaNode', position: { x: 100, y: 100 }, data: { title: '意見1', color: '#fff', createdBy: 'ai' } },
+      { id: 'opinion-2', type: 'ideaNode', position: { x: 200, y: 100 }, data: { title: '意見2', color: '#fff', createdBy: 'ai' } },
+    ]
+    const newEdges = newNodes.map((n) => makeEdge({ source: idA, target: n.id }))
+
+    useMapStore.getState().addNodesWithEdges(newNodes, newEdges)
+
+    const state = useMapStore.getState()
+    expect(state.nodes.length).toBe(beforeNodes.length + 2)
+    expect(state.edges.length).toBe(beforeEdges.length + 2)
+    expect(state.nodes.find((n) => n.id === 'opinion-1')?.data.title).toBe('意見1')
+    expect(state.past.length).toBe(pastLen + 1)
+    expect(state.future).toEqual([])
+
+    useMapStore.getState().undo()
+    const afterUndo = useMapStore.getState()
+    expect(afterUndo.nodes).toEqual(beforeNodes)
+    expect(afterUndo.edges).toEqual(beforeEdges)
+    expect(afterUndo.past.length).toBe(pastLen)
   })
 })
 

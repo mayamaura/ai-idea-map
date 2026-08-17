@@ -7,6 +7,7 @@ import { IdeaCanvas } from './components/canvas/IdeaCanvas'
 import { NodePanel } from './components/panels/NodePanel'
 import { SettingsPanel } from './components/panels/SettingsPanel'
 import { AISuggestionPanel } from './components/panels/AISuggestionPanel'
+import { PersonaDebatePanel } from './components/panels/PersonaDebatePanel'
 import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ExportImportPanel, type ExportImportPanelProps } from './components/panels/ExportImportPanel'
 import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
@@ -160,6 +161,7 @@ function AppInner({
             extraSections={settingsExtraSections}
           />
           <AISuggestionPanel />
+          <PersonaDebatePanel />
           {mapListSlot}
           <NodeDetailPanel />
           <ExportImportPanel onGenerateShareUrl={onGenerateShareUrl} />

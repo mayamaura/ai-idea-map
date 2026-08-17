@@ -1,0 +1,392 @@
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { v4 as uuidv4 } from 'uuid'
+import { useReactFlow } from '@xyflow/react'
+import {
+  useUIStore,
+  useMapStore,
+  calcSuggestionPositions,
+  makeEdge,
+  DEFAULT_NODE_COLOR,
+  debateNode,
+  toFriendlyAIError,
+  isAbortError,
+  type IdeaNode,
+  type MapContext,
+} from '@ideamap/core'
+import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { useActiveProvider } from '../../hooks/useActiveProvider'
+
+const PRESET_PERSONAS = ['楽観家', '批評家', '顧客', '投資家']
+
+/** 選択されたオピニオンを一意に指すキー（personaIdx-opinionIdx） */
+function opinionKey(personaIdx: number, opinionIdx: number): string {
+  return `${personaIdx}-${opinionIdx}`
+}
+
+export function PersonaDebatePanel() {
+  const {
+    isPersonaDebatePanelOpen,
+    setPersonaDebatePanelOpen,
+    selectedNodeId,
+    personaDebateResult,
+    setPersonaDebateResult,
+    isPersonaDebateLoading,
+    setPersonaDebateLoading,
+    mapTitle,
+    setSettingsOpen,
+  } = useUIStore(
+    useShallow((s) => ({
+      isPersonaDebatePanelOpen: s.isPersonaDebatePanelOpen,
+      setPersonaDebatePanelOpen: s.setPersonaDebatePanelOpen,
+      selectedNodeId: s.selectedNodeId,
+      personaDebateResult: s.personaDebateResult,
+      setPersonaDebateResult: s.setPersonaDebateResult,
+      isPersonaDebateLoading: s.isPersonaDebateLoading,
+      setPersonaDebateLoading: s.setPersonaDebateLoading,
+      mapTitle: s.mapTitle,
+      setSettingsOpen: s.setSettingsOpen,
+    }))
+  )
+  const addNodesWithEdges = useMapStore((s) => s.addNodesWithEdges)
+  const selectedNode = useMapStore((s) => s.nodes.find((n) => n.id === selectedNodeId))
+  const { provider, isReady, providerId } = useActiveProvider()
+  const { fitView } = useReactFlow()
+
+  const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set())
+  const [customPersonas, setCustomPersonas] = useState<string[]>([])
+  const [customInput, setCustomInput] = useState('')
+  const [selectedOpinions, setSelectedOpinions] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const activePersonas = useMemo(
+    () => [...selectedPresets, ...customPersonas],
+    [selectedPresets, customPersonas],
+  )
+
+  const togglePreset = (persona: string) => {
+    setSelectedPresets((prev) => {
+      const next = new Set(prev)
+      if (next.has(persona)) next.delete(persona)
+      else next.add(persona)
+      return next
+    })
+  }
+
+  const handleAddCustom = () => {
+    const value = customInput.trim()
+    if (!value || activePersonas.includes(value)) return
+    setCustomPersonas((prev) => [...prev, value])
+    setCustomInput('')
+  }
+
+  const removeCustom = (persona: string) => {
+    setCustomPersonas((prev) => prev.filter((p) => p !== persona))
+  }
+
+  const toggleOpinion = (key: string) => {
+    setSelectedOpinions((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const handleCancel = () => {
+    abortRef.current?.abort()
+  }
+
+  const handleDebate = useCallback(async () => {
+    if (!selectedNode || !isReady) {
+      setError(
+        isReady
+          ? 'ノードが選択されていません'
+          : providerId === 'ollama'
+            ? '使用するOllamaモデルが選択されていません。設定画面で選んでください。'
+            : 'APIキーが設定されていません。設定画面から入力してください。',
+      )
+      return
+    }
+    if (activePersonas.length === 0) {
+      setError('ペルソナを1つ以上選んでください')
+      return
+    }
+    setError(null)
+    setPersonaDebateLoading(true)
+    setPersonaDebateResult([])
+    setSelectedOpinions(new Set())
+
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
+    try {
+      const { nodes, edges } = useMapStore.getState()
+      const mapContext: MapContext = {
+        mapTitle,
+        nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
+        edges: edges.map((e) => ({ source: e.source, target: e.target, label: typeof e.label === 'string' ? e.label : undefined })),
+        categories: [],
+      }
+      const result = await debateNode(
+        { provider, mapContext, nodeId: selectedNode.id, personas: activePersonas },
+        ctrl.signal,
+      )
+      setPersonaDebateResult(result)
+      const allKeys = new Set<string>()
+      result.forEach((p, pi) => p.opinions.forEach((_, oi) => allKeys.add(opinionKey(pi, oi))))
+      setSelectedOpinions(allKeys)
+    } catch (e) {
+      if (!isAbortError(e)) setError(toFriendlyAIError(e))
+    } finally {
+      setPersonaDebateLoading(false)
+      abortRef.current = null
+    }
+  }, [selectedNode, isReady, providerId, activePersonas, provider, mapTitle, setPersonaDebateLoading, setPersonaDebateResult])
+
+  const handleAddSelected = useCallback(() => {
+    if (!selectedNode) return
+    const chosen: { title: string; body: string }[] = []
+    personaDebateResult.forEach((p, pi) => {
+      p.opinions.forEach((o, oi) => {
+        if (selectedOpinions.has(opinionKey(pi, oi))) chosen.push(o)
+      })
+    })
+    if (chosen.length === 0) return
+
+    const { nodes } = useMapStore.getState()
+    const positions = calcSuggestionPositions(selectedNode.position.x, selectedNode.position.y, chosen.length, nodes)
+
+    const newNodes: IdeaNode[] = chosen.map((op, idx) => ({
+      id: uuidv4(),
+      type: 'ideaNode',
+      position: positions[idx],
+      data: { title: op.title, body: op.body || undefined, color: DEFAULT_NODE_COLOR, createdBy: 'ai' },
+    }))
+    const newEdges = newNodes.map((n) =>
+      makeEdge({ source: selectedNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })
+    )
+
+    addNodesWithEdges(newNodes, newEdges)
+    setPersonaDebatePanelOpen(false)
+    setPersonaDebateResult([])
+    setSelectedOpinions(new Set())
+
+    const focusIds = [selectedNode.id, ...newNodes.map((n) => n.id)]
+    requestAnimationFrame(() => {
+      fitView({ nodes: focusIds.map((id) => ({ id })), padding: 0.3, duration: 500 })
+    })
+  }, [selectedNode, personaDebateResult, selectedOpinions, addNodesWithEdges, setPersonaDebatePanelOpen, setPersonaDebateResult, fitView])
+
+  if (!isPersonaDebatePanelOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎭</span>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">ペルソナ壁打ち会議</h2>
+              {selectedNode && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-48">
+                  "{selectedNode.data.title}"
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => setPersonaDebatePanelOpen(false)}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {!isReady ? (
+          <ApiKeyRequired
+            className="px-5 py-10"
+            providerId={providerId}
+            onOpenSettings={() => {
+              setPersonaDebatePanelOpen(false)
+              setSettingsOpen(true)
+            }}
+          />
+        ) : (
+          <>
+            <div className="px-5 py-4 space-y-3">
+              {/* 選択ノードの内容 */}
+              {selectedNode && (
+                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl text-xs space-y-1">
+                  <p className="font-semibold text-gray-700 dark:text-gray-200 leading-snug">{selectedNode.data.title}</p>
+                  {selectedNode.data.body && (
+                    <p className="text-gray-500 dark:text-gray-400 whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto">
+                      {selectedNode.data.body}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ペルソナ選択 */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">ペルソナを選択</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_PERSONAS.map((persona) => (
+                    <button
+                      key={persona}
+                      onClick={() => togglePreset(persona)}
+                      disabled={isPersonaDebateLoading}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        selectedPresets.has(persona)
+                          ? 'bg-primary-600 text-white border-primary-600'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {persona}
+                    </button>
+                  ))}
+                  {customPersonas.map((persona) => (
+                    <button
+                      key={persona}
+                      onClick={() => removeCustom(persona)}
+                      disabled={isPersonaDebateLoading}
+                      title="削除"
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-full bg-primary-600 text-white border border-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {persona}
+                      <span aria-hidden>×</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddCustom()
+                      }
+                    }}
+                    disabled={isPersonaDebateLoading}
+                    placeholder="自由入力（例: 高齢のユーザー）"
+                    className="flex-1 text-xs p-2 border border-gray-200 dark:border-gray-600 rounded-lg placeholder-gray-400 dark:placeholder-gray-500 dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-primary-400 focus:border-primary-400 disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleAddCustom}
+                    disabled={!customInput.trim() || isPersonaDebateLoading}
+                    className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    追加
+                  </button>
+                </div>
+              </div>
+
+              {/* エラー */}
+              {error && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap">
+                  {error}
+                </div>
+              )}
+
+              {/* ローディング */}
+              {isPersonaDebateLoading && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                    <button
+                      onClick={handleCancel}
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">意見を集めています...</p>
+                </div>
+              )}
+
+              {/* 意見リスト */}
+              {!isPersonaDebateLoading && personaDebateResult.length > 0 && (
+                <>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    採用する意見を選択してください（{selectedOpinions.size}件）
+                  </p>
+                  <div className="space-y-3">
+                    {personaDebateResult.map((p, pi) => (
+                      <div key={pi} className="space-y-1.5">
+                        <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">🎭 {p.persona}</p>
+                        {p.opinions.map((o, oi) => {
+                          const key = opinionKey(pi, oi)
+                          return (
+                            <div
+                              key={key}
+                              onClick={() => toggleOpinion(key)}
+                              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                                selectedOpinions.has(key)
+                                  ? 'border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/30'
+                                  : 'border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedOpinions.has(key)}
+                                // 行クリックでも切り替わるため、チェックボックス自身のクリックは伝播を止めて二重トグルを防ぐ
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => toggleOpinion(key)}
+                                aria-label={`「${o.title}」を採用する`}
+                                className="mt-0.5 accent-primary-600 flex-shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{o.title}</p>
+                                {o.body && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{o.body}</p>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* 初期状態 */}
+              {!isPersonaDebateLoading && personaDebateResult.length === 0 && !error && (
+                <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
+                  <span className="text-3xl mb-2 block">🎭</span>
+                  ペルソナを選んで議論を始めましょう
+                </div>
+              )}
+            </div>
+
+            {/* フッターボタン */}
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 space-y-2">
+              {personaDebateResult.length > 0 && !isPersonaDebateLoading && (
+                <button
+                  onClick={handleAddSelected}
+                  disabled={selectedOpinions.size === 0}
+                  className="w-full py-2.5 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  選択した意見を子ノードとして追加（{selectedOpinions.size}件）
+                </button>
+              )}
+              <button
+                onClick={() => void handleDebate()}
+                disabled={isPersonaDebateLoading}
+                className="w-full py-2.5 border border-primary-300 dark:border-primary-600 text-primary-600 dark:text-primary-400 text-sm font-medium rounded-xl hover:bg-primary-50 dark:hover:bg-primary-900/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {personaDebateResult.length > 0 ? '議論をやり直す' : '議論を始める'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
