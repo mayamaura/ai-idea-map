@@ -117,6 +117,7 @@ ai-idea-map/
 │   │       │   ├── driveService.ts  # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
 │   │       │   ├── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
 │   │       │   ├── mapReview.ts     # 放置ノードの構造的指標検出（findNeglectedNodeIds、Phase 47）
+│   │       │   ├── crossMapSearch.ts # マップ横断の全文検索（searchAcrossMaps、Phase 52）
 │   │       │   └── textToMap.ts     # AI抽出結果 → SerializedNode/Edge 変換（buildMapFragmentFromExtracted、Phase 44）
 │   │       ├── templates/mapTemplates.ts # 思考フレームワークのテンプレートマップ5種（Phase 46）
 │   │       ├── layout/
@@ -143,7 +144,8 @@ ai-idea-map/
 │           │                        # TemplatePickerModal（Phase 46）
 │           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
 │           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）/
-│           │                        # useGlobalErrorLog（Phase 43）/ useSubtreeNodeIds（Phase 45）
+│           │                        # useGlobalErrorLog（Phase 43）/ useSubtreeNodeIds（Phase 45）/
+│           │                        # useLinkedMapTitle（Phase 52）
 │           ├── services/exportService.ts # 画像・JSON・Markdown の書き出しとインポート
 │           ├── utils/markdown.ts    # Markdown→HTML変換ユーティリティ
 │           └── index.ts
@@ -151,10 +153,11 @@ ai-idea-map/
 └── apps/
     ├── web/                         # Web版シェル（GitHub Pages 配信）
     │   ├── index.html
-    │   ├── vite.config.ts           # base: '/ai-idea-map/'
+    │   ├── vite.config.ts           # base: '/ai-idea-map/'。VitePWA（generateSW・manifest、Phase 51、§23）を含む
     │   ├── tailwind.config.js       # packages/ui のプリセットを読み込む
+    │   ├── public/icon-192.png, icon-512.png, icon-512-maskable.png # PWA マニフェスト用アイコン（Phase 51）
     │   └── src/
-    │       ├── main.tsx             # setPlatform → setAppSettingsSync → restorePersistedState() を await → render
+    │       ├── main.tsx             # setPlatform → setAppSettingsSync → restorePersistedState() を await → render。Service Worker登録（registerSW、Phase 51、§23.3）は描画とは独立に実行
     │       ├── WebApp.tsx           # Google 依存を集約し <App> に props で渡すシェル
     │       ├── platform/            # Adapter の Web 実装
     │       │   ├── storage.web.ts   # localStorage
@@ -266,6 +269,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 - `addSiblingNode(nodeId)` — 兄弟ノードを作成してIDを返す（Phase 22）。親エッジがあれば同じ親の子として追加、なければ下方に独立ノード作成
 - `selectOnlyNode(id)` — 指定ノードのみ選択状態にする（履歴に積まない、矢印キー移動用）（Phase 22）
 - `updateNodeTitle`, `updateNodeBody`, `updateNodeColor`, `updateNodeCategory`, `updateNodeUrl`, `updateNodeImage` — ノード更新。この6アクションに加え `mergeNodes`（keep側）・`applyClusterCategory` を含む計8箇所で、対象ノードの `data.updatedAt` を `new Date().toISOString()` に刻印する（Phase 49。AIガーデナーの放置ノード判定 §9.4.3 で使う）
+- `updateNodeLinkedMap(id, link)` — 他マップへのリンクを設定・解除する（Phase 52、§24.1）。`link` は `{ mapId: string; origin: 'cloud' | 'local' } | undefined`。`updateNodeUrl` と同型で `data.updatedAt` も刻印する
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
 - `copyNodes`, `paste` — コピー・ペースト（Phase 22: `copyNodes` は選択ノード間のエッジも保存、`paste` は `Map<oldId,newId>` でエッジを再生成）
@@ -279,7 +283,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 - `connectNodes(source, target)` — 接続モード方式のエッジ作成（Phase 26）。`onConnect` に委譲して履歴push・矢印マーカー付与・`addEdge` 重複排除を再利用。`source === target` のときは何もしない
 - `connectDroppedNode(droppedId, parentId, returnPosition)` — ドラッグ&ドロップ接続（Phase 40、§5.2.1）。重ねられた側（親）→ ドラッグした側（子）のエッジ追加と、ドラッグしたノードを `returnPosition`（ドラッグ開始位置）へ戻す処理を1回の `set` にまとめる。`pushPast` はしない（§8.2 の履歴相乗り）。`droppedId === parentId`、または既に接続済み（向き問わず）なら何もしない
 - `undo`, `redo` — 履歴操作
-- `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）。`updatedAt`/`url`/`image`（Phase 49）はそのまま往復させ、欠落している旧ファイルの値を捏造しない
+- `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）。`updatedAt`/`url`/`image`（Phase 49）・`linkedMapId`/`linkedMapOrigin`（Phase 52）はそのまま往復させ、欠落している旧ファイルの値を捏造しない
 
 内部ヘルパー（Phase 29 で `packages/core/src/layout/groupGeometry.ts` に集約）:
 - `computePushOut(pos, measured, groupNodes, fallbackSize?)` — フリーノードをグループ枠外へ最小移動距離で押し出す。mapStore のドラッグ処理と `mapLayout.applyGroupPushOut` の両方から使う（Phase 29 で重複実装を統合。整列時は 192×64、ドラッグ時は 160×60 をフォールバックサイズに使う差分は引数で吸収）
@@ -341,6 +345,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `renderAllNodes` | `boolean` | 画像エクスポート時のみ true。`onlyRenderVisibleElements` を一時無効化して全ノードをDOM描画させ、マップ全体エクスポートの欠落を防ぐ（Phase 24） |
 | `connectingFromNodeId` | `string \| null` | 接続モード中の接続元ノードID。null=接続モードでない。`setConnectingFromNodeId(id)` で更新（Phase 26） |
 | `dragOverNodeId` | `string \| null` | ドラッグ中のノードが重なっている接続先候補ノードID（ドロップでエッジ作成・緑リング表示、§5.2.1）。null=重なりなし。`setDragOverNodeId(id)` で更新（Phase 40） |
+| `pendingJumpNodeId` | `string \| null` | 別マップを開いた直後にジャンプすべきノードID（Phase 52、§24.3）。マップ横断検索・リンクチップからの遷移は非同期でマップを読み込むため、ジャンプ先を一時的にここへ置き、読み込み完了後に `IdeaCanvas` が消費する |
 
 ### 4.3 settingsStore（packages/core/src/stores/settingsStore.ts）
 
@@ -527,6 +532,10 @@ React Flow の主要設定:
 - `data.image` があれば本文の下にサムネイル（`<img>`、`max-h-20 object-cover`）を表示する
 - `data.url` があれば `new URL(url).hostname` で取得したドメイン名をリンクチップ（`🔗 ドメイン名`）として表示する。不正なURL（`new URL()` が例外を投げる）はチップ自体を表示しない。クリックで `getPlatform().system.openExternalUrl(url)` を呼ぶ（`SystemAdapter.openExternalUrl` は既存メソッド。§5.10 の `ExternalLink` と同じ Adapter 経由だが、IdeaNode 自身がボタンとして実装しておりコンポーネント共有はしていない）
 
+**マップリンクチップ（Phase 52、§24.6）:**
+- `data.linkedMapId` があれば URLチップと同じ表示パターンで `🗺️ マップタイトル`（`useLinkedMapTitle` フックで解決。未解決の間は `linkedMapId` の先頭8文字）チップを表示する
+- クリックで `openLinkedMap({ mapId, origin })`（`useFileDashboard.ts`、§24.4）を呼び、未保存の変更があれば確認を挟んだうえでリンク先マップへ遷移する
+
 **インライン編集（タイトルのみ）（Phase 22）:**
 - ダブルクリック / F2 / 右クリック「名前を変更」で `uiStore.editingNodeId` を設定 → textarea 表示
 - Enter (Shift なし) または blur でコミット、Escape で変更破棄
@@ -651,6 +660,11 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 - 画像は `<input type="file" accept="image/*">` で選択すると即座に `resizeImageToDataUrl()`（`packages/ui/src/utils/imageResize.ts`）→ `updateNodeImage(id, dataUrl)` を呼ぶ（blur 待ちなし・isDirty の対象外）。処理中は「処理中...」表示でボタンを無効化し、失敗時は `addToast('画像の処理に失敗しました', 'error')`。プレビュー右上の削除ボタンで `updateNodeImage(id, undefined)` を呼ぶ
 - `resizeImageToDataUrl(file, maxDimension = 640, maxBytes = 200_000)`: `FileReader`/`Image`/`<canvas>` というブラウザ標準APIのみで実装（Platform Adapter を介さない）。長辺を `maxDimension` にリサイズし、JPEG品質を 0.9 から 0.1 刻みで下げながら `toDataURL()` の文字列長が `maxBytes` 以下になるまで再エンコードする
 
+**リンク先マップ欄（Phase 52、§24.5）:**
+- パネルを開くたびに `getPlatform().file.listRecent()` を呼び候補一覧を取得する。候補から**現在開いているファイル（`uiStore.currentFileId`）自身を除外する**
+- 未リンク時は候補一覧の `<select>`、選択すると即座に `updateNodeLinkedMap(nodeDetailId, { mapId, origin })` を呼ぶ。リンク済み時は解決したマップタイトル（`useLinkedMapTitle`）と「解除」ボタンを表示し、押下で `updateNodeLinkedMap(nodeDetailId, undefined)` を呼ぶ
+- 選択・解除のどちらも blur 待ちなしで即時コミットするため、URL欄・画像欄と同様に `isDirty` の対象外
+
 **設計判断（Phase 49）:**
 - **OGPタイトルの自動取得はしない。** Web版は外部サイトのHTML取得がブラウザのCORSで失敗し、`apps/web/vite.config.ts` の CSP `connect-src`（Anthropic/OpenAI/Google APIのみ許可）にも合致しない。デスクトップ版も `apps/desktop/src-tauri/capabilities/*.json` のホスト許可が既存 capability（`ai-http`/`google-drive` 等、§18.5）の用途に合わず、任意ドメインへの許可を広げるのは既存方針（許可範囲を機能単位に絞る）に反するため見送った
 - **画像は別ファイル管理せず data URL で埋め込む。** 添付画像は `.ideamap` / Drive保存 / 共有URL にそのままサイズが乗る（リサイズ後でも最大約200KB相当）。Drive上の別オブジェクト参照等の別ファイル管理は、Web版・デスクトップ版でストレージの扱いが大きく異なり過剰と判断し v1 では見送った。共有URLの `URL_SIZE_WARNING`（`apps/web/src/services/shareUrl.ts`、50000文字超で警告）は画像添付後も既存ロジックのまま機能する
@@ -730,6 +744,8 @@ interface IdeaNodeData extends Record<string, unknown> {
   updatedAt?: string   // ノード単位の最終更新日時（ISO 8601）。旧ファイル由来は undefined（Phase 49）
   url?: string         // 関連リンク（Phase 49）
   image?: string       // 添付画像（data URL、クライアント側でリサイズ済み。Phase 49）
+  linkedMapId?: string // リンク先マップの FileRef.id（Phase 52）
+  linkedMapOrigin?: 'cloud' | 'local' // リンク先マップの FileRef.origin。id だけでは Drive fileId とローカル絶対パスを区別できないため必須で対にする（Phase 52）
 }
 
 interface MapFile {
@@ -753,6 +769,8 @@ interface SerializedNode {
   updatedAt?: string   // ノード単位の最終更新日時（ISO 8601）。旧ファイル由来は undefined（Phase 49）
   url?: string         // 関連リンク（Phase 49）
   image?: string       // 添付画像（data URL、クライアント側でリサイズ済み。Phase 49）
+  linkedMapId?: string // リンク先マップの FileRef.id（Phase 52）
+  linkedMapOrigin?: 'cloud' | 'local' // リンク先マップの FileRef.origin（Phase 52）
 }
 
 interface SerializedEdge {
@@ -1503,6 +1521,7 @@ Phase 33 で `packages/ui` に汎用化され、Web版・デスクトップ版�
 - **未保存ガード（Phase 20 / Phase 33 で `SystemAdapter.onBeforeExit` に一般化）**: `App.tsx` が `saveStatus` が `unsaved`/`saving` のとき終了を止める。Web=`beforeunload`、Desktop=ウィンドウの `close-requested` イベント＋ネイティブ確認ダイアログ（`ask()`）
 - **保存ダイアログのキャンセル（Phase 34、デスクトップ版のみ発生）**: `saveFileAs` が `null` を返す（ユーザーがダイアログをキャンセル）と、失敗扱いにはせず `saveStatus` を `'unsaved'` に戻して次の操作を待つ
 - **バージョン履歴への記録（Phase 50）**: 保存が成功した直後（新規保存確定時・上書き保存成功時のどちらも通る1箇所）で `recordSnapshot(mapFile.mapId, mapFile)` を呼ぶ（§22.1）。保存先未確定のローカル控えのみの分岐（`createNewFileOnSave: false` のデバウンス保存）では呼ばない（正式な保存ではないため）
+- **オンライン復帰時のリトライ（Phase 51、§23.4）**: `credentialKey` 変化時のリトライ（同じ `pendingRetryRef`/`failureCountRef` を使う既存の仕組み）に加え、`window` の `online` イベントでも保留していた保存を再試行する。オフライン中は `credentialKey`（Web版はアクセストークン）が変化しないため、この仕組みがないとオンライン復帰後も次の編集が起きるまで再送されなかった
 
 ### 12.4.1 ローカル復元とファイルダッシュボード（Phase 20）
 
@@ -2076,3 +2095,128 @@ export function stopTimelapse(): void
 ### 22.4 Google Drive revisions 連携（未実装・優先度低）
 
 Drive revisions API（`GET /files/{fileId}/revisions`・`GET /files/{fileId}/revisions/{revisionId}?alt=media`）を使った変更履歴連携は起票のみで実装していない。`driveService.ts`（§12.2）には `listMapRevisions`/`loadMapRevision` に相当する関数は存在しない。Drive revisions の保持期間・世代数の運用挙動と、Web版 GIS トークンのスコープ（現状 `drive.file` 相当）で到達できるかが実機未確認のため、優先度を下げて `docs/implementation-plan.md` に起票のみ残している。
+
+---
+
+## 23. PWA設計（apps/web、Phase 51）
+
+Web版のみを対象に `vite-plugin-pwa`（`generateSW` モード）でインストール可能・オフライン起動可能な PWA にする。デスクトップ版は Tauri が同等の役割（ネイティブインストール・ローカルファイル永続化）を既に担っているため対象外。
+
+### 23.1 vite-plugin-pwa の設定（apps/web/vite.config.ts）
+
+```typescript
+VitePWA({
+  registerType: 'prompt',
+  injectRegister: false,
+  devOptions: { enabled: false },
+  manifest: {
+    name: 'IdeaMap',
+    short_name: 'IdeaMap',
+    description: 'AIと一緒に育てるアイデアマップアプリ',
+    theme_color: '#6d28d9',
+    background_color: '#f9fafb',
+    display: 'standalone',
+    icons: [ /* 192, 512, 512(maskable) */ ],
+  },
+})
+```
+
+- `registerType: 'prompt'`: 自動リロードだと編集中のマップが失われうるため、更新はユーザー操作（§23.3 の更新トースト）に委ねる
+- `injectRegister: false`: 既定のインライン登録スクリプトは CSP の `script-src 'self'`（`unsafe-inline` なし）に違反するため、登録は `main.tsx` から `virtual:pwa-register` 経由で明示的に行う（§23.3）
+- `devOptions: { enabled: false }`: 既存の `injectCsp` プラグイン（Phase 42）と同じく本番ビルドのみ有効化し、開発時の Vite HMR と衝突させない
+- `manifest.icons` は既存の `apps/web/public/icon-512.svg` に加え、192×192・512×512・512×512（`purpose: 'maskable'`）の PNG 3種を `apps/web/public` に追加して登録する（Android Chrome 等、SVGのみではインストール可否判定を満たせない環境があるため）
+- `start_url`/`scope` は明示指定せず、Vite の `base`（`'/ai-idea-map/'`）を `vite-plugin-pwa` が自動反映する（`pnpm build` の出力 `manifest.webmanifest` で `/ai-idea-map/` になっていることを確認済み）
+- 出力（`generateSW`）は `apps/web/dist` に `manifest.webmanifest`・`sw.js`・`workbox-*.js` を生成する。precache 対象は17エントリ・約1MB（`pnpm build` のビルドログで確認済み）
+
+`apps/web/tsconfig.app.json` の `compilerOptions.types` に `vite-plugin-pwa/client` を追加し、`virtual:pwa-register` の型を解決する。`apps/web/package.json` の devDependencies に `vite-plugin-pwa` と、その実行時依存である `workbox-window`（`registerSW` が内部で使う）を追加した。
+
+### 23.2 CSP との整合
+
+`apps/web/vite.config.ts` の `CSP_CONTENT`（本番ビルドのみ `<meta>` に注入、既存 Phase 42）に `worker-src 'self'` を追加した。Service Worker 自体は `'self'` 配信のため CSP3 の `script-src` フォールバックでも動作するが、明示しておく。
+
+### 23.3 main.tsx での登録と更新通知
+
+`apps/web/src/main.tsx` が `registerSW()`（`virtual:pwa-register`）を呼ぶ。`restorePersistedState()` の初回描画処理（§4.4）とは独立に、描画をブロックせず実行する。
+
+```typescript
+const updateSW = registerSW({
+  onNeedRefresh() {
+    useUIStore.getState().addToast('新しいバージョンがあります。再読み込みで更新されます', 'info', {
+      label: '更新',
+      onClick: () => void updateSW(true),
+    })
+  },
+  onOfflineReady() {
+    useUIStore.getState().addToast('オフラインで利用できる準備ができました', 'success')
+  },
+})
+```
+
+- 新バージョン検出時（`onNeedRefresh`）は「更新」ボタン付きトースト（`Toast['action']`。`WebApp.tsx` の「再接続」トーストと同じ形）を表示し、自動リロードはしない。ボタン押下で `updateSW(true)` を呼び SW を更新してからリロードする
+- 初回インストール完了時（`onOfflineReady`）は確認用の成功トーストを出す
+
+### 23.4 オフライン復帰時の自動保存リトライ（packages/ui、Phase 51）
+
+Web版・デスクトップ版共通の `useAutoSave.ts`（§12.4）に、`window` の `online` イベントを購読する `useEffect` を追加した。既存の「`credentialKey` 変化時にリトライする」仕組みと同じ `pendingRetryRef`/`failureCountRef` を再利用し、オンライン復帰時にも保留していた保存を `scheduleSave()` する。`credentialKey`（Web版はアクセストークン）はオフライン中は変化しないため、この仕組みがないとオンライン復帰後も次の編集が起きるまで再送されなかった（既知バグの解消）。
+
+`apps/web/src/WebApp.tsx` の `onSaveError` にも分岐を追加した: `navigator.onLine === false`（オフライン中の保存失敗）のときはトーストを出さずに `'retry'` を返す。オフラインバナー（`Header.tsx` の `useOnlineStatus`）が既に状態を示しているため、`fetch` の `TypeError` のたびにトーストを重ねて出さない。
+
+---
+
+## 24. マップ横断設計（マップ間リンクと横断検索、Phase 52）
+
+ノードから別マップへのリンクを張り、リンクチップ・横断検索の両方から遷移できるようにする。embedding は導入せず全文検索のみで価値を検証する。
+
+### 24.1 スキーマ v1.1（packages/core/src/utils/mapFileCompat.ts、packages/core/src/types/index.ts）
+
+`CURRENT_MAP_FILE_VERSION` を `'1.0'` → `'1.1'` に上げ、`MIGRATION_STEPS` に最初の実エントリ `{ from: '1.0', migrate: (file) => file }` を追加した（`linkedMapId`/`linkedMapOrigin` はどちらも optional でデータ変換が不要な恒等マイグレーション）。`IdeaNodeData`/`SerializedNode` には `linkedMapId?: string`（リンク先の `FileRef.id`）・`linkedMapOrigin?: 'cloud' | 'local'`（同 `origin`）を追加した（§6）。`origin` を分けて持つ理由: `id` だけでは Web の Drive fileId とデスクトップの絶対パスを区別できず、開く際に `FileAdapter.openFile(ref)` が要求する `origin` を復元できないため。
+
+`nodeSlice.ts` に `updateNodeLinkedMap(id, link)` を追加した（§4.1）。`link` に `undefined` を渡すとリンクを解除する。`documentSlice.ts` の `loadFromSerialized`/`getSerializedNodes` はこの2フィールドをそのまま往復させる（§4.1）。
+
+### 24.2 crossMapSearch サービス（packages/core/src/services/crossMapSearch.ts）
+
+```typescript
+export interface CrossMapSearchResult {
+  ref: FileRef
+  mapTitle: string
+  titleMatched: boolean
+  matchedNodes: { id: string; title: string }[]
+}
+
+export function searchAcrossMaps(query: string, entries: RecentFileEntry[]): Promise<CrossMapSearchResult[]>
+```
+
+- 呼び出し側（`SearchBar`、§24.7）が渡す `entries`（＝「最近開いたマップ」から現在のマップを除いたもの）だけを対象にする。現在のマップ自体は呼び出し側が既にライブの state を持っているため、ここでは扱わない
+- 各 `entry` は `getPlatform().file.openFile(entry.ref)` → `migrateMapFile` で取得し、タイトルとノードの `title`/`body` を大小文字無視の部分一致で検索する
+- 取得結果はモジュール内 `Map<string, MapFile>`（`contentCache`）にセッション内メモリキャッシュし、検索のたびに再取得しない。「検索時点で最新とは限らない」トレードオフを許容し、無効化・TTLの仕組みは持たない
+- 1マップの取得失敗（削除済み・アクセス不可）は結果から除外するだけで、他マップの検索には影響させない
+- 検証: `packages/core/src/services/crossMapSearch.test.ts`。複数マップにまたがるヒット・大小文字無視/本文検索・0件・現在のマップの除外・1マップの取得失敗時に他マップの結果が返ることを検証する
+
+### 24.3 uiStore: pendingJumpNodeId（packages/core/src/stores/uiStore.ts、§4.2）
+
+マップ横断検索・リンクチップからの遷移は非同期でマップを読み込むため、ジャンプ先ノードIDを一時的に `pendingJumpNodeId` に置く。`IdeaCanvas.tsx` の `pendingFitView`（`documentSlice.ts`、§4.1）消化 effect は、`pendingJumpNodeId` があれば通常の `fitView({ padding: 0.2 })` の代わりに `setSelectedNodeId(jumpNodeId)` → `fitView({ nodes: [{ id: jumpNodeId }], padding: 0.3 })` を実行し、消費後に `null` へ戻す。
+
+### 24.4 openLinkedMap / useLinkedMapTitle（packages/ui/src/hooks/useFileDashboard.ts, useLinkedMapTitle.ts）
+
+`openLinkedMap(link, jumpToNodeId?)`（`useFileDashboard.ts`。`openLoadedMap`、§5.1.2 と同じファイル）が遷移の共通ロジックを担う。
+
+- 未保存の変更（`saveStatus` が `'unsaved' | 'saving'`）があれば `openConfirmDialog` で確認を挟む（`App.tsx` の `onBeforeExit` と同じ判定式）
+- 確認後（または未保存がなければ即座に）`getPlatform().file.openFile(ref)` → `pendingJumpNodeId` をセット（§24.3）→ `openLoadedMap()`（§5.1.2）でキャンバスへ反映する
+- 開けなかった場合（削除済み・アクセス不可）はトースト「リンク先のマップを開けませんでした」を表示する
+- Web版・デスクトップ版どちらも `FileAdapter.openFile(ref)` が `ref.id`/`ref.origin` だけで対象を開けるため、プラットフォーム固有コードを持たない
+
+`useLinkedMapTitle(linkedMapId)`（`packages/ui/src/hooks/useLinkedMapTitle.ts`）は `linkedMapId` からマップタイトルを解決するフック。`listRecent()` の結果をモジュールスコープの `cachePromise` で共有し、キャンバス上の複数ノードが同時にリンクチップを表示してもデスクトップ版で `listRecent()`（ファイル存在チェックを伴う）をノード数だけ呼ばないようにする。`invalidateRecentEntriesCache()` はリンクの設定・解除直後に呼び、次回参照時に一覧を取り直させる。
+
+### 24.5 NodeDetailPanel: リンク先マップ欄
+
+コンポーネント設計は §5.8 を参照。**候補範囲についての判断**: `listRecent()` は「最近開いたマップ」（Web最大5件、デスクトップは開いたことのある未移動ファイル）のみを返し、Drive の全ファイル一覧は返さない。Web専用の Drive 全件一覧（`MapListPanel.tsx` が使う `driveService.listMaps()`）を `packages/ui` から直接呼ぶことは Web専用機能を `App` の props 経由で渡す規約（`CLAUDE.md`）に反するため、本フェーズは `listRecent()` ベースの最小構成にとどめ、Drive 全件一覧からのリンクは見送った。
+
+**起票からの訂正**: 起票時点（`docs/implementation-plan.md` Phase 52-B）では候補からの除外判定に `currentMapId`（マップの論理ID）を使う想定だったが、実装では `currentFileId`（`FileRef.id`）を使っている。リンク先の選択・`FileAdapter.openFile` はどちらも `FileRef` 単位で扱うため、除外判定も同じ `currentFileId` に揃える方が一貫する。
+
+### 24.6 IdeaNode: マップリンクチップ
+
+コンポーネント設計は §5.3 を参照。
+
+### 24.7 SearchBar: 他のマップも検索（packages/ui/src/components/common/SearchBar.tsx）
+
+「他のマップも検索」チェックボックス（既定OFF。既存の即時ローカル検索と外部通信を伴う検索を混同させないための明示トグル）を追加した。ONかつクエリが空でないとき、400ms デバウンス（`CROSS_MAP_SEARCH_DEBOUNCE_MS`）後に `getPlatform().file.listRecent()`（現在のマップ＝`currentFileId` を除外）→ `searchAcrossMaps(query, entries)`（§24.2）を呼ぶ。結果は現在のマップの検索結果とは別セクションに、マップタイトルごとの見出し＋ヒットノード（最大5件、`HighlightText` でハイライト）で表示する。結果クリックで `openLinkedMap({ mapId, origin }, nodeId)`（§24.4）を呼び、検索バーを閉じてから対象マップ・ノードへ遷移する。

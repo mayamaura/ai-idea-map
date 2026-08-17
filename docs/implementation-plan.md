@@ -2431,76 +2431,89 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 51: PWA化とオフライン対応（Web版）
+### Phase 51: PWA化とオフライン対応（Web版） 🔨 実装済み（確認中）
 
 **目標**: Web版をインストール可能なPWAにし、Service Workerでアプリシェルをキャッシュしてオフライン起動を可能にする。マップ編集自体は既存の localStorage ミラーで既にオフライン継続できているため、本フェーズは「オフラインでもアプリを開き直せる」「オンライン復帰時に確実に Drive へ再同期される」の2点を主眼に置く（v2.0「どこでも・つながる」の1つ目、`docs/roadmap.md` §7.1）。
 
 **現状確認（起票時点）**: `apps/web/vite.config.ts` は `base: '/ai-idea-map/'` で GitHub Pages のサブパスにビルドし、本番ビルド時のみ（`apply: 'build'`）CSPメタタグを注入している（`script-src 'self' https://accounts.google.com/gsi/client`、`worker-src` は未指定で `script-src` へのフォールバックに依存）。`devDependencies` は `"vite": "8.1.0"` で `rolldownOptions`（Rolldownベースのビルド設定、`apps/web/vite.config.ts` 55-77行目）を使っており、`vite-plugin-pwa` がこの構成で正式動作するかは未検証。オフライン時のローカル編集継続自体は既に動作している: `packages/ui/src/hooks/useAutoSave.ts` の `performSave` は保存のたびに `file.saveLocalMirror(mapFile)`（Web実装は `apps/web/src/platform/file.web.ts` の `saveLocalMirror` → `apps/web/src/services/storageService.ts` の `saveMapLocally`、`localStorage` へ直接書く）を呼び、`packages/ui/src/components/common/Header.tsx` は `packages/ui/src/hooks/useOnlineStatus.ts`（`navigator.onLine`／`online`・`offline`イベント）でオフラインバナーを既に表示している。一方で `useAutoSave.ts` の保存失敗時のリトライは `credentialKey`（Webはアクセストークン）が変化したときにしか発火せず（234-242行目）、`apps/web/src/WebApp.tsx` の `onSaveError` はエラーメッセージに `'401'` を含むかでしか分岐しないため、オフライン中の保存失敗（`fetch` の `TypeError`）は毎回「Googleドライブへの保存に失敗しました」トーストを出し、オンライン復帰後も次の編集が起きるまで再送されない。この2点を D で修正する。
 
 #### A. `vite-plugin-pwa` 導入とマニフェスト
-- [ ] `apps/web/package.json` の `devDependencies` に `vite-plugin-pwa` を追加する
-- [ ] `apps/web/vite.config.ts` に `VitePWA` プラグインを追加する。`registerType: 'prompt'`（自動リロードではなく C の更新通知経由でユーザー操作によりリロードする）、`injectRegister: false`（既定の自動挿入インライン `<script>` は CSP の `script-src 'self'`（`'unsafe-inline'` なし）に違反するため、登録は C で `main.tsx` から明示的に行う）、`devOptions: { enabled: false }`（`injectCsp` と同じく本番ビルドのみ有効化し、開発時の HMR と衝突させない）を指定する
-- [ ] `manifest`（`name`/`short_name`/`description`/`theme_color`/`background_color`/`display: 'standalone'`）を設定する。`start_url`/`scope` は Vite の `base`（`/ai-idea-map/`）を `vite-plugin-pwa` が自動で反映するため明示指定は不要だが、次のタスクで実際の出力を確認する
-- [ ] 既存の `apps/web/public/icon-512.svg` から 192×192・512×512・512×512（`purpose: 'maskable'`）の PNG を書き出し `apps/web/public` に追加し、`manifest.icons` に登録する（Android Chrome のインストール可否判定は SVG のみでは満たせない環境があるため）
-- [ ] `apps/web/tsconfig.app.json` の `compilerOptions.types` に `"vite-plugin-pwa/client"` を追加する（`virtual:pwa-register` の型定義を解決するため）
-- [ ] `pnpm build` を実行し、`apps/web/dist` に `manifest.webmanifest`・Service Worker（`generateSW` 既定のファイル名）が `base` パス配下（`/ai-idea-map/...`）で正しい URL として出力されることを確認する
+- [x] `apps/web/package.json` の `devDependencies` に `vite-plugin-pwa`（1.3.0）を追加した。**併せて実行時依存の `workbox-window`（7.4.1、`registerSW` が内部で使う）も追加した**（起票時未記載、docs 訂正）（2026-08-17 実装）
+- [x] `apps/web/vite.config.ts` に `VitePWA` プラグインを計画通り追加した。`registerType: 'prompt'`・`injectRegister: false`・`devOptions: { enabled: false }`（2026-08-17 実装）
+- [x] `manifest`（`name`/`short_name`/`description`/`theme_color`/`background_color`/`display: 'standalone'`）を計画通り設定した。`start_url`/`scope` は明示指定していないが、`pnpm build` の出力 `manifest.webmanifest` で `/ai-idea-map/` に正しく反映されることを確認した（2026-08-17 実装、doc-sync 時に再ビルドして確認）
+- [x] 192×192・512×512・512×512（`purpose: 'maskable'`）の PNG 3種を `apps/web/public` に追加し、`manifest.icons` に登録した（2026-08-17 実装）
+- [x] `apps/web/tsconfig.app.json` の `compilerOptions.types` に `"vite-plugin-pwa/client"` を追加した（2026-08-17 実装）
+- [x] `pnpm build` を実行し、`apps/web/dist` に `manifest.webmanifest`・`sw.js`・`workbox-*.js` が `base` パス配下（`/ai-idea-map/...`）の URL で出力されることを確認した。precache は17エントリ・約1MB（2026-08-17 実装、doc-sync 時に再ビルドして確認）
 
 #### B. CSP と Service Worker の整合
-- [ ] `apps/web/vite.config.ts` の `CSP_CONTENT` に `worker-src 'self'` を追加する（現状 `worker-src` 未指定でブラウザの CSP3 フォールバック実装に依存しており、明示したほうが安全なため）
-- [ ] `pnpm build && pnpm preview` で本番相当のビルドを起動し、DevTools コンソールに CSP 違反（Service Worker 登録・スクリプト実行に関するもの）が出ないことを確認する
+- [x] `apps/web/vite.config.ts` の `CSP_CONTENT` に `worker-src 'self'` を追加した（2026-08-17 実装）
+- [x] `pnpm build` した `apps/web/dist/index.html` の CSP `<meta>` に `worker-src 'self'` が含まれることを静的に確認した（2026-08-17、doc-sync 時点）。**`pnpm preview` を起動しての DevTools コンソール実機確認（CSP違反の有無）は未実施のため、残りの手動確認項目に残す**
 
 #### C. `main.tsx` での SW 登録と更新通知
-- [ ] `apps/web/src/main.tsx` に `virtual:pwa-register` の `registerSW({ onNeedRefresh, onOfflineReady })` 呼び出しを追加する。`restorePersistedState().finally()` の初回描画処理とは独立に（描画をブロックしない）呼ぶ
-- [ ] `onNeedRefresh` から `useUIStore.getState().addToast(message, 'info', { label: '更新', onClick })`（`Toast['action']` は既存の型をそのまま使う。`apps/web/src/WebApp.tsx` の `onSaveError` の「再接続」トーストと同じ形）を呼び、「新しいバージョンがあります」と表示する。`onClick` で `registerSW` が返す `updateSW(true)` を呼び、SW を更新してリロードする
-- [ ] `onOfflineReady` から「オフラインで利用できる準備ができました」の軽いトースト（初回インストール後の確認用、任意）を出すかはタスク実施時に決める
+- [x] `apps/web/src/main.tsx` に `virtual:pwa-register` の `registerSW({ onNeedRefresh, onOfflineReady })` 呼び出しを、`restorePersistedState()` の初回描画処理とは独立に追加した（2026-08-17 実装）
+- [x] `onNeedRefresh` から「更新」ボタン付きトースト（`addToast(message, 'info', { label, onClick })`）を計画通り表示する。`onClick` で `updateSW(true)` を呼ぶ（2026-08-17 実装）
+- [x] `onOfflineReady` は「オフラインで利用できる準備ができました」の成功トーストを**出す**実装にした（起票では「タスク実施時に決める」としていた判断の確定、docs 訂正）（2026-08-17 実装）
 
 #### D. オフライン→オンライン復帰時の自動保存
-- [ ] `packages/ui/src/hooks/useAutoSave.ts` に `window` の `'online'` イベントを購読する `useEffect` を追加し、`pendingRetryRef.current` が `true` ならその時点で `failureCountRef.current` をリセットして `scheduleSave()` を呼ぶ（既存の `credentialKey` 変化時のリトライ、234-242行目と同じ仕組みをオンライン復帰でも発火させる）
-- [ ] `apps/web/src/WebApp.tsx` の `onSaveError`（31-50行目）に分岐を追加する: `navigator.onLine === false`（オフライン中の保存失敗）のときはトーストを出さずに `'retry'` を返す。オフラインバナー（`Header.tsx`）が既に状態を示しているため、保存失敗トーストの連打を避ける
-- [ ] 手動確認: DevTools の Network を Offline にしてノードを編集 → localStorage ミラーへ保存されオフラインバナーが表示されることを確認 → Online に戻す → Drive への保存が自動的に再試行され `saveStatus` が `'saved'` に戻ることを確認する
+- [x] `packages/ui/src/hooks/useAutoSave.ts` に `window` の `'online'` イベントを購読する `useEffect` を計画通り追加した（2026-08-17 実装）
+- [x] `apps/web/src/WebApp.tsx` の `onSaveError` に `navigator.onLine === false` の分岐を計画通り追加した（2026-08-17 実装）
+- [ ] 手動確認: DevTools の Network を Offline にしてノードを編集 → localStorage ミラーへ保存されオフラインバナーが表示されることを確認 → Online に戻す → Drive への保存が自動的に再試行され `saveStatus` が `'saved'` に戻ることを確認する（未実施）
 
 #### E. ドキュメント更新
-- [ ] `docs/requirements.md` §3.4（オフライン対応）に PWA インストール・Service Worker によるオフライン起動・オンライン復帰時の自動再送を追記する
-- [ ] `docs/design.md` に「PWA / Service Worker」の節を新設し、`vite-plugin-pwa` の設定（`registerType`/`injectRegister`/`manifest`/アイコン）・CSP との整合・オンライン復帰時の自動保存リトライの仕組みを記載する
+- [x] `docs/requirements.md` §3.4（オフライン対応）・§2.3.8 に PWA インストール・Service Worker によるオフライン起動・オンライン復帰時の自動再送を追記した（2026-08-17、本ドキュメント同期で反映）
+- [x] `docs/design.md` §23「PWA設計」を新設し、`vite-plugin-pwa` の設定・CSP との整合・オンライン復帰時の自動保存リトライの仕組みを記載した（2026-08-17、本ドキュメント同期で反映）
 
-**完了条件**: 型検査・ビルドが通過すること。ビルド後の `apps/web/dist` が GitHub Pages のサブパスでインストール可能な PWA として認識されること（Chrome DevTools の Application タブで確認）。オフライン状態でリロードしてもアプリシェルが表示されること。新バージョンのデプロイ後、開いたままのタブに更新通知が出て、クリックで最新化できること。オフライン編集後にオンライン復帰すると、Drive への保存が自動的に再試行されること。`vite-plugin-pwa` が Rolldown ベースの Vite 8 ビルドで問題なく動作するか未検証だった場合はその旨を本ドキュメントに記録すること。
+**残りの手動確認項目**:
+- [ ] GitHub Pages への実デプロイ後、Chrome DevTools の Application タブでインストール可能な PWA として認識されることを確認する
+- [ ] 実機（デスクトップ・スマホの両方）でホーム画面・デスクトップへのインストールを行い、スタンドアロン起動できることを確認する
+- [ ] オフラインでリロードしてもアプリシェルが表示されることを確認する（DevTools の Network Offline、または機内モード）
+- [ ] 新バージョンをデプロイ後、開いたままのタブに更新トーストが出てクリックで最新化されること、`pnpm preview` の DevTools コンソールに CSP 違反が出ないことを確認する
+- [ ] オフライン編集後にオンライン復帰すると、Drive への保存が自動的に再試行され `saveStatus` が `'saved'` に戻ることを確認する
+
+**完了条件**: 型検査・ビルドが通過すること。ビルド後の `apps/web/dist` が GitHub Pages のサブパスでインストール可能な PWA として認識されること（Chrome DevTools の Application タブで確認）。オフライン状態でリロードしてもアプリシェルが表示されること。新バージョンのデプロイ後、開いたままのタブに更新通知が出て、クリックで最新化できること。オフライン編集後にオンライン復帰すると、Drive への保存が自動的に再試行されること。`vite-plugin-pwa` が Rolldown ベースの Vite 8 ビルドで問題なく動作するか未検証だった場合はその旨を本ドキュメントに記録すること。**doc-sync 時点（2026-08-17）で `pnpm --filter @ideamap/web build` を再実行し、Rolldownベースの Vite 8 構成でも `vite-plugin-pwa` が問題なく動作すること（manifest・sw.js・precache 出力）を確認した。** GitHub Pages 実機でのインストール・オフライン起動・SW更新通知の確認は上記「残りの手動確認項目」として未了。
 
 ---
 
-### Phase 52: マップ横断（ワークスペース）
+### Phase 52: マップ横断（ワークスペース） 🔨 実装済み（確認中）
 
 **目標**: ノードから別マップへのリンクを張れるようにし、リンクチップから対象マップを開けるようにする。あわせて「最近開いたマップ＋現在のマップ」を対象にした横断全文検索を実装する。embedding 導入は行わず、まず全文検索で価値を確認する（v2.0「どこでも・つながる」の2つ目、`docs/roadmap.md` §7.2）。
 
 **現状確認（起票時点）**: `packages/platform/src/types.ts` の `FileAdapter.listRecent(): Promise<RecentFileEntry[]>`（`RecentFileEntry = { ref: FileRef; title: string }`）は Web版・デスクトップ版の両方に実装済みだが、いずれも「最近開いたマップ」の小さな一覧に限定される。Web版（`apps/web/src/platform/file.web.ts`）は `apps/web/src/services/storageService.ts` の `loadRecentMaps()`（localStorage、最大5件、Driveのファイルを開く／保存するたびに `saveRecentMap` で追記）をそのまま返し、Drive の全ファイル一覧を取得する `driveService.listMaps()` は使っていない（それを使うのは Web専用の `apps/web/src/components/panels/MapListPanel.tsx`）。デスクトップ版（`apps/desktop/src/platform/file.desktop.ts`）も同様に、移動・削除されていない「開いたことのあるファイル」のみを返す。`FileAdapter.openFile(ref)` は `ref.origin`（`'cloud' | 'local'`）で Drive／ローカルファイルシステムのどちらから読むかを分岐しており、`ref.id` 単体では復元できない。ノード側の型（`packages/core/src/types/index.ts` の `SerializedNode`/`IdeaNodeData`）、マイグレーション基盤（`packages/core/src/utils/mapFileCompat.ts` の `CURRENT_MAP_FILE_VERSION`/`MIGRATION_STEPS`/`migrateMapFile`）は Phase 49 で実装済み（現行バージョン `'1.0'`、`MIGRATION_STEPS` は空）。検索は `packages/ui/src/components/common/SearchBar.tsx` が現在のマップ（`useMapStore` の `nodes`）のタイトル・本文を対象にした単一の検索窓を持っており、他マップを跨ぐ仕組みは存在しない。
 
 #### A. スキーマ拡張: `linkedMapId`（Phase 49 のマイグレーション基盤に新バージョンとして追加）
-- [ ] `packages/core/src/types/index.ts` の `SerializedNode`/`IdeaNodeData` に `linkedMapId?: string`（リンク先の `FileRef.id`）を追加する。**あわせて `linkedMapOrigin?: 'cloud' | 'local'`（`FileRef.origin`）も追加する。** `id` だけでは Web の Drive fileId とデスクトップの絶対パスを区別できず、開く際に `FileAdapter.openFile(ref)` が要求する `origin` を復元できないため（デスクトップ版は自マップ内で Drive 上のマップとローカルのマップを両方開ける実装〔`apps/desktop/src/platform/file.desktop.ts` の `openFile`〕になっており省略できない）
-- [ ] `packages/core/src/utils/mapFileCompat.ts` の `CURRENT_MAP_FILE_VERSION` を `'1.0'` → `'1.1'` へ上げ、`MIGRATION_STEPS` に `{ from: '1.0', migrate: (file) => file }`（`linkedMapId` 等は optional でデータ変換は不要、バージョン番号を進めるだけの恒等マイグレーション）を追加する。これが `MIGRATION_STEPS` への初めての実エントリになる
-- [ ] `packages/core/src/utils/mapFileCompat.test.ts` に、`version: '1.0'` のファイルが読み込み後に `'1.1'` へ上がること、未知の新バージョン（例 `'1.2'`）は警告つきで読めることのケースを追加する
-- [ ] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `updateNodeLinkedMap: (id: string, link: { mapId: string; origin: 'cloud' | 'local' } | undefined) => void` を追加し、`nodeSlice.ts` に `updateNodeUrl`（324-333行目）と同型で実装する（`updatedAt` 刻印を含む）
-- [ ] `documentSlice.ts` の `loadFromSerialized`（29-38行目）／`getSerializedNodes`（71-85行目）で `linkedMapId`/`linkedMapOrigin` を往復させる
-- [ ] `packages/core/src/stores/mapStore.test.ts` に `updateNodeLinkedMap` のテストと `loadFromSerialized`/`getSerializedNodes` の往復テストを追加する
+- [x] `packages/core/src/types/index.ts` の `SerializedNode`/`IdeaNodeData` に `linkedMapId?: string`・`linkedMapOrigin?: 'cloud' | 'local'` を計画通り追加した（2026-08-17 実装）
+- [x] `packages/core/src/utils/mapFileCompat.ts` の `CURRENT_MAP_FILE_VERSION` を `'1.0'` → `'1.1'` へ上げ、`MIGRATION_STEPS` に `{ from: '1.0', migrate: (file) => file }` を計画通り追加した。`MIGRATION_STEPS` への初めての実エントリになった（2026-08-17 実装）
+- [x] `packages/core/src/utils/mapFileCompat.test.ts` に、`version: '1.0'` → `'1.1'` への移行、未知の新バージョン（`'1.2'`）の警告つき読み込みのケースを計画通り追加した（2026-08-17 実装）
+- [x] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `updateNodeLinkedMap: (id, link) => void` を追加し、`nodeSlice.ts` に `updateNodeUrl` と同型（`updatedAt` 刻印を含む）で実装した（2026-08-17 実装）
+- [x] `documentSlice.ts` の `loadFromSerialized`/`getSerializedNodes` で `linkedMapId`/`linkedMapOrigin` を往復させるようにした（2026-08-17 実装）
+- [x] `packages/core/src/stores/mapStore.test.ts` に `updateNodeLinkedMap`（設定・`undefined`での解除）のテストと、`loadFromSerialized`/`getSerializedNodes` の往復テスト（新旧混在ファイルでの undefined 保持を含む）を追加した（2026-08-17 実装）
 
 #### B. NodeDetailPanel: リンク先マップの選択
-- [ ] `packages/ui/src/components/panels/NodeDetailPanel.tsx` に「リンク先マップ」セクションを追加する。開いたら `getPlatform().file.listRecent()` を呼び候補一覧（タイトル・保存先種別アイコン）を表示し、選択で `updateNodeLinkedMap(nodeDetailId, { mapId: ref.id, origin: ref.origin })` を呼ぶ。「リンク解除」ボタンで `undefined` を渡す。候補から現在開いているマップ（`useUIStore.getState().currentMapId`）自身は除外する
-- [ ] **候補範囲についての判断**: `listRecent()` は「最近開いたマップ」（Web最大5件、デスクトップは開いたことのある未移動ファイル）のみを返し、Drive の全ファイル一覧は返さない。Web専用の Drive 全件一覧（`MapListPanel.tsx` が使う `driveService.listMaps()`）を `NodeDetailPanel` から使うには `packages/ui` から Web専用機能を直接呼べない制約（`CLAUDE.md` の Web専用機能は `App` の props 経由という規約）があり、追加の配線が要る。本フェーズは `listRecent()` ベースの最小構成にとどめ、Drive 全件一覧からのリンクは見送る。この判断を `docs/design.md` に明記する
+- [x] `packages/ui/src/components/panels/NodeDetailPanel.tsx` に「リンク先マップ」セクションを追加した。開いたら `getPlatform().file.listRecent()` を呼び候補一覧（タイトル）を `<select>` で表示し、選択で `updateNodeLinkedMap(nodeDetailId, { mapId, origin })` を呼ぶ。「解除」ボタンで `undefined` を渡す。**候補からの除外判定は起票時点の想定（`currentMapId`）ではなく `currentFileId`（`uiStore` の値、`FileRef.id` と同じ単位）を使う実装になった。** `FileAdapter.openFile`/`listRecent()` はどちらも `FileRef` 単位で扱うため、除外判定もマップの論理ID（`mapId`）ではなく `FileRef.id` に揃える方が一貫する（2026-08-17 実装、起票からの訂正）
+- [x] **候補範囲についての判断**: 計画通り `listRecent()` ベースの最小構成にとどめ、Drive 全件一覧からのリンクは見送った。この判断を `docs/design.md` §24.5 に明記した（2026-08-17 実装）
 
 #### C. ノード上のリンクチップと遷移
-- [ ] `packages/ui/src/components/canvas/IdeaNode.tsx` に、`linkedMapId` があるとき URLチップ（302-312行目）と同じ位置パターンで「🗺️ リンク先マップ名」チップを追加する。表示名のキャッシュ方法（`listRecent()` の結果をどこに保持するか）はタスク実施時に決める。取得できない場合は `linkedMapId` を短縮表示する
-- [ ] チップクリック時、`useUIStore.getState().saveStatus` が `'unsaved' | 'saving'` なら `openConfirmDialog` で「保存されていない変更があります。リンク先のマップを開くと失われます」の確認を挟む（`packages/ui/src/App.tsx` の `onBeforeExit` と同じ判定式を再利用する）。確認後（または未保存がない場合は即座に）、`getPlatform().file.openFile({ id: linkedMapId, origin: linkedMapOrigin, name: '', updatedAt: '' })` → `migrateMapFile` → `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()` でキャンバスへ反映する
-- [ ] リンク先が存在しない（削除済み・アクセス不可）場合のエラートースト表示を追加する
+- [x] `packages/ui/src/components/canvas/IdeaNode.tsx` に、`linkedMapId` があるとき URLチップと同じ位置パターンで「🗺️ リンク先マップ名」チップを追加した。**表示名のキャッシュは `packages/ui/src/hooks/useLinkedMapTitle.ts`（新規）に切り出し、`listRecent()` の結果をモジュールスコープで共有する方式に決まった**（起票では「タスク実施時に決める」としていた箇所の確定、docs 訂正）。取得できない場合は `linkedMapId` の先頭8文字を表示する（2026-08-17 実装）
+- [x] チップクリック時の未保存確認 → `openFile` → キャンバス反映を計画通り実装した。**共通ロジックは `packages/ui/src/hooks/useFileDashboard.ts` の `openLinkedMap()`（新規）に切り出し、横断検索（D）とチップ遷移の両方から共有する構成にした**（起票時点は個別実装を想定、docs 訂正）（2026-08-17 実装）
+- [x] リンク先が存在しない場合のエラートースト（「リンク先のマップを開けませんでした」）を計画通り追加した（2026-08-17 実装）
 
 #### D. 複数マップの横断検索
-- [ ] `packages/core/src/services/crossMapSearch.ts`（新規）に `searchAcrossMaps(query: string, entries: RecentFileEntry[]): Promise<CrossMapSearchResult[]>` を実装する。各 `entry` について `getPlatform().file.openFile(entry.ref)` で内容を取得し `migrateMapFile` → タイトル・ノードの `title`/`body` を大小文字無視で部分一致検索する（`SearchBar.tsx` の `matchesQuery` と同じ判定ロジックを踏襲する）。取得結果は呼び出し元でセッション内メモリキャッシュし、パネルを開くたびに再取得しない（Drive へのリクエスト数を抑えるため。「検索時点で最新とは限らない」トレードオフを許容する）
-- [ ] `packages/core/src/services/crossMapSearch.test.ts` を作成する（複数マップでのヒット・0件・現在のマップ自身の除外・取得に失敗した1マップがあっても他マップの結果は返ることを検証する）
-- [ ] `packages/ui/src/components/common/SearchBar.tsx` を拡張する。「他のマップも検索」トグル（既定OFF。既存の即時ローカル検索と外部通信を伴う検索を混同させないため明示トグルにする）を追加し、ON のときだけ `crossMapSearch` を呼ぶ。結果は現在のマップの検索結果とは別セクション（マップタイトルごとの見出し）で表示する
-- [ ] 他マップの検索結果クリック時は C と同じ未保存確認 → `openLoadedMap` の流れで対象マップを開いたうえで該当ノードへジャンプする。ロードは非同期でありジャンプ先ノードは新しいマップにしか存在しないため、pending なジャンプ対象を一時的にどこへ持たせるか（`uiStore` に一時状態を追加する等）はタスク実施時に決める
+- [x] `packages/core/src/services/crossMapSearch.ts`（新規）に `searchAcrossMaps(query, entries)` を計画通り実装した。取得結果はモジュール内 `Map`（`contentCache`）にセッション内メモリキャッシュする（2026-08-17 実装）
+- [x] `packages/core/src/services/crossMapSearch.test.ts` を作成した（5件: 複数マップにまたがるヒット・大小文字無視/本文検索・0件・現在のマップ自身の除外・1マップの取得失敗時に他マップの結果は返ることを検証）（2026-08-17 実装）
+- [x] `packages/ui/src/components/common/SearchBar.tsx` に「他のマップも検索」トグル（既定OFF）を追加した。**400ms のデバウンス（`CROSS_MAP_SEARCH_DEBOUNCE_MS`）を挟む実装にした**（起票にない実装詳細、docs 訂正）。結果は現在のマップの検索結果とは別セクション（マップタイトルごとの見出し）で表示する（2026-08-17 実装）
+- [x] 他マップの検索結果クリック時は C と同じ `openLinkedMap()` を共有し、未保存確認 → 対象マップを開く → 該当ノードへジャンプする流れを実装した。**pending なジャンプ対象の保持先は `uiStore.pendingJumpNodeId`（新規状態）に決まった**（起票時点は「タスク実施時に決める」としていた箇所の確定、docs 訂正）（2026-08-17 実装）
 
 #### E. ドキュメント更新
-- [ ] `docs/design.md` §6（型定義）に `linkedMapId`/`linkedMapOrigin` を追記する。§5.3（IdeaNode）にリンクチップを追記する。`crossMapSearch`/`SearchBar` 拡張の設計と、候補範囲を `listRecent()` に絞った理由（B参照）を追記する
-- [ ] `docs/requirements.md` §2.3（データ管理）・§2.5（検索）にマップ横断リンク・横断検索の機能要件を追記する
+- [x] `docs/design.md` §6（型定義）に `linkedMapId`/`linkedMapOrigin` を追記した。§5.3（IdeaNode）・§5.8（NodeDetailPanel）にリンクチップ・リンク欄を追記し、§24「マップ横断設計」を新設して `crossMapSearch`/`openLinkedMap`/`useLinkedMapTitle`/`pendingJumpNodeId`/`SearchBar` 拡張の設計と、候補範囲を `listRecent()` に絞った理由（B参照）を記載した（2026-08-17、本ドキュメント同期で反映）
+- [x] `docs/requirements.md` §2.3.9（マップ間リンク）・§2.5.3（他のマップも検索）にマップ横断リンク・横断検索の機能要件を追記した（2026-08-17、本ドキュメント同期で反映）
 
-**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。既存の（`version: '1.0'` の）`.ideamap` ファイルが警告なく読み込め、新規保存時に `version: '1.1'` が書き込まれること。NodeDetailPanel から最近開いたマップへリンクを設定・解除でき、ノード上のリンクチップから未保存確認を挟んで対象マップへ遷移できること。検索バーで「他のマップも検索」を有効にすると、最近開いたマップ＋現在のマップを対象にタイトル・ノード内容の全文検索ができ、結果から対象マップ・ノードへジャンプできること。
+**残りの手動確認項目**:
+- [ ] 既存の（`version: '1.0'` の）`.ideamap`／Driveファイルを実際に開き、警告なく読み込め、保存後に `version: '1.1'` で書き込まれることを確認する
+- [ ] NodeDetailPanel で最近開いたマップへリンクを設定 → ノード上に 🗺️ チップが表示される → クリックで対象マップへ遷移（未保存の変更がある場合は確認ダイアログが出る）ことを確認する
+- [ ] 検索バーで「他のマップも検索」を有効にし、複数マップにまたがる検索結果から対象マップ・ノードへジャンプできることを確認する
+- [ ] デスクトップ版でも同じ導線（`listRecent()` 経由のリンク設定・チップ遷移・横断検索）が動作することを確認する（Web版・デスクトップ版とも `FileAdapter` の既存メソッドのみを使う実装だが、実機確認は未了）
+
+**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。既存の（`version: '1.0'` の）`.ideamap` ファイルが警告なく読み込め、新規保存時に `version: '1.1'` が書き込まれること。NodeDetailPanel から最近開いたマップへリンクを設定・解除でき、ノード上のリンクチップから未保存確認を挟んで対象マップへ遷移できること。検索バーで「他のマップも検索」を有効にすると、最近開いたマップ＋現在のマップを対象にタイトル・ノード内容の全文検索ができ、結果から対象マップ・ノードへジャンプできること。**doc-sync 時点（2026-08-17）で `pnpm --filter @ideamap/core test` を実行し、テスト202件（`crossMapSearch.test.ts` 5件・`mapFileCompat.test.ts` の追加2件・`mapStore.test.ts` の追加3件を含む）が通過することを確認した。** 実機（Web/デスクトップ双方）でのリンク・遷移・横断検索の動作確認は上記「残りの手動確認項目」として未了。
 
 ---
 
