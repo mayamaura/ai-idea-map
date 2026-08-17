@@ -11,6 +11,7 @@ import { NodeDetailPanel } from './components/panels/NodeDetailPanel'
 import { ExportImportPanel, type ExportImportPanelProps } from './components/panels/ExportImportPanel'
 import { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
 import { AIChatPanel } from './components/panels/AIChatPanel'
+import { ArtifactPanel } from './components/panels/ArtifactPanel'
 import { PresentationMode } from './components/screens/PresentationMode'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
@@ -164,6 +165,7 @@ function AppInner({
           <ExportImportPanel onGenerateShareUrl={onGenerateShareUrl} />
           <MapAnalysisPanel />
           <AIChatPanel />
+          <ArtifactPanel />
         </>
       )}
       <ToastContainer />

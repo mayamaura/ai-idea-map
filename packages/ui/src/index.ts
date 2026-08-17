@@ -20,6 +20,7 @@ export { AISuggestionPanel } from './components/panels/AISuggestionPanel'
 export { MapAnalysisPanel } from './components/panels/MapAnalysisPanel'
 export { AIChatPanel } from './components/panels/AIChatPanel'
 export { PresentationOrderPanel } from './components/panels/PresentationOrderPanel'
+export { ArtifactPanel } from './components/panels/ArtifactPanel'
 
 export { PresentationMode } from './components/screens/PresentationMode'
 

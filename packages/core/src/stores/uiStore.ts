@@ -101,6 +101,8 @@ interface UIState {
   mapAnalysis: MapAnalysis | null
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
+  // AI成果物生成（Phase 45）
+  isArtifactPanelOpen: boolean
   // AIチャット
   isChatPanelOpen: boolean
   chatMessages: ChatMessage[]
@@ -164,6 +166,8 @@ interface UIState {
   setExportPanelOpen: (open: boolean) => void
   // AIマップ分析
   setAnalysisPanelOpen: (open: boolean) => void
+  // AI成果物生成
+  setArtifactPanelOpen: (open: boolean) => void
   // AIチャット
   setChatPanelOpen: (open: boolean) => void
   addChatMessage: (message: ChatMessage) => void
@@ -226,6 +230,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapAnalysis: null,
   connectionSuggestions: [],
   clusterSuggestions: [],
+  isArtifactPanelOpen: false,
   isChatPanelOpen: false,
   chatMessages: [],
   isChatLoading: false,
@@ -317,6 +322,7 @@ export const useUIStore = create<UIState>((set) => ({
     })),
   setExportPanelOpen: (open) => set({ isExportPanelOpen: open }),
   setAnalysisPanelOpen: (open) => set({ isAnalysisPanelOpen: open }),
+  setArtifactPanelOpen: (open) => set({ isArtifactPanelOpen: open }),
   setChatPanelOpen: (open) => set({ isChatPanelOpen: open }),
   addChatMessage: (message) =>
     set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-40) })),
@@ -337,6 +343,7 @@ export const useUIStore = create<UIState>((set) => ({
       isAIPanelOpen: false,
       isChatPanelOpen: false,
       isAnalysisPanelOpen: false,
+      isArtifactPanelOpen: false,
       isSettingsOpen: false,
       isExportPanelOpen: false,
       isMapListOpen: false,

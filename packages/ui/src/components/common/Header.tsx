@@ -44,7 +44,7 @@ export function Header({
   onSaveToLocal,
 }: HeaderProps) {
   // AI ストリーミング中の chatMessages 更新などで再描画されないよう、必要な値だけを購読する
-  const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
+  const { mapTitle, setMapTitle, saveStatus, currentFileId, currentFileOrigin, lastSavedAt, requestSave, setSettingsOpen, setMapListOpen, setAnalysisPanelOpen, setArtifactPanelOpen, setChatPanelOpen, setFileDashboardOpen, openConfirmDialog } = useUIStore(
     useShallow((s) => ({
       mapTitle: s.mapTitle,
       setMapTitle: s.setMapTitle,
@@ -56,6 +56,7 @@ export function Header({
       setSettingsOpen: s.setSettingsOpen,
       setMapListOpen: s.setMapListOpen,
       setAnalysisPanelOpen: s.setAnalysisPanelOpen,
+      setArtifactPanelOpen: s.setArtifactPanelOpen,
       setChatPanelOpen: s.setChatPanelOpen,
       setFileDashboardOpen: s.setFileDashboardOpen,
       openConfirmDialog: s.openConfirmDialog,
@@ -328,6 +329,29 @@ export function Header({
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </button>
+
+        {/* 成果物生成ボタン */}
+        <button
+          onClick={() => setArtifactPanelOpen(true)}
+          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-700 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors hidden sm:flex"
+          title="AIでマップから成果物を作成"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span>成果物を作成</span>
+        </button>
+        <button
+          onClick={() => setArtifactPanelOpen(true)}
+          className="p-2 rounded-lg text-teal-500 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors sm:hidden"
+          title="AIでマップから成果物を作成"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </button>
 
