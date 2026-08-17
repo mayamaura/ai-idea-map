@@ -73,7 +73,7 @@ Phase 33 で pnpm workspaces のモノレポへ移行した。詳細な設計根
 ```
 ai-idea-map/
 ├── pnpm-workspace.yaml
-├── package.json                     # ワークスペースルート（dev / build / lint / typecheck / sync-version）
+├── package.json                     # ワークスペースルート（dev / build / lint / typecheck / test / sync-version）
 ├── tsconfig.json                    # 各プロジェクトを束ねる solution ファイル
 ├── tsconfig.base.json               # 共有 compilerOptions
 ├── eslint.config.js                 # 共有設定 + 依存方向の強制ルール
@@ -88,6 +88,7 @@ ai-idea-map/
 │   │       └── index.ts
 │   │
 │   ├── core/                        # 型・ストア・純粋ロジック・LLM 抽象化（UI を持たない）
+│   │   ├── vitest.config.ts         # Vitest 設定（test.include: src/**/*.test.ts、Phase 41）
 │   │   └── src/
 │   │       ├── types/index.ts       # 型定義
 │   │       ├── stores/
@@ -106,12 +107,15 @@ ai-idea-map/
 │   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動 → Phase 35 で Ollama 追加 → Phase 39 で OpenAI 追加）
 │   │       │   ├── types.ts         # LLMProvider / LLMRequest / LLMError / isAbortError ほか
 │   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / AIParseError
+│   │       │   ├── jsonUtils.test.ts # Vitest（Phase 41）。テスト対象と同じディレクトリに同居させる方式
 │   │       │   ├── claudeProvider.ts # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
 │   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
 │   │       │   ├── openaiProvider.ts # OpenAIProvider（/v1/chat/completions・/v1/models、Phase 39）
 │   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35、Phase 39 で OpenAI 対応）
 │   │       │   └── aiService.ts     # AI機能5関数（旧 claudeService.ts）
-│   │       ├── services/driveService.ts # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
+│   │       ├── services/
+│   │       │   ├── driveService.ts  # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
+│   │       │   └── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
 │   │       ├── layout/
 │   │       │   ├── mapLayout.ts     # ノード自動配置ロジック（dagre・円形配置）
 │   │       │   └── groupGeometry.ts # グループとノードの当たり判定・押し出し計算
@@ -133,7 +137,8 @@ ai-idea-map/
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
 │           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired
 │           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
-│           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）
+│           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）/
+│           │                        # useGlobalErrorLog（Phase 43）
 │           ├── services/exportService.ts # 画像・JSON・Markdown の書き出しとインポート
 │           ├── utils/markdown.ts    # Markdown→HTML変換ユーティリティ
 │           └── index.ts
@@ -1779,3 +1784,29 @@ Web版で作ったマップをデスクトップ版からもそのまま開け�
 **設定（`settings.json`）の Drive 同期は対象外**: デスクトップ版は APIキーを OSキーチェーンに置きマスターパスワードを持たないため、マスターパスワード暗号化が前提の `settings.json` 同期とは相性が悪い。`apps/desktop/src/main.tsx` は `setAppSettingsSync()`（§4.3）を注入していない。
 
 設計からの差分・未検証事項の詳細は `docs/desktop/README.md` §3.1-H、実装・検証状況は `docs/implementation-plan.md` Phase 38 を参照。
+
+---
+
+## 19. エラーログ設計（packages/core/src/services/errorLog.ts、Phase 43）
+
+未捕捉エラーを外部監視サービス（Sentry等）に送らず、端末内にのみ蓄積する方針（`docs/roadmap.md` §3.4）。専用の zustand ストアは作らず、モジュール内キャッシュを持つサービス関数群のみで構成する（表示は件数と一覧程度で済み、React 状態として配る必要が薄いため）。
+
+- **`ErrorLogEntry`**: `{ time: string, source: string, message: string, stack?: string, count: number }`。`time` は ISO 8601、`count` は同一エラー（`source` と `message` が一致）が連続したときにエントリを増やさずまとめるためのフィールド（レンダーループ等でのログ肥大化を防ぐ）
+- **永続化**: `getPlatform().storage`（`StorageAdapter`）のキー `ideamap-error-log` に JSON 文字列で保存する。読み込みは初回のみで、以後はプロセス内キャッシュ（モジュールレベルの `cache` 変数）を正として保存時に上書きする
+- **上限件数**: `MAX_ENTRIES = 200`。超過分は古いエントリから切り詰める
+- **API**: `recordError(source, error)`（記録。エラーハンドラから呼ばれるため内部で例外を握りつぶし決して throw しない）／`getErrorLog()`（一覧取得）／`clearErrorLog()`（全消去）／`exportErrorLog()`（テキストファイルとして書き出し。空なら何もせず `false` を返す。書き出しは `getPlatform().file.exportBlob()` を直接呼ぶ）
+- **記録元（`packages/ui/src/hooks/useGlobalErrorLog.ts`）**: `window` の `error`/`unhandledrejection` イベントを購読し `recordError('window.onerror', ...)` / `recordError('unhandledrejection', ...)` を呼ぶ。Web版・デスクトップ版ともに WebView の `window` イベントで拾えるため `packages/ui` に置き、両アプリが共有する `App.tsx` の `AppInner` から1箇所で呼ぶ（各アプリの `main.tsx` に個別配線しない）。React のレンダーエラー用の ErrorBoundary は対象外（未処理の `window`/Promise エラーのみを捕捉する）
+- **UI（`SettingsPanel.tsx` の `ErrorLogSection`）**: 記録件数が0件のときはセクション自体を非表示にする。「エクスポート」「消去」の2ボタンのみの最小UI
+
+---
+
+## 20. テスト基盤（Vitest、Phase 41〜）
+
+自動テストは `packages/core` から導入する（Web版・デスクトップ版で共通する純粋ロジックを優先する方針）。`packages/ui`・`apps/*` は未整備。
+
+- **配置**: `packages/core/vitest.config.ts`（`test.include: ['src/**/*.test.ts']`、`test.environment: 'node'`）。テストファイルはテスト対象と同じディレクトリに `*.test.ts` として同居させる方式（例: `src/llm/jsonUtils.ts` に対して `src/llm/jsonUtils.test.ts`）
+- **import方針**: `describe`/`it`/`expect` は `vitest` から明示 import する。`globals: true` は設定していない
+- **実行**: ルート `package.json` の `"test": "pnpm -r run test"` が、`"test"` スクリプトを持つワークスペース（現状は `packages/core` の `"test": "vitest run"` のみ）を再帰実行する
+- **型検査との関係**: テストファイルは `packages/core/tsconfig.json` の `include: ["src"]` に含まれるため、`pnpm typecheck`（`tsc -b`）の対象にもなる
+- **CI連携**: `.github/workflows/deploy.yml` の `build` ジョブ、`.github/workflows/release-desktop.yml` の `build` ジョブがそれぞれ `pnpm install` の直後・本体ビルドの前に `pnpm test` を実行する。テストが赤ければデプロイ・リリースの後続ステップが止まる
+- **既存の手動検証スクリプトとの関係**: `packages/core/verify-openai.mts`（`pnpm check:openai`）・`packages/core/verify-radial-layout.mts`（`pnpm check:radial`）は Vitest 未移植のままそれぞれ現役（放射状レイアウトの検証は §11.8 参照）。将来的に Vitest へ移植し削除する計画（`docs/implementation-plan.md` Phase 41 Step3・Step4）

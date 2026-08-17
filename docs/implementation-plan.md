@@ -2064,13 +2064,13 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 41: テスト基盤の導入（Vitest）（約3日）
+### Phase 41: テスト基盤の導入（Vitest）（約3日）🔨 実装済み（確認中）
 
 **目標**: `packages/core` にユニットテストを整備し、既存の手動検証スクリプト（`packages/core/verify-openai.mts` / `packages/core/verify-radial-layout.mts`）を Vitest に一本化する。CI（`.github/workflows/deploy.yml` / `.github/workflows/release-desktop.yml`）にテスト実行を組み込み、テストが赤ならデプロイ・リリースが止まるようにする。v1.0（信頼できる土台）の柱の一つ（`docs/roadmap.md` §3.2）。
 
 #### Step1: Vitest 導入
-- [ ] ルート `package.json`（現在 `devDependencies` に `vitest` が無い）に `vitest` を追加し、`pnpm install` する。ルート `scripts` に `"test": "vitest run"` を追加する（既存の `typecheck`/`lint` と並ぶ実行単位にする）
-- [ ] リポジトリルートに `vitest.config.ts` を新規作成する。`test.include` は `packages/core/src/**/*.test.ts` に限定する（`packages/ui`・`apps/*` は本フェーズの対象外。`docs/roadmap.md` §3.2 が「`packages/core` から始める」と明示しているため）。`test.environment` は `'node'`（`packages/core` は DOM に依存しない純粋ロジックのみのため）。テストファイルは `describe`/`it`/`expect` を `vitest` から明示 import する方針とし、`globals: true` は設定しない（ESLint・tsconfig への型定義追加が不要になる）
+- [x] ルートではなく `packages/core/package.json` の `devDependencies` に `vitest` を追加し、`"test": "vitest run"` スクリプトを定義した。ルート `package.json` の `scripts` には `"test": "pnpm -r run test"` を追加し、`test` スクリプトを持つワークスペースだけを再帰実行する形にした（`packages/ui`・`apps/*` は未整備のため現状は `packages/core` のみが実行される）（2026-08-17 実装）
+- [x] `vitest.config.ts` はリポジトリルートではなく `packages/core` 配下に作成した。`test.include` は `src/**/*.test.ts`、`test.environment` は `'node'`（`packages/core` は DOM に依存しない純粋ロジックのみのため）。テストファイルは `describe`/`it`/`expect` を `vitest` から明示 import する方針とし、`globals: true` は設定していない（2026-08-17 実装）
 
 #### Step2: mapStore（Undo/Redo・各スライス）のテスト
 - [ ] `packages/core/src/stores/map/history.test.ts` を新規作成。`useMapStore`（`packages/core/src/stores/mapStore.ts`）経由で `pushPast`（`MAX_HISTORY = 50` を超えると古い履歴から切り詰められる）と `undo`/`redo`（`past`/`future` の入れ替え、どちらも空のときは状態を変えない）を検証する
@@ -2093,19 +2093,19 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - [ ] `packages/core/src/services/driveService.test.ts` を新規作成。`buildMultipartBody`（`multipart/related` 文字列の組み立て）を直接検証し、`saveMap`/`loadMap`/`listMaps` は `setPlatform` で `HttpAdapter` をモックして呼び出された URL・メソッド・ヘッダを検証する（テスト間は `clearDriveCache()` で `folderIdCache`/`settingsFileIdCache` をリセットする）
 
 #### Step6: CI 組み込み
-- [ ] `.github/workflows/deploy.yml` の `build` ジョブに、`pnpm build` の前に `pnpm test` を実行するステップを追加する（テストが赤なら GitHub Pages へのデプロイが止まる）
-- [ ] `.github/workflows/release-desktop.yml` に `test` ジョブを新規追加する（`pnpm/action-setup` → `actions/setup-node`（pnpm キャッシュ）→ `pnpm install --frozen-lockfile` → `pnpm test`）。`build` ジョブの `needs` を現在の `verify-version` から `[verify-version, test]` に変更する（テストが赤ならインストーラのビルド・リリースが止まる）
+- [x] `.github/workflows/deploy.yml` の `build` ジョブに、`pnpm build` の前に `pnpm test` を実行するステップを追加した（テストが赤なら GitHub Pages へのデプロイが止まる）（2026-08-17 実装）
+- [x] `.github/workflows/release-desktop.yml` は独立した `test` ジョブを新設せず、既存の `build` ジョブ（`pnpm install --frozen-lockfile` の直後、Tauri ビルドの前）に `pnpm test` ステップを追加する形にした（マトリクスビルド＝macOS 2種＋Windows のジョブごとにテストが再実行されるが、`needs` を増やしてジョブを分けるより変更が小さいため採用。`build` ジョブの `needs` は `verify-version` のまま変更していない）。テストが赤ければ Tauri ビルド・GitHub Release 公開が止まる（2026-08-17 実装、当初案の別ジョブ新設から変更）
 
 #### Step7: ドキュメント更新
-- [ ] `CLAUDE.md`「開発環境」のコマンド一覧から `pnpm check:openai` の説明を削除し、`pnpm test`（Vitest によるユニットテスト実行）を追加する
-- [ ] `docs/design.md` の該当箇所（現在 `pnpm check:radial` を参照している放射状レイアウトの検証方法の記述、§放射状レイアウト付近）を Vitest ベースの記述に更新する。あわせてテスト戦略（対象を `packages/core` に限定し、Web版・デスクトップ版で共通する純粋ロジックを優先する方針）を追記する
-- [ ] `docs/requirements.md` §3.2（パフォーマンス）または非機能要件に「自動テストによる品質担保」の記述を追記する
+- [ ] `CLAUDE.md`「開発環境」のコマンド一覧から `pnpm check:openai` の説明を削除し、`pnpm test`（Vitest によるユニットテスト実行）を追加する（`pnpm test` の追加は c24d4b7 で先行実施済みだが、`check:openai` は Step4 未着手のため説明を残したまま）
+- [ ] `docs/design.md` の該当箇所（現在 `pnpm check:radial` を参照している放射状レイアウトの検証方法の記述、§放射状レイアウト付近）を Vitest ベースの記述に更新する（Step3 未着手のため保留）
+- [x] `docs/requirements.md` の非機能要件に「自動テストによる品質担保」の記述を追記した（§3.2 ではなく新設の §3.5 保守性・信頼性に配置）（2026-08-17 実装）
 
 **完了条件**: `pnpm test` がローカルで通過し、`pnpm typecheck`/`pnpm build`/`pnpm lint` に影響がないこと。`verify-openai.mts`・`verify-radial-layout.mts`・対応する `package.json` スクリプト（`check:openai`/`check:radial`）が削除され、CI（`deploy.yml`・`release-desktop.yml`）にテスト実行ステップが追加されていること。
 
 ---
 
-### Phase 42: セキュリティ仕上げ（約2日）
+### Phase 42: セキュリティ仕上げ（約2日）🔨 実装済み（確認中）
 
 **目標**: v1.0 の品質基盤として、Web版への CSP 追加・依存脆弱性の継続監視・Google OAuth 同意画面の本番公開化を行う（`docs/roadmap.md` §3.3）。
 
@@ -2115,7 +2115,7 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - [ ] `pnpm build` → `pnpm preview` で CSP 追加後に主要機能（AI提案・AIチャット・Google Drive 連携・GISログイン）がブロックされずに動作することを、ブラウザ開発者ツールの CSP 違反ログで確認する
 
 #### B. 依存脆弱性の継続監視
-- [ ] `.github/dependabot.yml` を新規作成する。`package-ecosystem: "npm"`（ディレクトリ `/`、pnpm workspace のルート lockfile を対象）と `package-ecosystem: "cargo"`（ディレクトリ `/apps/desktop/src-tauri`）を週次スケジュールで設定する（`docs/roadmap.md` §3.3 の「Dependabot または `pnpm audit` の CI 組み込み」のうち、追加のCI実行時間を要さずPRベースで継続監視できる Dependabot を採用する）
+- [x] `.github/dependabot.yml` を新規作成した。`package-ecosystem: npm`（ディレクトリ `/`、pnpm workspace のルート lockfile を対象）・`cargo`（ディレクトリ `/apps/desktop/src-tauri`）に加え、計画時点になかった `github-actions`（ディレクトリ `/`）も対象に追加した。いずれも週次スケジュールで、minor/patch 更新は1本のPRにグループ化し `open-pull-requests-limit: 5` を設定（`docs/roadmap.md` §3.3 の「Dependabot または `pnpm audit` の CI 組み込み」のうち、追加のCI実行時間を要さずPRベースで継続監視できる Dependabot を採用する）（2026-08-17 実装）
 
 #### C. Google OAuth 同意画面の「In production」化
 - [ ] **これはコードで完結しない開発者の手作業である。** Google Cloud Console の OAuth 同意画面設定で公開ステータスを「テスト」から「本番」に変更する。「Testing」のままだとリフレッシュトークンが7日で失効する既知課題（`docs/roadmap.md` §1、本ドキュメント §2「Google Cloud Project 設定」）を解消する
@@ -2129,16 +2129,16 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 43: エラー可視化と性能ベースライン（約3日）
+### Phase 43: エラー可視化と性能ベースライン（約3日）🔨 実装済み（確認中）
 
 **目標**: グローバルエラーハンドラでエラーをローカルログ（リングバッファ）に蓄積し、設定パネルからエクスポートできるようにする。500/1000ノードのベンチマークマップで初期描画・ドラッグ・自動整列・Undo の所要時間を計測して記録する（対策は計測後に別フェーズで判断し、本フェーズでは先回りの最適化を行わない）。外部エラー監視サービス（Sentry等）は導入しない方針（`docs/roadmap.md` §3.4、§8）。
 
 #### A. エラーログのローカル蓄積とエクスポート
-- [ ] `packages/core/src/types/index.ts` に `ErrorLogEntry`（`timestamp`/`message`/`stack`/`source` 等）型を追加する
-- [ ] `packages/core/src/stores/errorLogStore.ts` を新規作成し、上限件数（例: 100件）のリングバッファでエラーログを保持する zustand ストアを実装する。永続化は既存の `StorageAdapter`（`packages/platform` の `storage.getItem`/`setItem`、Web/Desktop 双方に実装済み）経由で行い、新規の Adapter メソッド追加は不要とする
-- [ ] グローバルエラーハンドラを追加する。Web版は `apps/web/src/main.tsx`、デスクトップ版は `apps/desktop/src/main.tsx` に `window.addEventListener('error', ...)` と `window.addEventListener('unhandledrejection', ...)` を登録し、捕捉したエラーを `errorLogStore` に積む共通処理を `packages/core` 側に用意して両アプリから呼ぶ。React のレンダーエラー用の ErrorBoundary は現状リポジトリに存在しないため、`packages/ui` に新規追加するかどうかをコードを読んで判断し、追加する場合は `packages/ui/src/components/` に配置する
-- [ ] `packages/ui/src/components/panels/SettingsPanel.tsx` に「エラーログをエクスポート」ボタンを追加する。押下時に `errorLogStore` の内容をJSON文字列化し、既存の `getPlatform().file.exportBlob()`（Web=`<a download>`、Desktop=保存ダイアログ、新規メソッド追加不要）でファイル書き出しする
-- [ ] `docs/design.md`「状態管理設計」に `errorLogStore` とグローバルエラーハンドラの設計を追記し、`docs/requirements.md` §3.3（セキュリティ）または非機能要件に「エラーログのローカル保持とエクスポート」を追記する
+- [x] `ErrorLogEntry` 型は `packages/core/src/types/index.ts` ではなく `packages/core/src/services/errorLog.ts` 内に定義した（`time`/`source`/`message`/`stack`/`count`。`count` は同一エラーの連続発生を1件に畳むためのフィールドで計画時点にはなかった）（2026-08-17 実装）
+- [x] `errorLogStore.ts`（zustandストア）は作らず、`packages/core/src/services/errorLog.ts` にモジュール内メモリキャッシュ＋`StorageAdapter`（キー `ideamap-error-log`、`storage.getItem`/`setItem`/`removeItem`）永続化の関数群（`recordError`/`getErrorLog`/`clearErrorLog`/`exportErrorLog`）として実装した。表示は件数と一覧程度でReact状態として配る必要が薄いと判断し専用ストアは見送った。上限件数は計画の100件ではなく200件（2026-08-17 実装）
+- [x] グローバルエラーハンドラは `apps/web/src/main.tsx` / `apps/desktop/src/main.tsx` に個別配線せず、両アプリが共有する `packages/ui/src/App.tsx` の `AppInner` から `packages/ui/src/hooks/useGlobalErrorLog.ts`（`window` の `error`/`unhandledrejection` を購読し `recordError` を呼ぶ）を1箇所で呼ぶ形にした。React のレンダーエラー用 ErrorBoundary は今回のスコープに含めず見送った（捕捉対象は未処理の `window`/Promise エラーのみ）（2026-08-17 実装）
+- [x] `packages/ui/src/components/panels/SettingsPanel.tsx` に `ErrorLogSection` を追加した。記録件数が0件のときは非表示。エクスポートは `errorLog.ts` 内の `exportErrorLog()` が `getPlatform().file.exportBlob()` を直接呼ぶ形にした（JSON文字列化ではなくテキスト形式で書き出す）。計画にはなかった「消去」ボタン（`clearErrorLog()`）も追加した（2026-08-17 実装）
+- [x] `docs/design.md`・`docs/requirements.md` を更新した（2026-08-17 実装）
 
 #### B. 性能ベースライン計測
 - [ ] 500ノード・1000ノードのベンチマークマップ（`.ideamap` ファイル）を生成するスクリプト（`scripts/generate-benchmark-map.mjs`）を新規作成する。ノード数・エッジ数・階層構造（親子関係）を引数で指定して出力する
