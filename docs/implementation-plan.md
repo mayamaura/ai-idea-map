@@ -2319,6 +2319,97 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
+### Phase 49: スキーマバージョニングとノードのリッチ化
+
+**目標**: `.ideamap` ファイルフォーマットにバージョン管理基盤を整備し、それを土台にノードへ「更新日時」「URLリンク」「画像添付」を追加する。データ形式に手を入れる最初のフェーズのため、まずマイグレーション基盤（A）を作ってから個別のスキーマ拡張（B〜D）に進む（v1.3「記憶と表現」の1つ目、`docs/roadmap.md` §6.1）。
+
+**現状確認（起票時点）**: `MapFile.version`（`packages/core/src/types/index.ts`）は `packages/core/src/stores/mapSnapshot.ts` の `buildMapFile()` が保存のたびに固定文字列 `'1.0'` を書き込むだけで、読み込み側でバージョンを判定する処理は存在しない。`packages/core/src/stores/map/documentSlice.ts` の `loadFromSerialized(nodes, edges)` は `SerializedNode[]`/`SerializedEdge[]` しか受け取らず `version` を見ない。`packages/ui/src/services/exportService.ts` の `importFromJson()` もコメントは「バージョン互換チェック付き」だが実装は `nodes`/`edges` が配列であることの確認のみ。`packages/core/src/utils/mapFileCompat.ts` は `readNodeTitle`/`readEdgeHandles` というフィールド単位の後方互換ヘルパーのみを持ち、バージョン単位のマイグレーションの仕組みはまだない。
+
+#### A. スキーマバージョニング基盤（最初に着手。以後の全スキーマ変更の下敷き）
+- [ ] `packages/core/src/utils/mapFileCompat.ts` に `CURRENT_MAP_FILE_VERSION`（現行値 `'1.0'` を踏襲）と `migrateMapFile(file: MapFile): { file: MapFile; warning?: string }` を追加する。`version` を判定し、現行より古ければ段階的マイグレーション関数を順に適用して最新へ書き換える（起票時点で `'1.0'` 以外の実データは存在しないため、初回実装は「`version` を最新値に揃えて返すだけ」の恒等マイグレーションでよいが、以後のバージョンアップ時にこの関数へ1ステップずつ追加していく構造にする）。`version` が `CURRENT_MAP_FILE_VERSION` より新しい（未知の将来バージョン）場合は読み込み自体は試みたうえで、`warning` に「このファイルは新しいバージョンで作成されています。一部のデータが読み込めない可能性があります」を設定して返す
+- [ ] `packages/core/src/utils/mapFileCompat.test.ts` に `migrateMapFile` のテスト（現行バージョンはそのまま／`version` 欠落は補完／未知の新バージョンは警告つきで返し中身はそのまま読める）を追加する
+- [ ] `buildMapFile()`（`packages/core/src/stores/mapSnapshot.ts`）が書き込む `version` を、ハードコードの `'1.0'` から `CURRENT_MAP_FILE_VERSION` 参照に変更する
+- [ ] `migrateMapFile` を、外部ファイル起源の `MapFile` を読み込む次の6箇所へ配線する（`loadFromSerialized` に渡す直前で呼び、`warning` があればトースト表示する）。`packages/core/src/index.ts` は既に `export * from './utils/mapFileCompat'` 済みのため追加の export 作業は不要:
+  - `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()`（Web版 Driveファイル選択・デスクトップ版ダッシュボード・`apps/desktop/src/openMap.ts` の Ctrl+O ダイアログの共通経路）
+  - `apps/web/src/components/screens/FileOpenDashboard.tsx` の `handleResumeLocal()`（ローカル控えの再開）
+  - `apps/web/src/components/panels/MapListPanel.tsx` の `handleLoad()`
+  - `apps/web/src/WebApp.tsx` の `useShareUrlImport()`（共有URLインポート）
+  - `packages/ui/src/hooks/useAutoSave.ts` の衝突ダイアログ `secondaryAction`（「最新版を読み込む」、約149行目）
+  - `packages/ui/src/services/exportService.ts` の `importFromJson()`（JSONファイルインポート）
+
+#### B. ノード単位の `updatedAt`
+- [ ] `packages/core/src/types/index.ts` の `IdeaNodeData`/`SerializedNode` に `updatedAt?: string`（ISO 8601）を追加する
+- [ ] `packages/core/src/stores/map/nodeSlice.ts` の内容編集アクション（`updateNodeTitle`/`updateNodeBody`/`updateNodeColor`/`updateNodeCategory`/`mergeNodes`〔keep側〕/`applyClusterCategory`、実コードで確認したこの6箇所）で対象ノードの `data.updatedAt` を `new Date().toISOString()` に更新する。本フェーズ C/D で追加する `updateNodeUrl`/`updateNodeImage` にも同様に刻印する
+- [ ] `documentSlice.ts` の `loadFromSerialized`/`getSerializedNodes` で `updatedAt` をそのまま往復させる（旧ファイルは `undefined` のままにし、マイグレーションで値を捏造しない）
+- [ ] `packages/core/src/stores/mapStore.test.ts` に、上記アクションが `updatedAt` を更新すること・`loadFromSerialized` が `updatedAt` を保持することのテストを追加する
+- [ ] `packages/core/src/services/mapReview.ts` の `findNeglectedNodeIds` を拡張し、`updatedAt` を持つノードは経過日数ベースの判定（放置期間の閾値はタスク実施時に決める。例: 30日）に、持たないノード（旧ファイル）は現行の構造的ヒューリスティック（葉ノードかつ本文が空、または `createdBy: 'ai'` のまま子も本文も追加されていない）にフォールバックする。呼び出し元 `packages/core/src/llm/aiService.ts` の `reviewMap`（`ReviewMapRequest.nodes` に渡すノード情報へ `updatedAt` を追加）も合わせて更新する
+- [ ] `packages/core/src/services/mapReview.test.ts` に時刻ベース判定のテスト（`updatedAt` あり・放置期間内／超過、`updatedAt` なしは従来どおり構造的指標）を追加する
+
+#### C. URLリンク
+- [ ] `packages/core/src/types/index.ts` の `IdeaNodeData`/`SerializedNode` に `url?: string` を追加する
+- [ ] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `updateNodeUrl: (id: string, url: string) => void` を追加し、`nodeSlice.ts` に実装する（`updateNodeBody` と同じ形。B の `updatedAt` 刻印を含む）
+- [ ] `packages/ui/src/components/panels/NodeDetailPanel.tsx` の本文欄の下に URL 入力欄を追加し、blur で `updateNodeUrl` を呼ぶ
+- [ ] `packages/ui/src/components/canvas/IdeaNode.tsx` に、`url` があるときノード下部へドメイン名（`new URL(url).hostname`。不正なURLはチップを表示しない）のリンクチップを表示する。クリックで `getPlatform().system.openExternalUrl(url)` を呼ぶ（`packages/platform/src/types.ts` の `SystemAdapter.openExternalUrl` は既存メソッドのため Adapter 追加は不要）
+- [ ] **OGPタイトルの自動取得はしない。** Web版は外部サイトのHTML取得がブラウザのCORSで失敗し、Phase 42 で追加した CSP の `connect-src`（Anthropic/OpenAI/Google APIのみ許可）にも合致しない。デスクトップ版は `apps/desktop/src-tauri/capabilities/*.json` のホスト許可が既存 capability（`ai-http`/`google-drive` 等）の用途に合わず、任意ドメインへの許可を広げるのは `CLAUDE.md` の「安易に `$HOME/**` を足さない」と同種の既存方針（許可範囲を機能単位に絞る）に反するため見送る。この判断を `docs/design.md` に明記する
+
+#### D. 画像添付
+- [ ] `packages/core/src/types/index.ts` の `IdeaNodeData`/`SerializedNode` に `image?: string`（data URL）を追加する
+- [ ] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `updateNodeImage: (id: string, image: string | undefined) => void` を追加し、`nodeSlice.ts` に実装する（B の `updatedAt` 刻印を含む）
+- [ ] `packages/ui/src/utils/imageResize.ts`（新規）に `resizeImageToDataUrl(file: File, maxDimension = 640, maxBytes = 200_000): Promise<string>` を実装する。`<canvas>`/`Image`/`FileReader` を使うブラウザ標準APIのみの実装とし、`packages/ui/src/services/exportService.ts` が既に `FileReader` を、`ExportImportPanel.tsx` が既に `<input type="file">` を Adapter を介さず直接使っている前例に倣う。長辺 `maxDimension` にリサイズしJPEG品質を段階的に下げながら `maxBytes` 以下に収める
+- [ ] `packages/ui/src/components/panels/NodeDetailPanel.tsx` に画像選択 `<input type="file" accept="image/*">`・プレビュー・削除ボタンを追加し、選択時に `resizeImageToDataUrl` → `updateNodeImage` を呼ぶ
+- [ ] `packages/ui/src/components/canvas/IdeaNode.tsx` に `image` があるときノード内にサムネイル（`<img>`、高さ上限つき）を表示する
+- [ ] **ファイルサイズが `.ideamap` / Drive保存 / 共有URLにそのまま乗る制約と、縮小して埋め込む設計判断**を `docs/design.md` に明記する。別ファイル管理（Drive上の別オブジェクト参照等）はWeb版・デスクトップ版でストレージの扱いが大きく異なり v1 では過剰と判断し見送る旨も記載する
+- [ ] `apps/web/src/services/shareUrl.ts` の `URL_SIZE_WARNING`（50000文字超で `tooLarge` を返す既存ロジック）が画像添付後のマップでも従来どおり機能することを確認する。ロジック変更は不要で、画像付きノードを含む閾値超のマップを作って Web版で共有URL生成時に警告が出ることを手動確認する
+
+#### E. 互換性・エクスポートへの影響確認
+- [ ] `packages/ui/src/services/exportService.ts` の `exportAsJson`/`exportAsMarkdown` が新フィールド（`updatedAt`/`url`/`image`）を持つノードでも壊れないことを確認する。`exportAsJson` は `MapFile` をそのまま `JSON.stringify` するため追加対応不要と見込まれる。`exportAsMarkdown` は現状 `url`/`image` を無視して見出し・本文のみ出力する想定で、対応するかはタスク実施時に決める
+- [ ] A で追加する `migrateMapFile` のテストに、`updatedAt`/`url`/`image` を持たない旧ファイルが例外なく読み込めるケースを含める
+
+#### F. ドキュメント更新
+- [ ] `docs/design.md` に「マップファイルのバージョニングとマイグレーション」の節を新設し `migrateMapFile`/`CURRENT_MAP_FILE_VERSION` の設計を記載する。§6（型定義）に `updatedAt`/`url`/`image` を追記し、§9（AI連携設計）の放置ノード判定の記述を時刻ベース優先の説明に更新し、§5.3（IdeaNode）・NodeDetailPanel の節にリンクチップ・サムネイル・画像リサイズの仕様を追記する
+- [ ] `docs/requirements.md` §2.3（データ管理）に「ファイルフォーマットのバージョニング」を追記し、機能要件として「URLリンク」「画像添付」を追記する
+
+**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。既存の（`version: '1.0'` の）`.ideamap` ファイルが警告なく読み込めること。新規保存時に `version` とノードの `updatedAt` が書き込まれること。NodeDetailPanel から URL・画像を設定でき、キャンバス上にリンクチップ・サムネイルが表示されること。OGPタイトルを自動取得しない理由が `docs/design.md` に明記されていること。
+
+---
+
+### Phase 50: バージョン履歴とタイムラプス再生
+
+**目標**: 保存のたびにローカルへスナップショットを蓄積し、履歴パネルから閲覧・復元できるようにする。おまけとして、マップが育っていく過程をアニメーション再生する「タイムラプス再生」を実装する。Google Drive の revisions API 連携は本フェーズで起票するが実機確認が必要なため優先度低とする（v1.3「記憶と表現」の2つ目、`docs/roadmap.md` §6.2）。Phase 49 で整備するスキーマバージョニング基盤（`MapFile.version`／`migrateMapFile`）の上に構築するため、Phase 49 完了後に着手する。
+
+#### A. ローカルスナップショット（`packages/core`）
+- [ ] `packages/core/src/services/mapHistory.ts`（新規）に `MapSnapshotEntry`（`{ time: string; mapFile: MapFile }`）と、`packages/core/src/services/errorLog.ts` と同じ「StorageAdapter 経由 + プロセス内メモリキャッシュ」パターンで `recordSnapshot(mapId: string, mapFile: MapFile): Promise<void>` / `getSnapshots(mapId: string): Promise<readonly MapSnapshotEntry[]>` / `clearSnapshots(mapId: string): Promise<void>` を実装する。ストレージキーは `ideamap-history-${mapId}`（`errorLog.ts` は単一キーだが、履歴はマップごとに肥大化するため mapId 単位で分離する）
+- [ ] リングバッファは上限20件（超過分は古い順に破棄）。1件あたりのサイズ上限（例: 2MB。Phase49 D の画像添付でスナップショットが肥大化しうるため）を超える `mapFile` は `nodes`/`edges` はそのまま保存しつつ各ノードの `image` フィールドだけ省いて記録する（履歴プレビュー・復元では画像が欠けるトレードオフを許容する。理由を実装コメントに残す）
+- [ ] `recordSnapshot` は同一 `mapId` への直前の記録と内容が同一（`nodes`/`edges` の JSON 文字列比較）なら追記しない（無変更の保存が続いてもリングバッファを浪費しないため）
+- [ ] `packages/core/src/services/mapHistory.test.ts` を作成する。リングバッファの上限、サイズ上限超過時の `image` 省略、無変更時のスキップ、`mapId` ごとの分離を検証する
+- [ ] `packages/ui/src/hooks/useAutoSave.ts` の `performSave` 内、保存が成功して `setSaveStatus('saved')` を呼ぶ2箇所（新規保存確定時・上書き保存成功時）で `recordSnapshot(mapFile.mapId, mapFile)` を呼ぶ。`canPersist` が false のローカル控えのみの分岐（保存先未確定時のデバウンス保存）では呼ばない（正式な保存ではないため）
+
+#### B. 履歴パネル（`packages/ui`）
+- [ ] `packages/core/src/stores/uiStore.ts` に `isHistoryPanelOpen`/`setHistoryPanelOpen` を追加する（`isArtifactPanelOpen`/`setArtifactPanelOpen` と同じ形）
+- [ ] `packages/ui/src/components/panels/HistoryPanel.tsx`（新規）を作成する。開いたら `uiStore.currentMapId` を元に `getSnapshots` を呼び、日時・ノード数の一覧を表示する。一覧から選ぶと、選択スナップショットの `nodes`/`edges` を件数・タイトル一覧としてパネル内に表示する読み取り専用プレビューを出す（既存キャンバスは書き換えない）
+- [ ] 「この時点に復元」ボタン: `openConfirmDialog` で確認 → 確定で、まず現在のマップを `recordSnapshot(currentMapId, buildMapFile(currentMapId))` で退避してから（復元により失われる直前の状態を残すため）、選択スナップショットを `loadFromSerialized(snapshot.mapFile.nodes, snapshot.mapFile.edges)` で復元し、`mapTitle`/`presentationNodeIds` も反映する。`documentSlice.ts` の `loadFromSerialized` は `past: [], future: []` で Undo 履歴を消す仕様のため、復元操作自体はこの1回の `loadFromSerialized` で完結させ、「取り消し」は直前状態を退避したスナップショットから再度復元する形で提供する（Undo 1回では戻せないことを `docs/design.md` に明記する）
+- [ ] `packages/ui/src/App.tsx` に `<HistoryPanel />` を追加し、`packages/ui/src/index.ts` から export する
+- [ ] `packages/ui/src/components/common/Header.tsx` に、既存の「マップ分析」「成果物を作成」ボタン（デスクトップ幅ラベル付き・モバイル幅アイコンのみの2ボタン構成）と同じパターンで「履歴」ボタンを追加し `setHistoryPanelOpen(true)` を呼ぶ
+
+#### C. タイムラプス再生
+- [ ] `packages/core/src/stores/uiStore.ts` に `isTimelapsePlaying`/`setTimelapsePlaying` を追加する
+- [ ] `HistoryPanel.tsx` に「タイムラプス再生」ボタンを追加する。押下前に `getSerializedNodes()`/`getSerializedEdges()`/`mapTitle` を退避し、`setTimelapsePlaying(true)` → スナップショット列を古い順に一定間隔（例: 800ms）で `loadFromSerialized(snapshot.mapFile.nodes, snapshot.mapFile.edges)` に適用してキャンバス上でマップが育つ過程を再生する
+- [ ] `packages/ui/src/components/canvas/IdeaCanvas.tsx` に、`isTimelapsePlaying` のとき編集操作を無効化する全面オーバーレイ（`pointer-events-none` の半透明バナー「タイムラプス再生中」＋独立した停止ボタンだけ `pointer-events-auto`）を追加する。既存の `PresentationMode`（`isPresentationMode` フラグで `App.tsx` が排他的に切り替える構成）とは異なり、タイムラプスはキャンバス自体の描画を使い回すためオーバーレイ方式にする
+- [ ] 再生終了（最後のスナップショットまで進む、または停止ボタン）で、押下前に退避した `nodes`/`edges`/`mapTitle` を `loadFromSerialized` で復元し `setTimelapsePlaying(false)` にする。**この復元によって再生開始前の Undo 履歴（`past`/`future`）は失われる**（`loadFromSerialized` の既存仕様）。再生は読み取り専用の演出機能であり、実行前に確認ダイアログで「実行中の Undo 履歴は再生後に失われます」旨を明示することで許容する。この制約を `docs/design.md` に明記する
+
+#### D. Google Drive revisions（実機確認が必要・優先度低）
+- [ ] **本タスクは起票のみとし、実装優先度は低い。** `packages/core/src/services/driveService.ts`（現状 `listMaps`/`saveMap`/`loadMap`/`deleteMap`/`fetchMapAppProperties`/`saveAppSettings`/`loadAppSettings` のみで revisions 系のAPIは未実装）に、Drive revisions API（`GET /files/{fileId}/revisions`・`GET /files/{fileId}/revisions/{revisionId}?alt=media`）を呼ぶ `listMapRevisions`/`loadMapRevision` を追加する
+- [ ] `HistoryPanel.tsx` に、Web版かつ Drive 保存のマップを開いているときだけ「Driveの変更履歴」タブ（またはセクション）を追加し、A のローカル履歴と別枠で表示・復元できるようにする
+- [ ] **実機確認が必要な理由**: Drive revisions は既定で「一定期間または一定世代数を超えると自動削除される」「`keepForever` フラグを立てないと保持されない」など運用上の挙動が実ファイルでの検証なしには確定できない。Web版の GIS トークンのスコープ（現状 `drive.file` 相当）で revisions エンドポイントに到達できるかも未確認。これらを本ドキュメントの実機確認項目として残す
+
+#### E. ドキュメント更新
+- [ ] `docs/design.md` に `mapHistory.ts`（リングバッファ設計・サイズ上限・画像省略ルール）・`HistoryPanel`・タイムラプス再生（Undo履歴が失われる制約）の設計を追記する。Drive revisions は「実装済みだが実機確認待ち」であることが分かるように明記する
+- [ ] `docs/requirements.md` に「バージョン履歴」「タイムラプス再生」の機能要件を追記する
+
+**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。保存のたびにローカル履歴が蓄積され、履歴パネルから一覧・プレビュー・復元ができること。タイムラプス再生でマップの成長過程がアニメーション表示され、終了後に再生前の状態へ戻ること。Drive revisions 連携はコードとしては動作するが、実機確認未了である旨が本ドキュメントに明記されていること。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
