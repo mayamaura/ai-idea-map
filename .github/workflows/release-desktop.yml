@@ -80,7 +80,7 @@ jobs:
       # tauri.conf.json の beforeBuildCommand（apps/desktop の pnpm build）が
       # フロントエンドをビルドしてから、tauri がインストーラにまとめる
       - name: Tauri ビルド・GitHub Release へ公開
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Updater 用の署名鍵。コード署名証明書とは別物で、更新パッケージの改ざん検出に使う
