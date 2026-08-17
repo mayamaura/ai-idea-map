@@ -31,6 +31,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # テストが赤ならデプロイしない（Phase 41）
+      - name: Test
+        run: pnpm test
+
       # ルートの build は tsc -b（全パッケージの型検査）→ apps/web の vite build
       - name: Build
         run: pnpm build

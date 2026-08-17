@@ -73,6 +73,10 @@ jobs:
       - name: 依存インストール
         run: pnpm install --frozen-lockfile
 
+      # テストが赤ならリリースしない（Phase 41）
+      - name: テスト
+        run: pnpm test
+
       # tauri.conf.json の beforeBuildCommand（apps/desktop の pnpm build）が
       # フロントエンドをビルドしてから、tauri がインストーラにまとめる
       - name: Tauri ビルド・GitHub Release へ公開
