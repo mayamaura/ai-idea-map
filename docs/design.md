@@ -112,10 +112,12 @@ ai-idea-map/
 │   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
 │   │       │   ├── openaiProvider.ts # OpenAIProvider（/v1/chat/completions・/v1/models、Phase 39）
 │   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35、Phase 39 で OpenAI 対応）
-│   │       │   └── aiService.ts     # AI機能5関数（旧 claudeService.ts）
+│   │       │   └── aiService.ts     # AI機能7関数（旧 claudeService.ts。Phase 44 で extractMapFromText、Phase 45 で generateArtifactFromMap 追加）
 │   │       ├── services/
 │   │       │   ├── driveService.ts  # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
-│   │       │   └── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
+│   │       │   ├── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
+│   │       │   └── textToMap.ts     # AI抽出結果 → SerializedNode/Edge 変換（buildMapFragmentFromExtracted、Phase 44）
+│   │       ├── templates/mapTemplates.ts # 思考フレームワークのテンプレートマップ5種（Phase 46）
 │   │       ├── layout/
 │   │       │   ├── mapLayout.ts     # ノード自動配置ロジック（dagre・円形配置）
 │   │       │   └── groupGeometry.ts # グループとノードの当たり判定・押し出し計算
@@ -131,14 +133,16 @@ ai-idea-map/
 │           ├── components/
 │           │   ├── canvas/          # IdeaCanvas / IdeaNode / GroupNode / FloatingEdge / ContextMenu
 │           │   ├── panels/          # NodePanel / NodeDetailPanel / AISuggestionPanel / SettingsPanel /
-│           │   │                    # ExportImportPanel / MapAnalysisPanel / AIChatPanel / PresentationOrderPanel
+│           │   │                    # ExportImportPanel / MapAnalysisPanel / AIChatPanel / PresentationOrderPanel /
+│           │   │                    # ArtifactPanel（Phase 45）
 │           │   ├── screens/         # PresentationMode
 │           │   ├── toolbar/         # Toolbar（PC用）/ BottomNav（スマホ用）
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
-│           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired
+│           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired /
+│           │                        # TemplatePickerModal（Phase 46）
 │           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
 │           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）/
-│           │                        # useGlobalErrorLog（Phase 43）
+│           │                        # useGlobalErrorLog（Phase 43）/ useSubtreeNodeIds（Phase 45）
 │           ├── services/exportService.ts # 画像・JSON・Markdown の書き出しとインポート
 │           ├── utils/markdown.ts    # Markdown→HTML変換ユーティリティ
 │           └── index.ts
@@ -317,6 +321,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `mapAnalysis` | `MapAnalysis \| null` | マップ全体分析結果（Phase 10） |
 | `connectionSuggestions` | `ConnectionSuggestion[]` | 接続提案リスト（Phase 10） |
 | `clusterSuggestions` | `ClusterSuggestion[]` | クラスタリング提案リスト（Phase 10） |
+| `isArtifactPanelOpen` | `boolean` | AI成果物生成パネル（`ArtifactPanel`）の開閉（Phase 45） |
 | `isChatPanelOpen` | `boolean` | AIチャットパネルの開閉（Phase 14） |
 | `chatMessages` | `ChatMessage[]` | チャット履歴（セッションメモリのみ、最大40件）（Phase 14） |
 | `isChatLoading` | `boolean` | AIチャット応答待ちフラグ（Phase 14） |
@@ -448,6 +453,14 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 | `useDashboardEscapeToClose()` | マップを開いた後の再表示時のみ `Esc` でダッシュボードを閉じるキーハンドラ（`hasActiveMap` かつ確認ダイアログ非表示のときだけ発火） |
 
 `DesktopFileDashboard` はマウント時に `getPlatform().file.listRecent()` で最近開いたファイル一覧を、`loadLastAutosave()`（`apps/desktop/src/platform/file.desktop.ts` が named export）で自動保存の控えを取得して「前回の作業を再開」カードに表示する。ファイルを開く経路（一覧クリック・「ファイルを開く」ボタン）は `apps/desktop/src/openMap.ts` の `openMapFile()` に集約し、`Ctrl+O`（`DesktopApp.tsx`）とダッシュボードの両方から同じ関数を呼ぶことで状態遷移を一本化している。
+
+### 5.1.3 TemplatePickerModal（packages/ui/src/components/common/TemplatePickerModal.tsx、Phase 46）
+
+`MAP_TEMPLATES`（`packages/core/src/templates/mapTemplates.ts`）を一覧表示し、選択すると `useFileDashboard.ts` の `startNewMapFromTemplate(templateId)` を呼ぶモーダル。`createPortal(content, document.body)` で `<body>` 直下に描画する（`z-[60]` でダッシュボードより手前）。
+
+開閉状態は uiStore ではなく、`apps/web/src/components/screens/FileOpenDashboard.tsx` / `apps/desktop/src/components/DesktopFileDashboard.tsx` それぞれのローカル state（`showTemplates`）で管理する。両ダッシュボードの「新規作成」ボタンの隣に「テンプレート」ボタンを追加し、`<TemplatePickerModal>` を直接レンダリングする（`App.tsx` には追加しない）。
+
+`startNewMapFromTemplate(templateId)`（`useFileDashboard.ts`）は `startNewMap()` と同じ「保存先の紐付けをリセットする」手順を踏む: `mapStore.reset()` → `loadFromSerialized(template.nodes, template.edges)` → `setMapTitle(template.mapTitle)` → `setCurrentFileId(null)` → `setCurrentMapId(null)` → `setPresentationNodeIds([])` → `setSaveStatus('unsaved')` → `setFileDashboardOpen(false)`。
 
 ### 5.2 IdeaCanvas（packages/ui/src/components/canvas/IdeaCanvas.tsx）
 
@@ -645,6 +658,14 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 あわせてデスクトップ版では `main-window` capability の `opener:allow-open-url` を**スコープ付き**で書く必要がある（§18.5）。`opener:allow-open-url` は「コマンドを呼んでよい」という許可でしかなく、URLスコープが空のままだと `openUrl()` は例外を投げて全て拒否される。
 
 各パネルは `useState<WebSearchResult[]>` で `searchSources` を持ち、`aiService.ts` に渡す `onWebSearchResults` コールバックで更新する。新しい実行を開始するたびに空配列にリセットする（§9.10）。
+
+### 5.11 ArtifactPanel（packages/ui/src/components/panels/ArtifactPanel.tsx、Phase 45）
+
+マップ（または選択ノードのサブツリー）から `generateArtifactFromMap`（§9.4.2）を呼び、Markdown成果物をストリーミング生成する右スライドパネル。`App.tsx` に常設し、`uiStore.isArtifactPanelOpen` で開閉する。入口はヘッダーの「成果物を作成」ボタンと `ExportImportPanel` のエクスポートタブ。
+
+- 形式選択（`document` / `slides` / `tasks`）→ 対象範囲表示（`useSubtreeNodeIds()` が `null` でなければ「選択中のノードから n 件を対象」、トグルボタンでマップ全体に切替可）→ 生成ボタン → ストリーミングプレビュー（`<pre>`）→ 完了後に「コピー」（`getPlatform().system.copyToClipboard`）／「.mdで保存」（`getPlatform().file.exportBlob`）
+- ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
+- `useSubtreeNodeIds()`（`packages/ui/src/hooks/useSubtreeNodeIds.ts`）: `uiStore.selectedNodeId` を起点に `mapStore` の edges（source→target、親→子）をBFSしたノードID集合を返す。選択なしなら `null`（＝マップ全体扱い）。`nodes`/`edges` は `useShallow` で id と `source>target` 文字列だけを購読し、ドラッグ中の座標更新では再計算しない
 
 ---
 
@@ -963,6 +984,8 @@ return safeParseJson<T>(jsonMatch[0])
 | `suggestConnections(req, signal?)` | 2048 | Phase 32 で `signal` 追加、Phase 35 で UI 接続 |
 | `suggestClusters(req, signal?)` | 4096 | Phase 32 で `signal` 追加、Phase 35 で UI 接続 |
 | `chatWithMap(req, onText?, signal?)` | 2048 | ストリーミング + system パラメータ化 |
+| `extractMapFromText(req, signal?)` | 4096 | Phase 44。`completeJsonWithRetry` 方式（§9.4.1） |
+| `generateArtifactFromMap(req, onText?, signal?)` | 4096 | Phase 45。ストリーミング方式（§9.4.2） |
 
 分析系3関数の `signal` は Phase 32 でサービス層まで通したが `MapAnalysisPanel` 側のUIが無かった。Phase 35 で `abortRef`（`AbortController`）と3タブ共通の `CancelButton` を追加し、キャンセル時は `isAbortError(e)` で握り潰してトーストを出さないようにしている。ローカルLLMは応答が長くかかりうるため必要性が上がったことが理由。
 
@@ -972,6 +995,44 @@ return safeParseJson<T>(jsonMatch[0])
 
 - `jsonInstructionSuffix(provider, schema)` — プロンプト末尾に付けるスキーマ提示。`provider.capabilities.structuredOutput === 'json-schema'`（＝Ollama）のときだけ `\n\n出力は以下のJSON Schemaに厳密に従ってください:\n${JSON.stringify(schema)}` を追加する。Claude 向けプロンプト文字列は Phase 34 以前と1文字も変わらない。
 - `completeJsonWithRetry(provider, req, schema, signal)` — `provider.completeJson()` が `LLMError('parse')` を投げたら1回だけ「直前の応答はJSONとして解析できませんでした（エラー: …）。同じ内容をJSON形式で出力し直してください」という修復メッセージを追加して再試行する。2回目の失敗はそのまま呼び出し元（`LLMError.rawResponse` 経由でUIの「生レスポンスをコピー」導線）に投げる。
+
+### 9.4.1 ブレインダンプ→マップ生成（`extractMapFromText` / `sanitizeExtractedNodes`、Phase 44）
+
+```typescript
+export interface ExtractedNode {
+  tempId: string
+  title: string
+  body?: string
+  categoryId?: string
+  parentTempId?: string   // 新規ノード同士の親子（他の ExtractedNode.tempId を指す）
+  parentNodeId?: string   // 追記モード時、既存マップのノードにぶら下げる場合の実ノードID
+}
+```
+
+`ExtractedNode` は `packages/core/src/types/index.ts` ではなく `aiService.ts` 内に定義されている（`sanitizeExtractedNodes` と同じファイルに閉じたいため）。`extractMapFromText(req: { provider, text, categories, existingNodes? }, signal?)` は貼り付けテキスト（先頭 8000 文字に切り詰め）から `EXTRACT_MAP_SCHEMA` に従う `ExtractedNode[]` を `completeJsonWithRetry` で取得し、`sanitizeExtractedNodes()` を通してから返す。`existingNodes`（追記モード時）はプロンプトに「追記先の既存マップのノード」として埋め込まれ、AIはそこにある `id` を `parentNodeId` に使ってよい。
+
+`sanitizeExtractedNodes(raw)` は小型モデルが作りやすい壊れた構造を防御的に補正する（欠損を補完するのではなく、**壊れた要素をルート扱いに落とす**ことで後段が必ず木構造を組めるようにする）:
+- `tempId` が無い／`title` が空の要素は除外する
+- `tempId` が重複する場合は後勝ち（`Map` の上書き）で1件になる
+- 存在しない `tempId` を指す `parentTempId` は `undefined` に落とす（ルート化）
+- `parentTempId` を辿って同じノードを2回踏む＝循環参照になっている要素も、巻き込まれた側をすべてルート化する
+
+### 9.4.2 マップ→成果物生成（`generateArtifactFromMap`、Phase 45）
+
+```typescript
+export type ArtifactFormat = 'document' | 'slides' | 'tasks'
+
+export interface GenerateArtifactRequest {
+  provider: LLMProvider
+  mapContext: MapContext
+  format: ArtifactFormat
+  focusNodeIds?: string[]
+}
+```
+
+`chatWithMap` と違い `system` パラメータは使わず、ノード一覧・接続関係・フォーマット別の指示文（`ARTIFACT_FORMAT_INSTRUCTIONS`）をすべて1つの user メッセージに組み立てて `provider.stream()` に渡す。
+
+**`focusNodeIds` のフィルタは関数内部で行う。** `mapContext.nodes`/`edges` を呼び出し側で絞り込む設計ではなく、`generateArtifactFromMap` が `focusNodeIds` の `Set` で `mapContext` 全体をフィルタしてからプロンプトを組み立てる（`ArtifactPanel` は `useSubtreeNodeIds()` の結果をそのまま `focusNodeIds` として渡すだけでよい）。
 
 ### 9.5 chatWithMap のストリーミング設計（Phase 23）
 
@@ -1247,6 +1308,17 @@ export interface WebSearchOptions {
 座標は中心基準で計算し、最後にノードサイズの半分を引いて左上座標に直す（グループノードは `style.width/height` の実サイズを使う）。孤立ノード（ルートから到達できないノード）は木全体の外側に横並びで置く。
 
 検証は `packages/core/src/layout/mapLayout.test.ts`（`pnpm test` で実行。Phase 41 で `verify-radial-layout.mts` から移植）。木の幅・深さを変えた6パターン＋枝ごとに子の数が違う木＋孤立ノードありで、**全ノードの矩形が重ならないこと**と**末端が親から 400px 以内にあること**を検証する。後者が本方式を採った理由そのものなので、半径の決め方を変えるときはここを見る。
+
+### 11.9 ブレインダンプ結果のマップ変換（`buildMapFragmentFromExtracted`、packages/core/src/services/textToMap.ts、Phase 44）
+
+`extractMapFromText`（§9.4.1）が返した `ExtractedNode[]` を、実際にマップへ読み込める `{ nodes: SerializedNode[]; edges: SerializedEdge[] }` に変換する。独自のレイアウト計算はせず、`applyRadialLayout`（§11.8）にそのまま乗せる:
+
+1. `sanitizeExtractedNodes()` を再度通す（冪等なので害はなく、この関数を直接テストするときに壊れた入力にも単体で耐えられる）
+2. 各 `ExtractedNode` を仮の `Node<IdeaNodeData>[]` に、`parentTempId` を持つものだけを `Edge[]`（新規ノード同士の親子関係）に変換して `applyRadialLayout(nodes, edges)` へ渡す
+3. 追記モード（`existing.nodes` 指定時）は、レイアウト結果を「既存マップの外接矩形の右端 + 200px」を起点に平行移動する（`computeOffset`。Y座標は既存マップの最小Yに揃える）。新規マップ時はオフセットなし
+4. エッジは new→new（`parentTempId` 由来）を優先し、無ければ existing→new（`parentNodeId` が既存ノードIDを指す場合のみ）を追加する。存在しない `parentNodeId` は無視されエッジを作らない
+
+検証は `packages/core/src/services/textToMap.test.ts`（10件）。親子関係・孤立ノード・循環参照・既存ノードへの接続・追記時のオフセット計算・tempId重複・空タイトル除外をカバーする。
 
 ---
 
@@ -1810,3 +1882,27 @@ Web版で作ったマップをデスクトップ版からもそのまま開け�
 - **型検査との関係**: テストファイルは `packages/core/tsconfig.json` の `include: ["src"]` に含まれるため、`pnpm typecheck`（`tsc -b`）の対象にもなる
 - **CI連携**: `.github/workflows/deploy.yml` の `build` ジョブ、`.github/workflows/release-desktop.yml` の `build` ジョブがそれぞれ `pnpm install` の直後・本体ビルドの前に `pnpm test` を実行する。テストが赤ければデプロイ・リリースの後続ステップが止まる
 - **旧・手動検証スクリプトとの関係**: `verify-openai.mts` は `src/llm/openaiProvider.test.ts` へ、`verify-radial-layout.mts` は `src/layout/mapLayout.test.ts` へ全項目を移植済みで、`.mts` 本体と `check:openai`/`check:radial` スクリプトは削除した（Phase 41 Step3・Step4）
+
+---
+
+## 21. テンプレートマップ設計（packages/core/src/templates/mapTemplates.ts、Phase 46）
+
+```typescript
+export interface MapTemplate {
+  id: string
+  name: string        // テンプレート一覧に表示する名前
+  description: string // 一覧に表示する1行説明
+  mapTitle: string    // 新規マップのタイトル初期値（name とは別フィールド）
+  nodes: SerializedNode[]
+  edges: SerializedEdge[]
+}
+
+export const MAP_TEMPLATES: readonly MapTemplate[]
+export function getMapTemplate(id: string): MapTemplate | undefined
+```
+
+SWOT分析／KPTふりかえり／なぜなぜ分析（5 Whys）／オズボーンのチェックリスト／マンダラートの5種を静的データとして定義する。各テンプレートの座標は `applyRadialLayout` 等のレイアウト計算を通さず手組みで指定する（マンダラートの3×3グリッド、オズボーンの9方向配置など、放射状レイアウトの形と合わないため）。
+
+**専用プロンプトを作らない設計**: 各ノードの `body` に「その欄に何を書くか」の記入ガイド文を持たせておく。既存のAI提案（`generateSuggestions` 等、§9.2）はノードの `body` をプロンプトの文脈にそのまま含めるため、テンプレート専用のプロンプト分岐を用意しなくてもフレームワークの観点に沿った提案が出る。
+
+利用側は `startNewMapFromTemplate(templateId)`（`packages/ui/src/hooks/useFileDashboard.ts`、§5.1.3）。検証は `packages/core/src/templates/mapTemplates.test.ts`（12件）で、テンプレートID・ノードIDの一意性、エッジが実在ノードのみを参照すること、ノード矩形が重ならないこと、全ノードに `body` があることを検証する。

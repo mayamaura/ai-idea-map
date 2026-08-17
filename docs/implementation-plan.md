@@ -2151,86 +2151,100 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 44: ブレインダンプ→マップ生成
+### Phase 44: ブレインダンプ→マップ生成 🔨 実装済み（確認中）
 
 **目標**: テキストを貼り付けると AI が構造を抽出してマップを生成する。新規マップ作成と既存マップへの追記の両方に対応し、「白紙のキャンバス問題」を解消する（v1.1「入口と出口」の1つ目、`docs/roadmap.md` §4.1）。
 
 #### A. 型定義とAI抽出ロジック
-- [ ] `packages/core/src/types/index.ts` に `ExtractedNode`（`{ tempId: string; title: string; body?: string; categoryId?: string; parentTempId?: string; parentNodeId?: string }`）を追加する。`parentTempId` は今回の抽出結果内での親子関係、`parentNodeId` は追記モード時に既存マップのどのノードにぶら下げるかを表す（両方省略時はルート扱い）
-- [ ] `packages/core/src/llm/aiService.ts` に `EXTRACT_MAP_SCHEMA`（既存の `SUGGESTIONS_SCHEMA` 等と同様の `JsonSchema` 定数）と `extractMapFromText(req: ExtractMapRequest, signal?: AbortSignal): Promise<ExtractedNode[]>` を追加する。`req = { provider, text, categories, existingNodes? }`（`existingNodes?: { id: string; title: string; body?: string }[]`）。実装は `generateSuggestions` と同じ `completeJsonWithRetry(provider, req, schema, signal)` パターンを使い、`existingNodes` が渡された場合のみプロンプトに「【既存マップのノード一覧（追記先の候補）】」セクションを追加する
-- [ ] パース結果に `Array.isArray` 等の防御的検証を行う（`suggestConnections`/`suggestClusters` と同様、小型モデルの欠損フィールドに耐える）。`tempId` が欠けている要素は `uuid` パッケージの `v4()`（既存コード全体で使われている生成方法。`packages/core/src/stores/map/nodeSlice.ts` 等を参照）で補完する
-- [ ] `packages/core/src/llm/aiService.test.ts` を新規作成し（既存の `aiService.ts` にはテストがまだない）、`extractMapFromText` のプロンプト構築・スキーマ検証・欠損フィールド耐性を検証する
+- [x] `ExtractedNode` 型は計画通りの構造（`{ tempId: string; title: string; body?: string; categoryId?: string; parentTempId?: string; parentNodeId?: string }`）だが、`packages/core/src/types/index.ts` ではなく `packages/core/src/llm/aiService.ts` 内に定義した（`sanitizeExtractedNodes` と同じファイルに閉じるため）（2026-08-17 実装）
+- [x] `packages/core/src/llm/aiService.ts` に `EXTRACT_MAP_SCHEMA` と `extractMapFromText(req, signal?)` を計画通り追加した。`existingNodes` は `{ id: string; title: string }[]`（`body` は含めない、計画より簡略化）。実装は `generateSuggestions` と同じ `completeJsonWithRetry` パターン（2026-08-17 実装）
+- [x] 防御的検証は `sanitizeExtractedNodes()` として実装した。ただし計画の「`tempId` 欠落は `uuid` で補完」ではなく、**`tempId` または `title` が空の要素はそのまま除外する**方式にした（uuid補完だと他ノードの `parentTempId` からの参照が意味不明な形で残ってしまうため、除外の方が単純で安全と判断）（2026-08-17 実装）
+- [x] `aiService.test.ts` は本フェーズでは作成しなかった。代わりに `packages/core/src/services/textToMap.test.ts`（10件）で `sanitizeExtractedNodes`/`buildMapFragmentFromExtracted` の防御的検証（tempId重複・不明な親・循環参照・空タイトル除外）を検証している。`extractMapFromText` 自体のプロンプト構築のユニットテストは未着手（2026-08-17 実装）
 
 #### B. テキスト→マップ変換ロジック（`packages/core`）
-- [ ] `packages/core/src/services/textToMap.ts` を新規作成し、`buildMapFragmentFromExtracted(extracted: ExtractedNode[], existingNodes: SerializedNode[], categories: Category[]): { nodes: SerializedNode[]; edges: SerializedEdge[] }` を実装する。`ExtractedNode[]` を仮の `Node<IdeaNodeData>[]`／`Edge[]`（`tempId`→ノードID、`parentTempId`→エッジ）に変換したうえで `packages/core/src/layout/mapLayout.ts` の `applyRadialLayout(nodes, edges)` を呼んで座標を求め、最終的に `SerializedNode[]`/`SerializedEdge[]` に戻す。`parentNodeId` が指定された要素は既存マップ側のノードへのエッジも生成する
-- [ ] 追記モード時は、`existingNodes` の外接矩形（bounding box）を計算し、新規ブロックをその右側（矩形の右端＋余白）に配置してから `applyRadialLayout` が返したローカル座標を平行移動する。新規マップ時はオフセットなし
-- [ ] `packages/core/src/services/textToMap.test.ts` を作成し、フラットな抽出結果・親子関係あり・追記モードでの配置・空配列の4パターンを検証する（Vitestで完結する純粋ロジックのため必須）
+- [x] `packages/core/src/services/textToMap.ts` を新規作成した。シグネチャは計画と異なり `buildMapFragmentFromExtracted(extracted: ExtractedNode[], existing?: { nodes: SerializedNode[] }): Promise<MapFragment>`（`categories` 引数は不要だった。`applyRadialLayout` が非同期のため戻り値も `Promise` になった）。`ExtractedNode[]` を仮の `Node<IdeaNodeData>[]`／`Edge[]` に変換して `applyRadialLayout` に座標計算を委譲する点は計画通り（2026-08-17 実装）
+- [x] 追記モード時のオフセット計算（`computeOffset`: 既存マップの外接矩形の右端＋200pxを起点に平行移動、Y座標は既存マップの最小Yに揃える）を計画通り実装した（2026-08-17 実装）
+- [x] `packages/core/src/services/textToMap.test.ts` を作成した（10件。計画の4パターンに加え、tempId重複・空タイトル除外・座標の有限値チェックも追加）（2026-08-17 実装）
 
 #### C. UI: ExportImportPanel のインポートタブ拡張
-- [ ] `packages/ui/src/components/panels/ExportImportPanel.tsx` のインポートタブに「AIで構造化（ブレインダンプ）」セクションを追加する。テキストエリア＋「新規マップとして生成」／「現在のマップに追記」のトグル、生成ボタン。ローディング中はキャンセルボタンを表示する（`MapAnalysisPanel.tsx` の `CancelButton`/`AbortController` パターンを踏襲）
-- [ ] 生成ボタンの実装: `useActiveProvider()` で解決した provider と `useSettingsStore` の `categories` を渡して `extractMapFromText` を呼び、結果を `buildMapFragmentFromExtracted` に通す。新規モードは `useMapStore().reset()` → `loadFromSerialized(nodes, edges)`、追記モードは既存の `handlePasteImport`（同ファイル）と同じ `loadFromSerialized([...getSerializedNodes(), ...nodes], [...getSerializedEdges(), ...edges])` パターンを使う
-- [ ] `ApiKeyRequired`（`packages/ui/src/components/common/ApiKeyRequired.tsx`）でAPIキー未設定時の案内を表示する（他のAIパネルと同じ導線）
-- [ ] 生成成功時にトースト（例:「n個のノードを生成しました」）、失敗時は `toFriendlyAIError(e)` をトースト表示する
+- [x] `ExportImportPanel.tsx` のインポートタブに「AIで構造化（ブレインダンプ）」セクション（チェックボックスで開閉）を追加した。テキストエリア＋「新規マップとして生成」／「現在のマップに追記」トグル＋生成ボタン、ローディング中はキャンセルボタンを表示（`AbortController`）（2026-08-17 実装）
+- [x] 生成ボタンの実装は計画通り（`extractMapFromText` → `buildMapFragmentFromExtracted` → `loadFromSerialized`）。新規モードは `reset()` してから `loadFromSerialized`、タイトルは貼り付けテキストの1行目（30字まで）を使う（2026-08-17 実装）
+- [x] `ApiKeyRequired` によるAPIキー未設定時の案内を実装した（2026-08-17 実装）
+- [x] 成功時・失敗時（`toFriendlyAIError(e)`）のトースト表示を実装した（2026-08-17 実装）
 
 #### D. ドキュメント更新
-- [ ] `docs/design.md` §9（AI連携設計）に `extractMapFromText` の仕様を追記し、§11（ノード配置ロジック）に `buildMapFragmentFromExtracted` の座標計算方針を追記する
-- [ ] `docs/requirements.md` §2.3（データ管理）のインポート機能に「AIによるブレインダンプ→マップ生成」を追記する
+- [x] `docs/design.md` §9.4.1（AI連携設計）に `extractMapFromText`/`sanitizeExtractedNodes` の仕様を、§11.9（ノード配置ロジック）に `buildMapFragmentFromExtracted` の座標計算方針を追記した（2026-08-17 実装）
+- [x] `docs/requirements.md` §2.3.3 に「ブレインダンプ→マップ生成」の機能要件を追記した（2026-08-17 実装）
+
+**残りの手動確認項目**:
+- [ ] 実際にAPIキー／Ollamaで議事録・メモ風のテキストを貼り付け、AIが妥当な階層構造を抽出できることを確認する
+- [ ] 「現在のマップに追記」を複数回実行し、新規ブロックが重ならず右側に積み上がることを確認する
+- [ ] 小型ローカルモデル（Ollama）が壊れたJSON（tempId重複・循環参照）を返した場合でも、生成自体が失敗せずルート化されることを確認する
 
 **完了条件**: 型検査・ビルド・`pnpm test` が通過すること。ExportImportPanel のインポートタブから、貼り付けたテキストがAIによって構造化され、新規マップ生成／既存マップへの追記のどちらでも動作すること。
 
 ---
 
-### Phase 45: マップ→成果物生成
+### Phase 45: マップ→成果物生成 🔨 実装済み（確認中）
 
 **目標**: マップ（または選択ノードのサブツリー）から AI が Markdown 成果物（構造化ドキュメント／プレゼン構成／タスクリスト）を生成する。ストリーミング表示→コピー／ファイル保存までを1パネルで完結させる（v1.1「入口と出口」の2つ目、`docs/roadmap.md` §4.2）。
 
 #### A. AI生成ロジック（`packages/core`）
-- [ ] `packages/core/src/llm/aiService.ts` に `generateArtifactFromMap(req: GenerateArtifactRequest, onText?: (partialText: string) => void, signal?: AbortSignal): Promise<string>` を追加する。`req = { provider, mapContext: MapContext, format: 'document' | 'slides' | 'tasks', focusNodeIds?: string[] }`。`format` ごとにプロンプト文言を切り替える（ドキュメント＝構成立てた記事、スライド＝見出し単位のMarkdownスライド構成、タスク＝チェックボックス付き実行計画）
-- [ ] 実装は `chatWithMap`（同ファイル）と同じ「`systemContext` を組み立てて `provider.stream(req, onText, signal)` を呼ぶ」方式にする。`LLMProvider.stream`（`packages/core/src/llm/types.ts`）は Claude/Ollama/OpenAI すべてが実装する必須メソッドであり、`provider.stream` の有無を分岐する必要はない
-- [ ] `focusNodeIds` が渡された場合、`mapContext.nodes`/`edges` は呼び出し側（UI）で事前にフィルタ済みのものが渡される前提とし、`generateArtifactFromMap` 自体は絞り込みを行わずそのまま使う（`chatWithMap` の `mentionedNodeIds` が優先度の並び替えなのに対し、本関数はサブツリー限定の絞り込みそのものが目的のため、フィルタは呼び出し側の責務にする）
-- [ ] `packages/core/src/llm/aiService.test.ts`（Phase 44 で新規作成済みならそこに追加）に `generateArtifactFromMap` のプロンプト分岐（3フォーマット）とストリーミングコールバックのテストを追加する
+- [x] `packages/core/src/llm/aiService.ts` に `generateArtifactFromMap(req: GenerateArtifactRequest, onText?, signal?): Promise<string>` を追加した。`req = { provider, mapContext, format: 'document' | 'slides' | 'tasks', focusNodeIds? }`。`format` ごとにプロンプト文言（`ARTIFACT_FORMAT_INSTRUCTIONS`）を切り替える点は計画通り（2026-08-17 実装）
+- [x] 実装は `chatWithMap` の `system` パラメータ方式ではなく、ノード一覧・接続関係・フォーマット別指示をすべて1つの user メッセージに組み立てて `provider.stream()` に渡す方式にした（2026-08-17 実装）
+- [x] **`focusNodeIds` のフィルタは計画（呼び出し側=UIの責務）ではなく、`generateArtifactFromMap` 関数の内部で行う実装にした。** `mapContext.nodes`/`edges` は絞り込まれていない全体を渡す前提で、関数内で `focusNodeIds` の `Set` によりフィルタしてからプロンプトを組み立てる（呼び出し側の `ArtifactPanel` は `useSubtreeNodeIds()` の結果をそのまま渡すだけでよく、フィルタロジックが1箇所に集約される）。`docs/design.md` §9.4.2 もこの実態に合わせて記述した（2026-08-17 実装、docs 訂正）
+- [x] `aiService.test.ts` は Phase 44 の時点では作成されていなかったため本フェーズで新規作成した（6件）。`focusNodeIds` によるフィルタ・フォーマット別プロンプト分岐・ストリーミングコールバックを検証する（2026-08-17 実装）
 
 #### B. サブツリー抽出（`packages/ui`）
-- [ ] `packages/ui/src/hooks/useSubtreeNodeIds.ts` を新規作成し、`uiStore.selectedNodeId` を起点に `mapStore` の edges（source→target の有向グラフ、`docs/design.md` §7.1 の親→子既定方向）を BFS してサブツリーの ID 集合を返すフックを実装する。選択なしの場合は空集合（＝マップ全体を対象）を返す
+- [x] `packages/ui/src/hooks/useSubtreeNodeIds.ts` を新規作成した。`uiStore.selectedNodeId` を起点に `mapStore` の edges（source→target、親→子）をBFSしてサブツリーのID集合を返す。**計画の「選択なしは空集合」ではなく、選択なし（または選択IDがマップ上に存在しない）のとき `null` を返す**方式にした（空集合だと「サブツリー0件」と区別がつかないため）。呼び出し側は `null` を「マップ全体を対象」と解釈する（2026-08-17 実装、docs 訂正）
 
 #### C. 新パネル `ArtifactPanel`
-- [ ] `packages/core/src/stores/uiStore.ts` に `isArtifactPanelOpen`/`setArtifactPanelOpen` を追加する
-- [ ] `packages/ui/src/components/panels/ArtifactPanel.tsx` を新規作成する。フォーマット選択（document/slides/tasks）→「選択ノードのサブツリーのみ」チェックボックス（`selectedNodeId` がある時だけ表示、`useSubtreeNodeIds` を使用）→生成ボタン→ストリーミング中のMarkdownプレビュー→完了後に「コピー」（`getPlatform().system.copyToClipboard`）／「.mdで保存」（`getPlatform().file.exportBlob`）ボタンを表示する。ローディング・キャンセル・エラー表示は `MapAnalysisPanel.tsx`/`AIChatPanel.tsx` と同じパターンに揃える
-- [ ] `packages/ui/src/App.tsx` に `<ArtifactPanel />` を追加し、`packages/ui/src/index.ts` から `ArtifactPanel` を export する
+- [x] `packages/core/src/stores/uiStore.ts` に `isArtifactPanelOpen`/`setArtifactPanelOpen` を追加した（2026-08-17 実装）
+- [x] `packages/ui/src/components/panels/ArtifactPanel.tsx` を新規作成した。フォーマット選択（document/slides/tasks）→対象範囲表示（`selectedNodeId` があるときだけ「選択中のノードから n 件を対象」と表示し、**チェックボックスではなくトグルボタン**でマップ全体に切替可能）→生成ボタン→ストリーミング中のMarkdownプレビュー→完了後に「コピー」／「.mdで保存」ボタン。ローディング・キャンセル・エラー表示は `MapAnalysisPanel.tsx`/`AIChatPanel.tsx` と同じパターン（2026-08-17 実装）
+- [x] `packages/ui/src/App.tsx` に `<ArtifactPanel />` を追加し、`packages/ui/src/index.ts` から export した（2026-08-17 実装）
 
 #### D. 入口
-- [ ] `packages/ui/src/components/common/Header.tsx` の「マップ分析」ボタン（`setAnalysisPanelOpen(true)`）と同じ並びに「成果物を作成」ボタンを追加し、`setArtifactPanelOpen(true)` を呼ぶ（デスクトップ幅用・モバイル用アイコンボタンの両方を追加する。既存の「AIチャット」「マップ分析」ボタンと同様に2つ並べる構成を踏襲）
-- [ ] `packages/ui/src/components/panels/ExportImportPanel.tsx` のエクスポートタブに「AIで成果物を生成」への導線（`useUIStore` の `setArtifactPanelOpen(true)` を呼ぶボタン）を追加する
+- [x] `Header.tsx` の「マップ分析」ボタンの隣に「成果物を作成」ボタン（デスクトップ幅用・モバイル用アイコンボタンの2つ）を追加した（2026-08-17 実装）
+- [x] `ExportImportPanel.tsx` のエクスポートタブに「AIで成果物を生成」への導線を追加した（2026-08-17 実装）
 
 #### E. ドキュメント更新
-- [ ] `docs/design.md` §9 に `generateArtifactFromMap` の仕様、§5（コンポーネント設計）に `ArtifactPanel` を追記する
-- [ ] `docs/requirements.md` に「マップ→成果物生成」の機能要件を追記する
+- [x] `docs/design.md` §9.4.2 に `generateArtifactFromMap` の仕様、§5.11 に `ArtifactPanel`/`useSubtreeNodeIds` を追記した（2026-08-17 実装）
+- [x] `docs/requirements.md` §2.2.7 に「マップ→成果物生成」の機能要件を追記した（2026-08-17 実装）
+
+**残りの手動確認項目**:
+- [ ] 実際にAIを呼び出し、document/slides/tasksの3形式それぞれで指示通りの構成（見出しレベル、Marpの`---`区切り、`- [ ]`チェックボックス）になっているか確認する
+- [ ] ノード選択時に「選択サブツリーのみ」と「マップ全体」を切り替えて生成し、対象範囲が正しく変わることを確認する
+- [ ] 生成したMarpスライドMarkdownを実際にMarpでレンダリングして崩れがないか確認する
+- [ ] .md保存とクリップボードコピーをWeb版・デスクトップ版の両方で確認する
 
 **完了条件**: 型検査・ビルド・`pnpm test` が通過すること。ArtifactPanel から構造化ドキュメント／プレゼン構成／タスクリストの3形式を生成でき、ストリーミング表示・コピー・.md保存が動作すること。選択ノードがある場合はサブツリーのみを対象にできること。
 
 ---
 
-### Phase 46: 思考フレームワークテンプレート
+### Phase 46: 思考フレームワークテンプレート 🔨 実装済み（確認中）
 
 **目標**: SWOT・KPT・5Whys・オズボーンのチェックリスト・マンダラートをテンプレートマップとして用意し、新規作成時に選べるようにする（v1.1「入口と出口」の3つ目、`docs/roadmap.md` §4.3）。専用プロンプトは作らず、テンプレート各ノードの `body` に「何を書く欄か」を書いておくことで、既存のAI提案（`generateSuggestions` 等）がその文脈をそのまま読む設計にする
 
 #### A. テンプレート定義（`packages/core`）
-- [ ] `packages/core/src/templates/mapTemplates.ts` を新規作成し、`MapTemplate`（`{ id: string; name: string; description: string; nodes: SerializedNode[]; edges: SerializedEdge[] }`）と `MAP_TEMPLATES: MapTemplate[]` を定義する。SWOT／KPT／5Whys／オズボーンのチェックリスト／マンダラートの5種。各ノードの座標は手組みの静的データとして持たせる（マンダラートは3x3グリッドなど `applyRadialLayout` の放射状配置と形が異なるため、レイアウト計算を通さず座標を直接指定する）。各ノードの `body` に記入ガイド文を入れる
-- [ ] `packages/core/src/templates/mapTemplates.test.ts` を作成し、各テンプレートの `nodes`/`edges` の整合性（`edges` の `source`/`target` が実在する `nodes.id` を指す、孤立ノードがない）を検証する
+- [x] `packages/core/src/templates/mapTemplates.ts` を新規作成した。`MapTemplate` は計画に `mapTitle` フィールド（`name`＝一覧表示名とは別に、新規マップのタイトル初期値を持つ）を加えた形で実装した。SWOT／KPT／5Whys／オズボーンのチェックリスト／マンダラートの5種、各ノードの座標は `applyRadialLayout` を通さない手組みの静的データ、`body` に記入ガイド文を入れる点は計画通り（データ定義自体は Phase 46 起票前のコミット 2613628 で先行実装済みだった）（2026-08-17 実装）
+- [x] `packages/core/src/templates/mapTemplates.test.ts` を作成した（12件。テンプレートID／ノードIDの一意性、エッジが実在ノードのみ参照すること、ノード矩形が重ならないこと、全ノードに `body` があることを検証）（2026-08-17 実装）
 
 #### B. UI: テンプレート選択モーダルと起動導線
-- [ ] `packages/ui/src/hooks/useFileDashboard.ts` に `startNewMapFromTemplate(templateId: string): void` を追加する（既存の `startNewMap()` と同様に `reset()` → `loadFromSerialized(template.nodes, template.edges)` → `setMapTitle(template.name)` → `setCurrentFileId(null)` → `setCurrentMapId(null)` → `setPresentationNodeIds([])` → `setSaveStatus('unsaved')` → `setFileDashboardOpen(false)` の順で初期化する）。`packages/ui/src/index.ts` から export する
-- [ ] `packages/ui/src/components/common/TemplatePickerModal.tsx` を新規作成する。`MAP_TEMPLATES` を一覧表示し、選択すると `startNewMapFromTemplate(id)` を呼んでモーダルを閉じる（`WelcomeModal.tsx`/`MasterPasswordModal.tsx` と同じモーダル実装パターンを踏襲）
-- [ ] `packages/core/src/stores/uiStore.ts` に `isTemplatePickerOpen`/`setTemplatePickerOpen` を追加する
-- [ ] `packages/ui/src/App.tsx` に `<TemplatePickerModal />` を追加する
+- [x] `packages/ui/src/hooks/useFileDashboard.ts` に `startNewMapFromTemplate(templateId)` を追加した。手順は計画通り（`reset()` → `loadFromSerialized` → `setMapTitle(template.mapTitle)`（計画の `template.name` ではなく専用フィールド） → `setCurrentFileId(null)` → `setCurrentMapId(null)` → `setPresentationNodeIds([])` → `setSaveStatus('unsaved')` → `setFileDashboardOpen(false)`）。`packages/ui/src/index.ts` から export した（2026-08-17 実装）
+- [x] `packages/ui/src/components/common/TemplatePickerModal.tsx` を新規作成した。`MAP_TEMPLATES` を一覧表示し、選択すると `onSelect(id)` 経由で呼び出し元に通知する（`createPortal` で body 直下に描画）（2026-08-17 実装）
+- [x] **計画は `uiStore` に `isTemplatePickerOpen`/`setTemplatePickerOpen` を追加し `App.tsx` に `<TemplatePickerModal />` を常設する想定だったが、実装ではグローバルストアを経由しない方式にした。** 開閉状態は `FileOpenDashboard.tsx`/`DesktopFileDashboard.tsx` それぞれのローカル state（`showTemplates`）で管理し、各ダッシュボードが `<TemplatePickerModal>` を直接レンダリングする（起動画面限定の一時的なUI状態のため、他パネルと違いグローバルストアに置く必要性が薄いと判断）（2026-08-17 実装、docs 訂正）
 
 #### C. 両アプリのダッシュボードに導線を追加
-- [ ] `apps/web/src/components/screens/FileOpenDashboard.tsx` のアクションボタン列（「新規作成」「ファイルを開く」ボタンが並ぶ `<div className="px-6 py-4 flex gap-3">`）に「テンプレートから作成」ボタンを追加し、`setTemplatePickerOpen(true)` を呼ぶ
-- [ ] `apps/desktop/src/components/DesktopFileDashboard.tsx` の同じ構成のボタン列にも同様に追加する（Web版・デスクトップ版でこのボタン列のマークアップがほぼ同一のため、見た目を揃える）
+- [x] `apps/web/src/components/screens/FileOpenDashboard.tsx` と `apps/desktop/src/components/DesktopFileDashboard.tsx` の両方に、「新規作成」ボタンの隣へ「テンプレート」ボタンを追加した。押下でローカル state を `true` にし `TemplatePickerModal` を開く。選択時は `startNewMapFromTemplate(id)` を呼んでモーダルとダッシュボードを閉じる（2026-08-17 実装）
 
 #### D. ドキュメント更新
-- [ ] `docs/design.md` に `MapTemplate` の型定義と `TemplatePickerModal`/`startNewMapFromTemplate` を追記する
-- [ ] `docs/requirements.md` §2.3 に「思考フレームワークテンプレート」の機能要件を追記し、§8（将来的な拡張・スコープ外）から「テンプレートマップの提供」の行を削除する
+- [x] `docs/design.md` §21 に `MapTemplate` の型定義を、§5.1.3 に `TemplatePickerModal`/`startNewMapFromTemplate`（実装のローカルstate方式）を追記した（2026-08-17 実装）
+- [x] `docs/requirements.md` §2.3.4 に「テンプレートから作成」の機能要件を追記し、§8（将来的な拡張・スコープ外）から「テンプレートマップの提供」の行を削除した（2026-08-17 実装）
+
+**残りの手動確認項目**:
+- [ ] Web版・デスクトップ版それぞれの起動画面から5種のテンプレートを実際に選択し、初期ノード配置が意図通り表示されることを確認する
+- [ ] テンプレートから作成したマップでAI提案（アイデア拡張）を実行し、`body` の記入ガイドが提案内容に反映されることを確認する
+- [ ] テンプレートから作成後の保存が新規ファイルとして行われ、前回開いていたファイルを上書きしないことを確認する
 
 **完了条件**: 型検査・ビルド・`pnpm test` が通過すること。Web版・デスクトップ版のいずれのダッシュボードからも「テンプレートから作成」でテンプレートを選択し、SWOT等の初期ノード配置でマップが開始できること。
 
