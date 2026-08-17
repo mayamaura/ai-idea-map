@@ -2064,6 +2064,92 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
+### Phase 41: テスト基盤の導入（Vitest）（約3日）
+
+**目標**: `packages/core` にユニットテストを整備し、既存の手動検証スクリプト（`packages/core/verify-openai.mts` / `packages/core/verify-radial-layout.mts`）を Vitest に一本化する。CI（`.github/workflows/deploy.yml` / `.github/workflows/release-desktop.yml`）にテスト実行を組み込み、テストが赤ならデプロイ・リリースが止まるようにする。v1.0（信頼できる土台）の柱の一つ（`docs/roadmap.md` §3.2）。
+
+#### Step1: Vitest 導入
+- [ ] ルート `package.json`（現在 `devDependencies` に `vitest` が無い）に `vitest` を追加し、`pnpm install` する。ルート `scripts` に `"test": "vitest run"` を追加する（既存の `typecheck`/`lint` と並ぶ実行単位にする）
+- [ ] リポジトリルートに `vitest.config.ts` を新規作成する。`test.include` は `packages/core/src/**/*.test.ts` に限定する（`packages/ui`・`apps/*` は本フェーズの対象外。`docs/roadmap.md` §3.2 が「`packages/core` から始める」と明示しているため）。`test.environment` は `'node'`（`packages/core` は DOM に依存しない純粋ロジックのみのため）。テストファイルは `describe`/`it`/`expect` を `vitest` から明示 import する方針とし、`globals: true` は設定しない（ESLint・tsconfig への型定義追加が不要になる）
+
+#### Step2: mapStore（Undo/Redo・各スライス）のテスト
+- [ ] `packages/core/src/stores/map/history.test.ts` を新規作成。`useMapStore`（`packages/core/src/stores/mapStore.ts`）経由で `pushPast`（`MAX_HISTORY = 50` を超えると古い履歴から切り詰められる）と `undo`/`redo`（`past`/`future` の入れ替え、どちらも空のときは状態を変えない）を検証する
+- [ ] `packages/core/src/stores/map/nodeSlice.test.ts` を新規作成。`addNode`/`deleteNode`/`deleteNodes`/`deleteSelected`/`applyClusterCategory` が `nodes` と `past` を正しく更新すること、`setNodesNoHistory` が `past` を積まないこと、`commitNodesWithHistory` が整列前スナップショットを1回だけ `past` に積むことを検証する
+- [ ] `packages/core/src/stores/map/edgeSlice.test.ts` を新規作成。`onConnect`/`connectNodes`（重複排除）・`reverseEdge`・`toggleEdgeDirection`・`connectDroppedNode`（`sourceId === targetId` または既に接続済みなら何もしない、Phase 40）を検証する
+- [ ] `packages/core/src/stores/map/groupSlice.test.ts` を新規作成。`groupSelectedNodes`/`ungroupNodes`/`deleteGroupWithChildren`/`addNodeToGroup`/`removeNodeFromGroup` の正常系とガード条件を検証する
+- [ ] `packages/core/src/stores/map/documentSlice.test.ts` を新規作成。`loadFromSerialized` → `getSerializedNodes`/`getSerializedEdges` の往復と `reset` を検証する
+
+#### Step3: レイアウト計算のテスト（`verify-radial-layout.mts` の移植）
+- [ ] `packages/core/src/layout/mapLayout.test.ts` を新規作成し、`verify-radial-layout.mts` が行っている検証（幅・深さの異なる木でノード矩形が重ならないこと、末端が親から一定距離内に収まること）を `applyRadialLayout` に対する Vitest の `test`/`expect` として移植する。`findFreePosition` の空きスロット探索についても正常系のテストを追加する
+- [ ] 移植後、`packages/core/verify-radial-layout.mts` とルート `package.json` の `"check:radial"` スクリプトを削除する
+
+#### Step4: LLM プロバイダのパース処理のテスト（`verify-openai.mts` の移植）
+- [ ] `packages/core/src/llm/openaiProvider.test.ts` を新規作成し、`verify-openai.mts` の9項目（SSEパース・400フォールバック・エラー分類・`completeJson`・`listModels` 絞り込み・system プロンプト変換など）を同じ `HttpAdapter` 差し替え手法（`setPlatform`）のまま Vitest に移植する
+- [ ] 移植後、`packages/core/verify-openai.mts` とルート `package.json` の `"check:openai"` スクリプトを削除する
+- [ ] `packages/core/src/llm/jsonUtils.test.ts` を新規作成し、`safeParseJson`（前置き付き応答からのJSON抽出、不正JSONでの `AIParseError`）を検証する
+- [ ] `packages/core/src/llm/ollamaProvider.test.ts` を新規作成し、`toOllamaMessages`（system プロンプトの変換）とストリーミング応答パースを検証する
+
+#### Step5: driveService のリクエスト組み立てのテスト
+- [ ] `packages/core/src/services/driveService.test.ts` を新規作成。`buildMultipartBody`（`multipart/related` 文字列の組み立て）を直接検証し、`saveMap`/`loadMap`/`listMaps` は `setPlatform` で `HttpAdapter` をモックして呼び出された URL・メソッド・ヘッダを検証する（テスト間は `clearDriveCache()` で `folderIdCache`/`settingsFileIdCache` をリセットする）
+
+#### Step6: CI 組み込み
+- [ ] `.github/workflows/deploy.yml` の `build` ジョブに、`pnpm build` の前に `pnpm test` を実行するステップを追加する（テストが赤なら GitHub Pages へのデプロイが止まる）
+- [ ] `.github/workflows/release-desktop.yml` に `test` ジョブを新規追加する（`pnpm/action-setup` → `actions/setup-node`（pnpm キャッシュ）→ `pnpm install --frozen-lockfile` → `pnpm test`）。`build` ジョブの `needs` を現在の `verify-version` から `[verify-version, test]` に変更する（テストが赤ならインストーラのビルド・リリースが止まる）
+
+#### Step7: ドキュメント更新
+- [ ] `CLAUDE.md`「開発環境」のコマンド一覧から `pnpm check:openai` の説明を削除し、`pnpm test`（Vitest によるユニットテスト実行）を追加する
+- [ ] `docs/design.md` の該当箇所（現在 `pnpm check:radial` を参照している放射状レイアウトの検証方法の記述、§放射状レイアウト付近）を Vitest ベースの記述に更新する。あわせてテスト戦略（対象を `packages/core` に限定し、Web版・デスクトップ版で共通する純粋ロジックを優先する方針）を追記する
+- [ ] `docs/requirements.md` §3.2（パフォーマンス）または非機能要件に「自動テストによる品質担保」の記述を追記する
+
+**完了条件**: `pnpm test` がローカルで通過し、`pnpm typecheck`/`pnpm build`/`pnpm lint` に影響がないこと。`verify-openai.mts`・`verify-radial-layout.mts`・対応する `package.json` スクリプト（`check:openai`/`check:radial`）が削除され、CI（`deploy.yml`・`release-desktop.yml`）にテスト実行ステップが追加されていること。
+
+---
+
+### Phase 42: セキュリティ仕上げ（約2日）
+
+**目標**: v1.0 の品質基盤として、Web版への CSP 追加・依存脆弱性の継続監視・Google OAuth 同意画面の本番公開化を行う（`docs/roadmap.md` §3.3）。
+
+#### A. Web版への CSP 追加（現状デスクトップ版のみ CSP がある）
+- [ ] Web版が実際に通信・読み込みしている外部オリジンを実コードから洗い出す。対象: `packages/core/src/llm/claudeProvider.ts`（`@anthropic-ai/sdk` の既定送信先 `api.anthropic.com`）、`packages/core/src/llm/openaiProvider.ts`（`https://api.openai.com`）、`packages/core/src/services/driveService.ts`・`apps/web/src/hooks/useGoogleAuth.ts`（`https://www.googleapis.com`、GIS のトークン取得先 `https://accounts.google.com`）、`apps/web/index.html`（`<script src="https://accounts.google.com/gsi/client">`）。`packages/core/src/llm/webSearch.ts` の `ollama.com`/`docs.ollama.com` はデスクトップ限定機能で Web版からは到達しないため対象外とする根拠も記録する
+- [ ] 洗い出した結果を元に `apps/web/index.html` の `<head>` に `<meta http-equiv="Content-Security-Policy">` タグを追加する。`connect-src` は上記で洗い出したオリジンのみに限定し、`script-src` に `https://accounts.google.com` を追加する（GIS スクリプト読み込み用）。`default-src 'self'` を基本とし、`style-src`/`img-src`/`font-src` 等は `pnpm build` の出力（`apps/web/dist`）が実際に何を読み込むか確認しながら決める（デスクトップ版の `apps/desktop/src-tauri/tauri.conf.json` の `csp`/`devCsp` を参考にする）
+- [ ] `pnpm build` → `pnpm preview` で CSP 追加後に主要機能（AI提案・AIチャット・Google Drive 連携・GISログイン）がブロックされずに動作することを、ブラウザ開発者ツールの CSP 違反ログで確認する
+
+#### B. 依存脆弱性の継続監視
+- [ ] `.github/dependabot.yml` を新規作成する。`package-ecosystem: "npm"`（ディレクトリ `/`、pnpm workspace のルート lockfile を対象）と `package-ecosystem: "cargo"`（ディレクトリ `/apps/desktop/src-tauri`）を週次スケジュールで設定する（`docs/roadmap.md` §3.3 の「Dependabot または `pnpm audit` の CI 組み込み」のうち、追加のCI実行時間を要さずPRベースで継続監視できる Dependabot を採用する）
+
+#### C. Google OAuth 同意画面の「In production」化
+- [ ] **これはコードで完結しない開発者の手作業である。** Google Cloud Console の OAuth 同意画面設定で公開ステータスを「テスト」から「本番」に変更する。「Testing」のままだとリフレッシュトークンが7日で失効する既知課題（`docs/roadmap.md` §1、本ドキュメント §2「Google Cloud Project 設定」）を解消する
+- [ ] 本ドキュメント §2「Google Cloud Project 設定（開発者向け）」に、OAuth 同意画面を本番公開する手順（アプリ情報入力・スコープ確認・Google の審査要否の確認）を追記する
+
+#### ドキュメント更新
+- [ ] `docs/design.md` に Web版 CSP の設計判断（許可オリジンの一覧と理由、デスクトップ版 CSP との差分）を追記する
+- [ ] `docs/requirements.md` §3.3（セキュリティ）に CSP・Dependabot・OAuth本番化の記述を追記する
+
+**完了条件**: `apps/web/index.html` に CSP メタタグが追加され、`pnpm build` → `pnpm preview` で主要機能が CSP 違反なく動作すること。`.github/dependabot.yml` が追加されていること。OAuth 本番化はユーザーの手作業のため、手順書への追記をもって完了とする（実施自体はユーザー判断で別途行う）。
+
+---
+
+### Phase 43: エラー可視化と性能ベースライン（約3日）
+
+**目標**: グローバルエラーハンドラでエラーをローカルログ（リングバッファ）に蓄積し、設定パネルからエクスポートできるようにする。500/1000ノードのベンチマークマップで初期描画・ドラッグ・自動整列・Undo の所要時間を計測して記録する（対策は計測後に別フェーズで判断し、本フェーズでは先回りの最適化を行わない）。外部エラー監視サービス（Sentry等）は導入しない方針（`docs/roadmap.md` §3.4、§8）。
+
+#### A. エラーログのローカル蓄積とエクスポート
+- [ ] `packages/core/src/types/index.ts` に `ErrorLogEntry`（`timestamp`/`message`/`stack`/`source` 等）型を追加する
+- [ ] `packages/core/src/stores/errorLogStore.ts` を新規作成し、上限件数（例: 100件）のリングバッファでエラーログを保持する zustand ストアを実装する。永続化は既存の `StorageAdapter`（`packages/platform` の `storage.getItem`/`setItem`、Web/Desktop 双方に実装済み）経由で行い、新規の Adapter メソッド追加は不要とする
+- [ ] グローバルエラーハンドラを追加する。Web版は `apps/web/src/main.tsx`、デスクトップ版は `apps/desktop/src/main.tsx` に `window.addEventListener('error', ...)` と `window.addEventListener('unhandledrejection', ...)` を登録し、捕捉したエラーを `errorLogStore` に積む共通処理を `packages/core` 側に用意して両アプリから呼ぶ。React のレンダーエラー用の ErrorBoundary は現状リポジトリに存在しないため、`packages/ui` に新規追加するかどうかをコードを読んで判断し、追加する場合は `packages/ui/src/components/` に配置する
+- [ ] `packages/ui/src/components/panels/SettingsPanel.tsx` に「エラーログをエクスポート」ボタンを追加する。押下時に `errorLogStore` の内容をJSON文字列化し、既存の `getPlatform().file.exportBlob()`（Web=`<a download>`、Desktop=保存ダイアログ、新規メソッド追加不要）でファイル書き出しする
+- [ ] `docs/design.md`「状態管理設計」に `errorLogStore` とグローバルエラーハンドラの設計を追記し、`docs/requirements.md` §3.3（セキュリティ）または非機能要件に「エラーログのローカル保持とエクスポート」を追記する
+
+#### B. 性能ベースライン計測
+- [ ] 500ノード・1000ノードのベンチマークマップ（`.ideamap` ファイル）を生成するスクリプト（`scripts/generate-benchmark-map.mjs`）を新規作成する。ノード数・エッジ数・階層構造（親子関係）を引数で指定して出力する
+- [ ] 生成したベンチマークマップを Web版（`pnpm build` → `pnpm preview`）で読み込み、初期描画・ドラッグ・自動整列（放射状レイアウト再計算）・Undo の所要時間をブラウザの Performance API または実測で計測する
+- [ ] 計測結果を本ドキュメントの本フェーズ内に記録する。**対策（最適化）は本フェーズでは行わない**。要求水準を下回る項目があれば、対策は別フェーズとして起票する判断材料として記録するに留める
+- [ ] `docs/requirements.md` §3.2（パフォーマンス）に計測結果と計測方法を追記する
+
+**完了条件**: グローバルエラーハンドラが動作し、型検査・ビルドが通過すること。設定パネルからエラーログをエクスポートできること。500/1000ノードの計測結果が本ドキュメントに記録されていること。最適化の実施は本フェーズのスコープ外。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
