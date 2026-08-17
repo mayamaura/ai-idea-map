@@ -23,6 +23,7 @@ import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsMod
 import { PresentationOrderPanel } from './components/panels/PresentationOrderPanel'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAutoSave, type AutoSaveOptions } from './hooks/useAutoSave'
+import { useGlobalErrorLog } from './hooks/useGlobalErrorLog'
 
 const WELCOME_KEY = 'ideamap-welcomed'
 
@@ -85,6 +86,7 @@ function AppInner({
   onSaveToLocal,
 }: AppProps) {
   useKeyboardShortcuts()
+  useGlobalErrorLog()
 
   const auth = cloudAuth ?? NO_CLOUD_AUTH
   const [showWelcome, setShowWelcome] = useState(false)
