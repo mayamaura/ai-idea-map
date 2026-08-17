@@ -1,6 +1,16 @@
 import { useState, useRef, useCallback } from 'react'
 import { useReactFlow } from '@xyflow/react'
-import { useMapStore, useUIStore, type IdeaNodeData, type MapFile } from '@ideamap/core'
+import {
+  useMapStore,
+  useUIStore,
+  useSettingsStore,
+  extractMapFromText,
+  buildMapFragmentFromExtracted,
+  toFriendlyAIError,
+  isAbortError,
+  type IdeaNodeData,
+  type MapFile,
+} from '@ideamap/core'
 import type { Node } from '@xyflow/react'
 import { getPlatform } from '@ideamap/platform'
 import {
@@ -10,8 +20,11 @@ import {
   importFromJson,
   indentedTextToNodes,
 } from '../../services/exportService'
+import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { useActiveProvider } from '../../hooks/useActiveProvider'
 
 type Tab = 'export' | 'import' | 'share'
+type BrainDumpTarget = 'new' | 'append'
 
 export interface ExportImportPanelProps {
   /**
@@ -22,10 +35,25 @@ export interface ExportImportPanelProps {
 }
 
 export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps = {}) {
-  const { isExportPanelOpen, setExportPanelOpen, addToast, mapTitle, setMapTitle, currentMapId, openConfirmDialog, setRenderAllNodes } =
-    useUIStore()
-  const { nodes, edges, getSerializedNodes, getSerializedEdges, loadFromSerialized } = useMapStore()
+  const {
+    isExportPanelOpen,
+    setExportPanelOpen,
+    addToast,
+    mapTitle,
+    setMapTitle,
+    currentMapId,
+    openConfirmDialog,
+    setRenderAllNodes,
+    setSettingsOpen,
+    setCurrentFileId,
+    setCurrentMapId,
+    setPresentationNodeIds,
+    setSaveStatus,
+  } = useUIStore()
+  const { nodes, edges, getSerializedNodes, getSerializedEdges, loadFromSerialized, reset } = useMapStore()
   const { getViewport } = useReactFlow()
+  const categories = useSettingsStore((s) => s.categories)
+  const { provider, isReady, providerId } = useActiveProvider()
 
   const [tab, setTab] = useState<Tab>('export')
   const [imageMode, setImageMode] = useState<'current' | 'full'>('full')
@@ -37,6 +65,12 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
   const [pasteText, setPasteText] = useState('')
   const [urlCopied, setUrlCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [brainDumpEnabled, setBrainDumpEnabled] = useState(false)
+  const [brainDumpText, setBrainDumpText] = useState('')
+  const [brainDumpTarget, setBrainDumpTarget] = useState<BrainDumpTarget>('append')
+  const [isBrainDumpLoading, setIsBrainDumpLoading] = useState(false)
+  const brainDumpAbortRef = useRef<AbortController | null>(null)
 
   const getMapFile = useCallback((): MapFile => ({
     version: '1.0',
@@ -120,6 +154,61 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
     loadFromSerialized([...currentNodes, ...newNodes], [...currentEdges, ...newEdges])
     setPasteText('')
     addToast(`${newNodes.length}個のノードを追加しました`, 'success')
+  }
+
+  const handleBrainDumpExtract = async () => {
+    if (!brainDumpText.trim()) return
+    if (!isReady) {
+      addToast(providerId === 'ollama' ? '使用するOllamaモデルが選択されていません' : 'APIキーが設定されていません', 'error')
+      return
+    }
+    setIsBrainDumpLoading(true)
+    const ctrl = new AbortController()
+    brainDumpAbortRef.current = ctrl
+    try {
+      const currentNodes = getSerializedNodes()
+      const existingNodes = brainDumpTarget === 'append'
+        ? currentNodes.map((n) => ({ id: n.id, title: n.title }))
+        : undefined
+
+      const extracted = await extractMapFromText(
+        { provider, text: brainDumpText, categories, existingNodes },
+        ctrl.signal
+      )
+      const fragment = await buildMapFragmentFromExtracted(
+        extracted,
+        brainDumpTarget === 'append' ? { nodes: currentNodes } : undefined
+      )
+      if (fragment.nodes.length === 0) {
+        addToast('構造を抽出できませんでした', 'error')
+        return
+      }
+
+      if (brainDumpTarget === 'append') {
+        const currentEdges = getSerializedEdges()
+        loadFromSerialized([...currentNodes, ...fragment.nodes], [...currentEdges, ...fragment.edges])
+      } else {
+        // 新規作成フロー（useFileDashboard.startNewMap）と同じ手順で保存先の紐付けをリセットする。
+        // ここを省くと「新規マップのつもりが前回開いていたファイルに上書き保存される」事故になる
+        reset()
+        loadFromSerialized(fragment.nodes, fragment.edges)
+        const firstLine = brainDumpText.trim().split('\n')[0]?.trim()
+        setMapTitle(firstLine ? firstLine.slice(0, 30) : '新しいマップ')
+        setCurrentFileId(null)
+        setCurrentMapId(null)
+        setPresentationNodeIds([])
+        setSaveStatus('unsaved')
+      }
+
+      setBrainDumpText('')
+      addToast(`${fragment.nodes.length}個のノードを追加しました`, 'success')
+    } catch (e) {
+      if (isAbortError(e)) return
+      addToast(toFriendlyAIError(e), 'error')
+    } finally {
+      setIsBrainDumpLoading(false)
+      brainDumpAbortRef.current = null
+    }
   }
 
   const handleGenerateShareUrl = () => {
@@ -390,6 +479,93 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
                 >
                   ノードを追加
                 </button>
+              </div>
+
+              {/* AIで構造化（ブレインダンプ→マップ生成、Phase 44） */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    AIで構造化（ブレインダンプ）
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={brainDumpEnabled}
+                    onChange={(e) => setBrainDumpEnabled(e.target.checked)}
+                    className="rounded"
+                  />
+                </label>
+
+                {brainDumpEnabled && (
+                  !isReady ? (
+                    <ApiKeyRequired
+                      providerId={providerId}
+                      className="py-4"
+                      onOpenSettings={() => {
+                        setExportPanelOpen(false)
+                        setSettingsOpen(true)
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        議事録・メモ・箇条書きなどを貼り付けると、AIが階層構造を抽出してマインドマップを生成します。
+                      </p>
+                      <textarea
+                        value={brainDumpText}
+                        onChange={(e) => setBrainDumpText(e.target.value)}
+                        placeholder={`例:\n新機能の企画会議\n- ターゲットは中小企業\n- 価格帯は月額1000円〜\n- 競合はA社とB社`}
+                        rows={6}
+                        disabled={isBrainDumpLoading}
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-60"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setBrainDumpTarget('new')}
+                          disabled={isBrainDumpLoading}
+                          className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-50 ${
+                            brainDumpTarget === 'new'
+                              ? 'bg-primary-50 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:border-primary-500 dark:text-primary-300'
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          新規マップとして生成
+                        </button>
+                        <button
+                          onClick={() => setBrainDumpTarget('append')}
+                          disabled={isBrainDumpLoading}
+                          className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-50 ${
+                            brainDumpTarget === 'append'
+                              ? 'bg-primary-50 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:border-primary-500 dark:text-primary-300'
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          現在のマップに追記
+                        </button>
+                      </div>
+
+                      {isBrainDumpLoading ? (
+                        <div className="flex items-center justify-center gap-3 py-1.5">
+                          <span className="animate-spin w-4 h-4 border-2 border-primary-200 border-t-primary-600 rounded-full flex-shrink-0" />
+                          <span className="text-xs text-gray-500 dark:text-gray-400">AIが構造を抽出しています...</span>
+                          <button
+                            onClick={() => brainDumpAbortRef.current?.abort()}
+                            className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline"
+                          >
+                            キャンセル
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => void handleBrainDumpExtract()}
+                          disabled={!brainDumpText.trim()}
+                          className="w-full py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          マップを生成
+                        </button>
+                      )}
+                    </>
+                  )
+                )}
               </div>
             </>
           )}
