@@ -2073,33 +2073,32 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - [x] `vitest.config.ts` はリポジトリルートではなく `packages/core` 配下に作成した。`test.include` は `src/**/*.test.ts`、`test.environment` は `'node'`（`packages/core` は DOM に依存しない純粋ロジックのみのため）。テストファイルは `describe`/`it`/`expect` を `vitest` から明示 import する方針とし、`globals: true` は設定していない（2026-08-17 実装）
 
 #### Step2: mapStore（Undo/Redo・各スライス）のテスト
-- [ ] `packages/core/src/stores/map/history.test.ts` を新規作成。`useMapStore`（`packages/core/src/stores/mapStore.ts`）経由で `pushPast`（`MAX_HISTORY = 50` を超えると古い履歴から切り詰められる）と `undo`/`redo`（`past`/`future` の入れ替え、どちらも空のときは状態を変えない）を検証する
-- [ ] `packages/core/src/stores/map/nodeSlice.test.ts` を新規作成。`addNode`/`deleteNode`/`deleteNodes`/`deleteSelected`/`applyClusterCategory` が `nodes` と `past` を正しく更新すること、`setNodesNoHistory` が `past` を積まないこと、`commitNodesWithHistory` が整列前スナップショットを1回だけ `past` に積むことを検証する
-- [ ] `packages/core/src/stores/map/edgeSlice.test.ts` を新規作成。`onConnect`/`connectNodes`（重複排除）・`reverseEdge`・`toggleEdgeDirection`・`connectDroppedNode`（`sourceId === targetId` または既に接続済みなら何もしない、Phase 40）を検証する
-- [ ] `packages/core/src/stores/map/groupSlice.test.ts` を新規作成。`groupSelectedNodes`/`ungroupNodes`/`deleteGroupWithChildren`/`addNodeToGroup`/`removeNodeFromGroup` の正常系とガード条件を検証する
-- [ ] `packages/core/src/stores/map/documentSlice.test.ts` を新規作成。`loadFromSerialized` → `getSerializedNodes`/`getSerializedEdges` の往復と `reset` を検証する
+- [x] スライスごとのファイル分割ではなく `packages/core/src/stores/mapStore.test.ts`（16件）＋ `mapSnapshot.test.ts`（2件）の2ファイル構成で作成した。ノード操作（追加・改名・削除と past の積み方、undo/redo 往復）、`onNodesChange` のドラッグ中非履歴／確定時1回積み、エッジ操作（`onConnect`/`deleteEdge`/`connectDroppedNode` のガードと履歴相乗り）、グループ化・解除、`loadFromSerialized`/`reset`/`buildMapFile` をカバー（2026-08-17 実装）
+- [x] **このテスト作成中に実バグを発見・修正**: ドラッグ確定時に取るスナップショットが最後の中間位置を捉えており、ノードドラッグ後の Undo が開始位置に戻らなかった。最初の `dragging: true` でドラッグ開始時点のスナップショットを控える方式に修正（`nodeSlice.ts`、コミット facf230）（2026-08-17 修正）
 
 #### Step3: レイアウト計算のテスト（`verify-radial-layout.mts` の移植）
-- [ ] `packages/core/src/layout/mapLayout.test.ts` を新規作成し、`verify-radial-layout.mts` が行っている検証（幅・深さの異なる木でノード矩形が重ならないこと、末端が親から一定距離内に収まること）を `applyRadialLayout` に対する Vitest の `test`/`expect` として移植する。`findFreePosition` の空きスロット探索についても正常系のテストを追加する
-- [ ] 移植後、`packages/core/verify-radial-layout.mts` とルート `package.json` の `"check:radial"` スクリプトを削除する
+- [x] `packages/core/src/layout/mapLayout.test.ts`（13件）を作成し、`verify-radial-layout.mts` の全項目（6パターンの木・不均等な枝・孤立ノードで、矩形の非重なり・末端が親から400px以内）を `it.each` で移植。加えて dagre レイアウトの基本性質（ノード数維持・有限座標・rankdir の意味）と空入力・単一ノードの端ケースを追加。`groupGeometry.test.ts`（21件）も作成（2026-08-17 実装）
+- [x] `packages/core/verify-radial-layout.mts` とルート `package.json` の `"check:radial"` スクリプトを削除した（2026-08-17 実装）
 
 #### Step4: LLM プロバイダのパース処理のテスト（`verify-openai.mts` の移植）
-- [ ] `packages/core/src/llm/openaiProvider.test.ts` を新規作成し、`verify-openai.mts` の9項目（SSEパース・400フォールバック・エラー分類・`completeJson`・`listModels` 絞り込み・system プロンプト変換など）を同じ `HttpAdapter` 差し替え手法（`setPlatform`）のまま Vitest に移植する
-- [ ] 移植後、`packages/core/verify-openai.mts` とルート `package.json` の `"check:openai"` スクリプトを削除する
-- [ ] `packages/core/src/llm/jsonUtils.test.ts` を新規作成し、`safeParseJson`（前置き付き応答からのJSON抽出、不正JSONでの `AIParseError`）を検証する
-- [ ] `packages/core/src/llm/ollamaProvider.test.ts` を新規作成し、`toOllamaMessages`（system プロンプトの変換）とストリーミング応答パースを検証する
+- [x] `packages/core/src/llm/openaiProvider.test.ts`（13件）を作成し、`verify-openai.mts` の9項目（SSEパース・400フォールバック・エラー分類・`completeJson`・`listModels` 絞り込み・system プロンプト変換など）を移植（2026-08-17 実装）
+- [x] `packages/core/verify-openai.mts` とルート `package.json` の `"check:openai"` スクリプトを削除した（2026-08-17 実装）
+- [x] `packages/core/src/llm/jsonUtils.test.ts`（5件）を先行作成済み（コミット c24d4b7）
+- [x] `packages/core/src/llm/ollamaProvider.test.ts`（17件）を作成。加えて計画になかった `claudeProvider.test.ts`（16件、SDK をモック fetch で検証）と `providerFactory.test.ts`（6件）も作成（2026-08-17 実装）
 
 #### Step5: driveService のリクエスト組み立てのテスト
-- [ ] `packages/core/src/services/driveService.test.ts` を新規作成。`buildMultipartBody`（`multipart/related` 文字列の組み立て）を直接検証し、`saveMap`/`loadMap`/`listMaps` は `setPlatform` で `HttpAdapter` をモックして呼び出された URL・メソッド・ヘッダを検証する（テスト間は `clearDriveCache()` で `folderIdCache`/`settingsFileIdCache` をリセットする）
+- [x] `packages/core/src/services/driveService.test.ts`（10件）を作成。PATCH/POST の分岐（fileId あり／なし／mapId 検索ヒット）、`multipart/related` ボディの構造検証、`folderIdCache`/`settingsFileIdCache` のキャッシュ効果と `clearDriveCache()`、401 エラーの伝播を HttpAdapter モックで検証。あわせて `passwordCrypto.test.ts`（8件）・`mapFileCompat.test.ts`（7件）も作成（2026-08-17 実装）
 
 #### Step6: CI 組み込み
 - [x] `.github/workflows/deploy.yml` の `build` ジョブに、`pnpm build` の前に `pnpm test` を実行するステップを追加した（テストが赤なら GitHub Pages へのデプロイが止まる）（2026-08-17 実装）
 - [x] `.github/workflows/release-desktop.yml` は独立した `test` ジョブを新設せず、既存の `build` ジョブ（`pnpm install --frozen-lockfile` の直後、Tauri ビルドの前）に `pnpm test` ステップを追加する形にした（マトリクスビルド＝macOS 2種＋Windows のジョブごとにテストが再実行されるが、`needs` を増やしてジョブを分けるより変更が小さいため採用。`build` ジョブの `needs` は `verify-version` のまま変更していない）。テストが赤ければ Tauri ビルド・GitHub Release 公開が止まる（2026-08-17 実装、当初案の別ジョブ新設から変更）
 
 #### Step7: ドキュメント更新
-- [ ] `CLAUDE.md`「開発環境」のコマンド一覧から `pnpm check:openai` の説明を削除し、`pnpm test`（Vitest によるユニットテスト実行）を追加する（`pnpm test` の追加は c24d4b7 で先行実施済みだが、`check:openai` は Step4 未着手のため説明を残したまま）
-- [ ] `docs/design.md` の該当箇所（現在 `pnpm check:radial` を参照している放射状レイアウトの検証方法の記述、§放射状レイアウト付近）を Vitest ベースの記述に更新する（Step3 未着手のため保留）
+- [x] `CLAUDE.md`「開発環境」のコマンド一覧から `pnpm check:openai` の説明を削除し、`pnpm test` を追加した（2026-08-17 実装）
+- [x] `docs/design.md` の放射状レイアウト検証の記述（旧 `pnpm check:radial` 参照）と §20 テスト基盤の verify スクリプト記述を Vitest ベースに更新した（2026-08-17 実装）
 - [x] `docs/requirements.md` の非機能要件に「自動テストによる品質担保」の記述を追記した（§3.2 ではなく新設の §3.5 保守性・信頼性に配置）（2026-08-17 実装）
+
+**実績**: テスト合計 132 件（12ファイル）が `pnpm test` で通過。型検査・lint への影響なし。
 
 **完了条件**: `pnpm test` がローカルで通過し、`pnpm typecheck`/`pnpm build`/`pnpm lint` に影響がないこと。`verify-openai.mts`・`verify-radial-layout.mts`・対応する `package.json` スクリプト（`check:openai`/`check:radial`）が削除され、CI（`deploy.yml`・`release-desktop.yml`）にテスト実行ステップが追加されていること。
 
@@ -2141,10 +2140,12 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 - [x] `docs/design.md`・`docs/requirements.md` を更新した（2026-08-17 実装）
 
 #### B. 性能ベースライン計測
-- [ ] 500ノード・1000ノードのベンチマークマップ（`.ideamap` ファイル）を生成するスクリプト（`scripts/generate-benchmark-map.mjs`）を新規作成する。ノード数・エッジ数・階層構造（親子関係）を引数で指定して出力する
-- [ ] 生成したベンチマークマップを Web版（`pnpm build` → `pnpm preview`）で読み込み、初期描画・ドラッグ・自動整列（放射状レイアウト再計算）・Undo の所要時間をブラウザの Performance API または実測で計測する
-- [ ] 計測結果を本ドキュメントの本フェーズ内に記録する。**対策（最適化）は本フェーズでは行わない**。要求水準を下回る項目があれば、対策は別フェーズとして起票する判断材料として記録するに留める
-- [ ] `docs/requirements.md` §3.2（パフォーマンス）に計測結果と計測方法を追記する
+- [x] 計画の `scripts/generate-benchmark-map.mjs` ではなく `scripts/bench-core.mts`（`pnpm bench:core`）として実装した。ベンチマップ生成（固定シードの擬似乱数で再現性を確保、`--emit` で `.ideamap` 書き出し）と、ブラウザ外で測れる範囲（自動整列・シリアライズ/パース）の計測を1本にまとめている（2026-08-17 実装）
+- [x] 計測結果（Node 24 / 開発機、3回実行の中央値）:
+  - **500ノード**: 放射状レイアウト 1.2ms / dagre 89ms / シリアライズ 0.20ms / パース 0.21ms / JSON 87KB
+  - **1000ノード**: 放射状レイアウト 1.7ms / dagre 245ms / シリアライズ 0.40ms / パース 0.41ms / JSON 175KB
+  - **結論: 対策（最適化）は不要**。dagre の 245ms もオンデマンド操作（整列ボタン）のため許容範囲（2026-08-17 計測）
+- [ ] ブラウザ側の初期描画・ドラッグの計測（`--emit` した `.ideamap` を実アプリで開いて確認）。`onlyRenderVisibleElements` 導入済み（Phase 28）のため優先度は低い
 
 **完了条件**: グローバルエラーハンドラが動作し、型検査・ビルドが通過すること。設定パネルからエラーログをエクスポートできること。500/1000ノードの計測結果が本ドキュメントに記録されていること。最適化の実施は本フェーズのスコープ外。
 

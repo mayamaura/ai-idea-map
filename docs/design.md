@@ -1246,7 +1246,7 @@ export interface WebSearchOptions {
 
 座標は中心基準で計算し、最後にノードサイズの半分を引いて左上座標に直す（グループノードは `style.width/height` の実サイズを使う）。孤立ノード（ルートから到達できないノード）は木全体の外側に横並びで置く。
 
-自己チェックは `pnpm check:radial`（`packages/core/verify-radial-layout.mts`）。木の幅・深さを変えた6パターン＋枝ごとに子の数が違う木＋孤立ノードありで、**全ノードの矩形が重ならないこと**と**末端が親から 400px 以内にあること**を検証する。後者が本方式を採った理由そのものなので、半径の決め方を変えるときはここを見る。
+検証は `packages/core/src/layout/mapLayout.test.ts`（`pnpm test` で実行。Phase 41 で `verify-radial-layout.mts` から移植）。木の幅・深さを変えた6パターン＋枝ごとに子の数が違う木＋孤立ノードありで、**全ノードの矩形が重ならないこと**と**末端が親から 400px 以内にあること**を検証する。後者が本方式を採った理由そのものなので、半径の決め方を変えるときはここを見る。
 
 ---
 
@@ -1809,4 +1809,4 @@ Web版で作ったマップをデスクトップ版からもそのまま開け�
 - **実行**: ルート `package.json` の `"test": "pnpm -r run test"` が、`"test"` スクリプトを持つワークスペース（現状は `packages/core` の `"test": "vitest run"` のみ）を再帰実行する
 - **型検査との関係**: テストファイルは `packages/core/tsconfig.json` の `include: ["src"]` に含まれるため、`pnpm typecheck`（`tsc -b`）の対象にもなる
 - **CI連携**: `.github/workflows/deploy.yml` の `build` ジョブ、`.github/workflows/release-desktop.yml` の `build` ジョブがそれぞれ `pnpm install` の直後・本体ビルドの前に `pnpm test` を実行する。テストが赤ければデプロイ・リリースの後続ステップが止まる
-- **既存の手動検証スクリプトとの関係**: `packages/core/verify-openai.mts`（`pnpm check:openai`）・`packages/core/verify-radial-layout.mts`（`pnpm check:radial`）は Vitest 未移植のままそれぞれ現役（放射状レイアウトの検証は §11.8 参照）。将来的に Vitest へ移植し削除する計画（`docs/implementation-plan.md` Phase 41 Step3・Step4）
+- **旧・手動検証スクリプトとの関係**: `verify-openai.mts` は `src/llm/openaiProvider.test.ts` へ、`verify-radial-layout.mts` は `src/layout/mapLayout.test.ts` へ全項目を移植済みで、`.mts` 本体と `check:openai`/`check:radial` スクリプトは削除した（Phase 41 Step3・Step4）

@@ -87,7 +87,6 @@ pnpm preview       # ビルド結果を確認
 pnpm lint          # 全パッケージの ESLint
 pnpm typecheck     # 型検査のみ
 pnpm test          # ユニットテスト（Vitest。現状は packages/core のみ）
-pnpm check:openai  # OpenAIProvider の自己チェック（SSEパース・400フォールバック・エラー分類）
 pnpm dev:desktop   # デスクトップ版を起動（Vite は 5174、Tauri がウィンドウを開く）
 pnpm build:desktop # デスクトップ版のインストーラをビルド
 ```
