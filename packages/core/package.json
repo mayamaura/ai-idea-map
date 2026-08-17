@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "0.98.0",
     "@dagrejs/dagre": "3.0.0",
@@ -13,5 +16,8 @@
     "@xyflow/react": "12.10.2",
     "uuid": "14.0.0",
     "zustand": "5.0.13"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }
