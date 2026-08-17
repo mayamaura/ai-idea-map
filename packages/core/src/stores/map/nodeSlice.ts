@@ -341,6 +341,25 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
       future: [],
     })),
 
+  updateNodeLinkedMap: (id, link) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === id
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                linkedMapId: link?.mapId,
+                linkedMapOrigin: link?.origin,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : n
+      ),
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })),
+
   deleteNode: (id) =>
     set((state) => ({
       nodes: state.nodes.filter((n) => n.id !== id),

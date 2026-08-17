@@ -225,11 +225,20 @@ export function IdeaCanvas() {
     if (!pendingFitView) return
     // ノードがDOMに反映されるのを待ってからfitViewを実行
     const id = setTimeout(() => {
-      fitView({ padding: 0.2, duration: 400 })
+      // マップ横断リンク・検索からの遷移（Phase 52）はジャンプ先ノードを指定していることがある。
+      // 通常のマップ読み込み（pendingFitView のみ）は全体表示のまま
+      const jumpNodeId = useUIStore.getState().pendingJumpNodeId
+      if (jumpNodeId) {
+        setSelectedNodeId(jumpNodeId)
+        fitView({ nodes: [{ id: jumpNodeId }], duration: 400, padding: 0.3 })
+        useUIStore.getState().setPendingJumpNodeId(null)
+      } else {
+        fitView({ padding: 0.2, duration: 400 })
+      }
       clearPendingFitView()
     }, 50)
     return () => clearTimeout(id)
-  }, [pendingFitView, fitView, clearPendingFitView])
+  }, [pendingFitView, fitView, clearPendingFitView, setSelectedNodeId])
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

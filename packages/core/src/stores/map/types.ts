@@ -43,6 +43,8 @@ export interface NodeSlice {
   updateNodeCategory: (id: string, categoryId: string, color: string) => void
   updateNodeUrl: (id: string, url: string) => void
   updateNodeImage: (id: string, image: string | undefined) => void
+  /** 他マップへのリンクを設定・解除する（undefined で解除。Phase 52） */
+  updateNodeLinkedMap: (id: string, link: { mapId: string; origin: 'cloud' | 'local' } | undefined) => void
   deleteNode: (id: string) => void
   deleteNodes: (ids: string[]) => void
   deleteSelected: () => void

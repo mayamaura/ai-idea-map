@@ -4,6 +4,8 @@ import { Handle, Position, NodeToolbar, type NodeProps, type Node } from '@xyflo
 import { getPlatform } from '@ideamap/platform'
 import { useMapStore, useUIStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import { useNodeFocus } from '../../hooks/useNodeFocus'
+import { useLinkedMapTitle } from '../../hooks/useLinkedMapTitle'
+import { openLinkedMap } from '../../hooks/useFileDashboard'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
 function shapeClass(shape: string): string {
@@ -169,6 +171,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const showCategoryLabel = selected && category && category.id !== 'cat-none'
   const isInPresentation = presentationIndex !== -1
   const domainLabel = getDomainLabel(nodeData.url)
+  const linkedMapTitle = useLinkedMapTitle(nodeData.linkedMapId)
 
   const handleLinkClick = useCallback(
     (e: React.MouseEvent) => {
@@ -176,6 +179,16 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       if (nodeData.url) void getPlatform().system.openExternalUrl(nodeData.url)
     },
     [nodeData.url]
+  )
+
+  const handleLinkedMapClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (nodeData.linkedMapId && nodeData.linkedMapOrigin) {
+        void openLinkedMap({ mapId: nodeData.linkedMapId, origin: nodeData.linkedMapOrigin })
+      }
+    },
+    [nodeData.linkedMapId, nodeData.linkedMapOrigin]
   )
 
   // 検索・フィルターの dim とフォーカスの dim は同じ要素にかかるため濃い方を採用する
@@ -308,6 +321,17 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
                 >
                   <span>🔗</span>
                   <span className="truncate">{domainLabel}</span>
+                </button>
+              )}
+              {/* マップリンクチップ（Phase 52）。クリックで対象マップへ遷移 */}
+              {nodeData.linkedMapId && (
+                <button
+                  onClick={handleLinkedMapClick}
+                  title={linkedMapTitle ?? nodeData.linkedMapId}
+                  className="mt-1.5 flex items-center gap-1 text-[10px] text-primary-600 hover:underline truncate max-w-full"
+                >
+                  <span>🗺️</span>
+                  <span className="truncate">{linkedMapTitle ?? `${nodeData.linkedMapId.slice(0, 8)}…`}</span>
                 </button>
               )}
             </>

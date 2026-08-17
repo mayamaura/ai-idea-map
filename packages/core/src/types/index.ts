@@ -23,6 +23,10 @@ export interface IdeaNodeData extends Record<string, unknown> {
   url?: string
   /** 添付画像（data URL、クライアント側でリサイズ済み。Phase 49） */
   image?: string
+  /** リンク先マップの FileRef.id（Phase 52） */
+  linkedMapId?: string
+  /** リンク先マップの FileRef.origin。id だけでは Drive fileId とローカル絶対パスを区別できないため必須で対にする（Phase 52） */
+  linkedMapOrigin?: 'cloud' | 'local'
 }
 
 export interface IdeaEdgeData {
@@ -61,6 +65,10 @@ export interface SerializedNode {
   url?: string
   /** 添付画像（data URL、クライアント側でリサイズ済み。Phase 49） */
   image?: string
+  /** リンク先マップの FileRef.id（Phase 52） */
+  linkedMapId?: string
+  /** リンク先マップの FileRef.origin（Phase 52） */
+  linkedMapOrigin?: 'cloud' | 'local'
 }
 
 export interface SerializedEdge {

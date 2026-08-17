@@ -131,6 +131,13 @@ interface UIState {
   // ファイルダッシュボード & ショートカット一覧
   isFileDashboardOpen: boolean
   isShortcutsModalOpen: boolean
+  /**
+   * 別マップを開いた直後にジャンプすべきノードID（Phase 52）。
+   * マップ横断検索・リンクチップからの遷移は非同期でマップを読み込むため、
+   * ジャンプ先を一時的にここへ置き、読み込み完了後（pendingFitView 解消時）に IdeaCanvas が消費する。
+   */
+  pendingJumpNodeId: string | null
+  setPendingJumpNodeId: (id: string | null) => void
   /** 画像エクスポート中のみ true。onlyRenderVisibleElements を一時無効化し画面外ノードもDOMに描画させる */
   renderAllNodes: boolean
   setSelectedNodeId: (id: string | null) => void
@@ -267,6 +274,8 @@ export const useUIStore = create<UIState>((set) => ({
   connectingFromNodeId: null,
   isFileDashboardOpen: true,
   isShortcutsModalOpen: false,
+  pendingJumpNodeId: null,
+  setPendingJumpNodeId: (id) => set({ pendingJumpNodeId: id }),
   renderAllNodes: false,
   setSelectedNodeId: (id) =>
     set((state) => ({

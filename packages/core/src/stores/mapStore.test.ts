@@ -175,6 +175,7 @@ describe('nodeSlice', () => {
         () => useMapStore.getState().updateNodeCategory(id, 'cat-1', '#abcdef'),
         () => useMapStore.getState().updateNodeUrl(id, 'https://example.com'),
         () => useMapStore.getState().updateNodeImage(id, 'data:image/jpeg;base64,xxx'),
+        () => useMapStore.getState().updateNodeLinkedMap(id, { mapId: 'map-2', origin: 'cloud' }),
       ]
       for (const action of actions) {
         action()
@@ -197,6 +198,30 @@ describe('nodeSlice', () => {
       useMapStore.getState().applyClusterCategory([idA], 'cat-1', '#abcdef')
 
       expect(useMapStore.getState().nodes.find((n) => n.id === idA)?.data.updatedAt).toBeDefined()
+    })
+  })
+
+  describe('updateNodeLinkedMap（Phase 52）', () => {
+    it('リンクを設定する', () => {
+      const id = useMapStore.getState().addNode('タイトル', 0, 0)
+
+      useMapStore.getState().updateNodeLinkedMap(id, { mapId: 'map-2', origin: 'cloud' })
+
+      const data = useMapStore.getState().nodes.find((n) => n.id === id)?.data
+      expect(data?.linkedMapId).toBe('map-2')
+      expect(data?.linkedMapOrigin).toBe('cloud')
+      expect(data?.updatedAt).toBeDefined()
+    })
+
+    it('undefined を渡すとリンクを解除する', () => {
+      const id = useMapStore.getState().addNode('タイトル', 0, 0)
+      useMapStore.getState().updateNodeLinkedMap(id, { mapId: 'map-2', origin: 'local' })
+
+      useMapStore.getState().updateNodeLinkedMap(id, undefined)
+
+      const data = useMapStore.getState().nodes.find((n) => n.id === id)?.data
+      expect(data?.linkedMapId).toBeUndefined()
+      expect(data?.linkedMapOrigin).toBeUndefined()
     })
   })
 })
@@ -400,6 +425,35 @@ describe('documentSlice', () => {
     expect(n2?.updatedAt).toBeUndefined()
     expect(n2?.url).toBeUndefined()
     expect(n2?.image).toBeUndefined()
+  })
+
+  it('loadFromSerialized/getSerializedNodes: linkedMapId/linkedMapOrigin を往復で保持する（Phase 52）', () => {
+    const nodes: SerializedNode[] = [
+      {
+        id: 'n1',
+        nodeType: 'idea',
+        title: 'ノード1',
+        x: 0,
+        y: 0,
+        color: '#fff',
+        createdBy: 'user',
+        linkedMapId: 'map-2',
+        linkedMapOrigin: 'cloud',
+      },
+      // 旧ファイル由来（linkedMapId/linkedMapOrigin を持たない）ノードは undefined のまま保持する
+      { id: 'n2', nodeType: 'idea', title: 'ノード2', x: 100, y: 0, color: '#fff', createdBy: 'user' },
+    ]
+
+    useMapStore.getState().loadFromSerialized(nodes, [])
+    const serialized = useMapStore.getState().getSerializedNodes()
+
+    const n1 = serialized.find((n) => n.id === 'n1')
+    expect(n1?.linkedMapId).toBe('map-2')
+    expect(n1?.linkedMapOrigin).toBe('cloud')
+
+    const n2 = serialized.find((n) => n.id === 'n2')
+    expect(n2?.linkedMapId).toBeUndefined()
+    expect(n2?.linkedMapOrigin).toBeUndefined()
   })
 
   it('reset: 初期状態（root ノード1個）に戻す', () => {

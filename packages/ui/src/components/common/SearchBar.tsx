@@ -2,8 +2,13 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useReactFlow } from '@xyflow/react'
 import { useShallow } from 'zustand/react/shallow'
-import { useMapStore, useUIStore, type IdeaNodeData } from '@ideamap/core'
+import { getPlatform } from '@ideamap/platform'
+import { useMapStore, useUIStore, searchAcrossMaps, type IdeaNodeData, type CrossMapSearchResult } from '@ideamap/core'
 import type { Node } from '@xyflow/react'
+import { openLinkedMap } from '../../hooks/useFileDashboard'
+
+/** 他マップ検索のデバウンス。Drive を含む FileAdapter への取得リクエストを打鍵ごとに送らないため */
+const CROSS_MAP_SEARCH_DEBOUNCE_MS = 400
 
 // 検索バーが閉じているときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
 const NO_NODES: Node<IdeaNodeData>[] = []
@@ -16,11 +21,12 @@ function matchesQuery(node: Node<IdeaNodeData>, query: string): boolean {
 }
 
 export function SearchBar() {
-  const { isSearchOpen, searchQuery, setSearchOpen, setSearchQuery, setSelectedNodeId, recentNodeIds } =
+  const { isSearchOpen, searchQuery, currentFileId, setSearchOpen, setSearchQuery, setSelectedNodeId, recentNodeIds } =
     useUIStore(
       useShallow((s) => ({
         isSearchOpen: s.isSearchOpen,
         searchQuery: s.searchQuery,
+        currentFileId: s.currentFileId,
         setSearchOpen: s.setSearchOpen,
         setSearchQuery: s.setSearchQuery,
         setSelectedNodeId: s.setSelectedNodeId,
@@ -32,6 +38,10 @@ export function SearchBar() {
   const { fitView } = useReactFlow()
   const inputRef = useRef<HTMLInputElement>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
+  // 他マップも検索（Phase 52）。既定OFF: 即時のローカル検索と Drive 等への通信を伴う検索を混同させないため
+  const [crossMapEnabled, setCrossMapEnabled] = useState(false)
+  const [crossMapResults, setCrossMapResults] = useState<CrossMapSearchResult[]>([])
+  const [isCrossMapSearching, setIsCrossMapSearching] = useState(false)
 
   const matchedNodes = searchQuery.trim()
     ? nodes.filter((n) => matchesQuery(n, searchQuery))
@@ -45,6 +55,35 @@ export function SearchBar() {
   useEffect(() => {
     setCurrentIndex(0)
   }, [searchQuery])
+
+  // 他マップも検索: トグルON時のみ、最近開いたマップ（現在のマップを除く）を対象に検索する。
+  // トグルOFF・空クエリのときは何もしない（表示側が crossMapEnabled/showResults で
+  // セクション自体を隠すため、古い結果が state に残っていても表示には影響しない）
+  useEffect(() => {
+    if (!crossMapEnabled || !searchQuery.trim()) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void (async () => {
+        setIsCrossMapSearching(true)
+        const recent = await getPlatform().file.listRecent().catch(() => [])
+        const entries = recent.filter((e) => e.ref.id !== currentFileId)
+        const results = await searchAcrossMaps(searchQuery, entries)
+        if (cancelled) return
+        setCrossMapResults(results)
+        setIsCrossMapSearching(false)
+      })()
+    }, CROSS_MAP_SEARCH_DEBOUNCE_MS)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [crossMapEnabled, searchQuery, currentFileId])
+
+  // 他マップの検索結果クリック: 未保存確認を挟んで対象マップを開き、該当ノードへジャンプする
+  const jumpToOtherMap = useCallback((result: CrossMapSearchResult, nodeId?: string) => {
+    setSearchOpen(false)
+    void openLinkedMap({ mapId: result.ref.id, origin: result.ref.origin }, nodeId)
+  }, [setSearchOpen])
 
   // 開いたら即フォーカス
   useEffect(() => {
@@ -181,6 +220,16 @@ export function SearchBar() {
             </button>
           </div>
 
+          {/* 他マップも検索トグル（Phase 52） */}
+          <label className="flex items-center gap-1.5 px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-50 dark:border-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={crossMapEnabled}
+              onChange={(e) => setCrossMapEnabled(e.target.checked)}
+            />
+            他のマップも検索
+          </label>
+
           {/* 検索結果リスト */}
           {showResults && (
             <ul className="max-h-64 overflow-y-auto py-1">
@@ -226,6 +275,44 @@ export function SearchBar() {
                 })
               )}
             </ul>
+          )}
+
+          {/* 他マップの検索結果（Phase 52） */}
+          {crossMapEnabled && showResults && (
+            <div className="border-t border-gray-100 dark:border-gray-700 max-h-64 overflow-y-auto">
+              <div className="px-4 py-2 text-xs text-gray-400 font-medium flex items-center gap-2">
+                他のマップ
+                {isCrossMapSearching && (
+                  <span className="w-3 h-3 border border-gray-300 border-t-transparent rounded-full animate-spin" />
+                )}
+              </div>
+              {!isCrossMapSearching && crossMapResults.length === 0 ? (
+                <p className="px-4 pb-3 text-xs text-gray-400">一致するマップがありません</p>
+              ) : (
+                crossMapResults.map((result) => (
+                  <div key={result.ref.id} className="pb-1">
+                    <button
+                      onClick={() => jumpToOtherMap(result)}
+                      className="w-full px-4 py-1 text-left text-xs font-medium text-gray-600 dark:text-gray-300 truncate hover:underline"
+                    >
+                      {result.mapTitle}
+                    </button>
+                    <ul>
+                      {result.matchedNodes.slice(0, 5).map((n) => (
+                        <li key={n.id}>
+                          <button
+                            onClick={() => jumpToOtherMap(result, n.id)}
+                            className="w-full flex items-center gap-2 pl-6 pr-4 py-1.5 text-left text-sm text-gray-700 dark:text-gray-200 truncate hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                          >
+                            <HighlightText text={n.title || '(無題)'} query={searchQuery} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )}
+            </div>
           )}
 
           {/* 最近使ったノード */}

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { FileRef } from '@ideamap/platform'
+import { getPlatform, type FileRef } from '@ideamap/platform'
 import { getMapTemplate, migrateMapFile, useMapStore, useUIStore, type MapFile } from '@ideamap/core'
 
 /**
@@ -62,6 +62,55 @@ export function openLoadedMap(
   ui.setSaveStatus(fileId ? 'saved' : 'unsaved')
   ui.setFileDashboardOpen(false)
   if (warning) ui.addToast(warning, 'info')
+}
+
+/**
+ * ノードのマップリンクチップ・マップ横断検索の結果から、リンク先マップへ遷移する（Phase 52）。
+ *
+ * Web/デスクトップとも `FileAdapter.openFile(ref)` が ref.id/origin だけで対象を開けるため、
+ * ここは共通ロジックのみで完結する（プラットフォーム固有コードを持たない）。
+ * 未保存の変更があるときは App.tsx の onBeforeExit と同じ判定式で確認を挟む。
+ *
+ * @param jumpToNodeId 遷移後にジャンプしたいノードID（マップ横断検索から使う）。省略時はマップ全体を表示する
+ * @returns 実際にマップを開けたか（確認でキャンセル・読み込み失敗のときは false）
+ */
+export function openLinkedMap(
+  link: { mapId: string; origin: FileRef['origin'] },
+  jumpToNodeId?: string
+): Promise<boolean> {
+  const ref: FileRef = { id: link.mapId, origin: link.origin, name: '', updatedAt: '' }
+
+  const proceed = async (): Promise<boolean> => {
+    try {
+      const opened = await getPlatform().file.openFile(ref)
+      if (!opened) return false
+      useUIStore.getState().setPendingJumpNodeId(jumpToNodeId ?? null)
+      openLoadedMap(
+        opened.content as MapFile,
+        opened.ref.id,
+        opened.ref.name || 'リンク先マップ',
+        opened.ref.origin
+      )
+      return true
+    } catch {
+      useUIStore.getState().addToast('リンク先のマップを開けませんでした', 'error')
+      return false
+    }
+  }
+
+  const status = useUIStore.getState().saveStatus
+  if (status !== 'unsaved' && status !== 'saving') return proceed()
+
+  return new Promise((resolve) => {
+    useUIStore.getState().openConfirmDialog({
+      title: '保存されていない変更があります',
+      message: 'リンク先のマップを開くと、いま編集中の変更は失われます。移動しますか？',
+      confirmLabel: '移動する',
+      danger: true,
+      onConfirm: () => void proceed().then(resolve),
+      onCancel: () => resolve(false),
+    })
+  })
 }
 
 /**

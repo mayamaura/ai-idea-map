@@ -35,6 +35,8 @@ export const createDocumentSlice: MapSliceCreator<DocumentSlice> = (set, get) =>
           updatedAt: n.updatedAt,
           url: n.url,
           image: n.image,
+          linkedMapId: n.linkedMapId,
+          linkedMapOrigin: n.linkedMapOrigin,
         },
       }
     })
@@ -82,6 +84,8 @@ export const createDocumentSlice: MapSliceCreator<DocumentSlice> = (set, get) =>
         updatedAt: n.data.updatedAt,
         url: n.data.url,
         image: n.data.image,
+        linkedMapId: n.data.linkedMapId,
+        linkedMapOrigin: n.data.linkedMapOrigin,
       }
     }),
 

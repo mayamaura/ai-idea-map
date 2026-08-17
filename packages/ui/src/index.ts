@@ -30,7 +30,7 @@ export { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 export { useFocusTrap } from './hooks/useFocusTrap'
 export { useOnlineStatus } from './hooks/useOnlineStatus'
 export { useNodeFocus } from './hooks/useNodeFocus'
-export { startNewMap, startNewMapFromTemplate, openLoadedMap, useDashboardEscapeToClose } from './hooks/useFileDashboard'
+export { startNewMap, startNewMapFromTemplate, openLoadedMap, openLinkedMap, useDashboardEscapeToClose } from './hooks/useFileDashboard'
 
 export { renderMarkdownSimple } from './utils/markdown'
 

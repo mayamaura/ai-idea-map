@@ -135,4 +135,25 @@ describe('migrateMapFile', () => {
     expect(result.file.nodes[0]).toEqual(legacyNode)
     expect(result.warning).toBeUndefined()
   })
+
+  it('version 1.0 のファイルは 1.1 へ上がる（Phase 52、警告なし）', () => {
+    const file = baseMapFile({ version: '1.0' })
+
+    const result = migrateMapFile(file)
+
+    expect(result.file.version).toBe(CURRENT_MAP_FILE_VERSION)
+    expect(result.file.nodes).toEqual(file.nodes)
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('未知の新バージョン（1.2）は警告つきで読み込める', () => {
+    const file = baseMapFile({ version: '1.2' })
+
+    const result = migrateMapFile(file)
+
+    expect(result.warning).toBe(
+      'このファイルは新しいバージョンで作成されています。一部のデータが読み込めない可能性があります'
+    )
+    expect(result.file.nodes).toEqual(file.nodes)
+  })
 })

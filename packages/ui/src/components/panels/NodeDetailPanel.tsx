@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { getPlatform, type RecentFileEntry } from '@ideamap/platform'
 import { useUIStore, useMapStore, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { invalidateRecentEntriesCache, useLinkedMapTitle } from '../../hooks/useLinkedMapTitle'
 import { renderMarkdownSimple } from '../../utils/markdown'
 import { resizeImageToDataUrl } from '../../utils/imageResize'
 
 export function NodeDetailPanel() {
-  const { isNodeDetailOpen, nodeDetailId, closeNodeDetail, setAIPanelOpen, setPersonaDebatePanelOpen, setSelectedNodeId, openConfirmDialog, addToast } = useUIStore(
+  const { isNodeDetailOpen, nodeDetailId, currentFileId, closeNodeDetail, setAIPanelOpen, setPersonaDebatePanelOpen, setSelectedNodeId, openConfirmDialog, addToast } = useUIStore(
     useShallow((s) => ({
       isNodeDetailOpen: s.isNodeDetailOpen,
       nodeDetailId: s.nodeDetailId,
+      currentFileId: s.currentFileId,
       closeNodeDetail: s.closeNodeDetail,
       setAIPanelOpen: s.setAIPanelOpen,
       setPersonaDebatePanelOpen: s.setPersonaDebatePanelOpen,
@@ -18,13 +21,14 @@ export function NodeDetailPanel() {
       addToast: s.addToast,
     }))
   )
-  const { updateNodeTitle, updateNodeBody, updateNodeCategory, updateNodeUrl, updateNodeImage, deleteNode } = useMapStore(
+  const { updateNodeTitle, updateNodeBody, updateNodeCategory, updateNodeUrl, updateNodeImage, updateNodeLinkedMap, deleteNode } = useMapStore(
     useShallow((s) => ({
       updateNodeTitle: s.updateNodeTitle,
       updateNodeBody: s.updateNodeBody,
       updateNodeCategory: s.updateNodeCategory,
       updateNodeUrl: s.updateNodeUrl,
       updateNodeImage: s.updateNodeImage,
+      updateNodeLinkedMap: s.updateNodeLinkedMap,
       deleteNode: s.deleteNode,
     }))
   )
@@ -35,6 +39,7 @@ export function NodeDetailPanel() {
   // nodes 全体ではなく対象ノードだけを購読し、他ノードのドラッグで再描画しない
   const node = useMapStore((s) => s.nodes.find((n) => n.id === nodeDetailId))
   const nodeData = node?.data as IdeaNodeData | undefined
+  const linkedMapTitle = useLinkedMapTitle(nodeData?.linkedMapId)
 
   const [titleInput, setTitleInput] = useState('')
   const [bodyInput, setBodyInput] = useState('')
@@ -42,6 +47,7 @@ export function NodeDetailPanel() {
   const [isPreview, setIsPreview] = useState(true)
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [isImageProcessing, setIsImageProcessing] = useState(false)
+  const [linkCandidates, setLinkCandidates] = useState<RecentFileEntry[]>([])
   const titleRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -61,6 +67,25 @@ export function NodeDetailPanel() {
       skipBlurCommit.current = false
       titleRef.current.focus()
       titleRef.current.select()
+    }
+  }, [isNodeDetailOpen])
+
+  // リンク先マップの候補（最近開いたマップ）。開くたびに取り直す。
+  // setState は .then/.catch 側でのみ行う（effect 本体での直接呼び出しは
+  // react-hooks/set-state-in-effect に引っかかるため）
+  useEffect(() => {
+    if (!isNodeDetailOpen) return
+    let cancelled = false
+    getPlatform()
+      .file.listRecent()
+      .then((entries) => {
+        if (!cancelled) setLinkCandidates(entries)
+      })
+      .catch(() => {
+        if (!cancelled) setLinkCandidates([])
+      })
+    return () => {
+      cancelled = true
     }
   }, [isNodeDetailOpen])
 
@@ -169,6 +194,23 @@ export function NodeDetailPanel() {
     if (nodeDetailId) updateNodeImage(nodeDetailId, undefined)
   }, [nodeDetailId, updateNodeImage])
 
+  const handleLinkMapSelect = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const refId = e.target.value
+      const candidate = linkCandidates.find((c) => c.ref.id === refId)
+      if (!nodeDetailId || !candidate) return
+      updateNodeLinkedMap(nodeDetailId, { mapId: candidate.ref.id, origin: candidate.ref.origin })
+      invalidateRecentEntriesCache()
+    },
+    [nodeDetailId, linkCandidates, updateNodeLinkedMap]
+  )
+
+  const handleUnlinkMap = useCallback(() => {
+    if (!nodeDetailId) return
+    updateNodeLinkedMap(nodeDetailId, undefined)
+    invalidateRecentEntriesCache()
+  }, [nodeDetailId, updateNodeLinkedMap])
+
   const handleBodyKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       // Ctrl+Enter で本文を保存して閉じる
@@ -215,6 +257,8 @@ export function NodeDetailPanel() {
   if (!isNodeDetailOpen || !node || !nodeData) return null
 
   const currentCategory = nodeData.categoryId ? getCategoryById(nodeData.categoryId) : undefined
+  // リンク先マップの選択肢: 現在開いているマップ自身は除外する
+  const candidateOptions = linkCandidates.filter((c) => c.ref.id !== currentFileId)
 
   return (
     <div
@@ -365,6 +409,46 @@ export function NodeDetailPanel() {
               placeholder="https://example.com"
               className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 placeholder-gray-400"
             />
+          </div>
+
+          {/* リンク先マップ（Phase 52） */}
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">リンク先マップ</label>
+            {nodeData.linkedMapId ? (
+              <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm">
+                <span>{nodeData.linkedMapOrigin === 'cloud' ? '☁️' : '💻'}</span>
+                <span className="flex-1 truncate text-gray-700 dark:text-gray-200">
+                  {linkedMapTitle ?? `${nodeData.linkedMapId.slice(0, 8)}…`}
+                </span>
+                <button
+                  onClick={handleUnlinkMap}
+                  className="text-xs text-red-500 hover:underline flex-shrink-0"
+                >
+                  解除
+                </button>
+              </div>
+            ) : (
+              <>
+                <select
+                  value=""
+                  onChange={handleLinkMapSelect}
+                  disabled={candidateOptions.length === 0}
+                  className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-50"
+                >
+                  <option value="" disabled>
+                    リンクするマップを選択...
+                  </option>
+                  {candidateOptions.map((c) => (
+                    <option key={c.ref.id} value={c.ref.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+                {candidateOptions.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-1">最近開いたマップがありません</p>
+                )}
+              </>
+            )}
           </div>
 
           {/* 画像添付 */}

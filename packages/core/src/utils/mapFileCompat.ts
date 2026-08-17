@@ -24,7 +24,7 @@ export function readEdgeHandles(edge: SerializedEdge): { sourceHandle: string; t
 // ---- スキーマバージョニング（Phase 49） ----
 
 /** `.ideamap` / JSON ファイルの現行フォーマットバージョン。保存時は必ずこれを書く */
-export const CURRENT_MAP_FILE_VERSION = '1.0'
+export const CURRENT_MAP_FILE_VERSION = '1.1'
 
 /** "1.2" のようなドット区切りのバージョン文字列を比較用の数値配列に変換する */
 function parseVersion(version: string): number[] {
@@ -44,11 +44,14 @@ function compareVersions(a: string, b: string): number {
 
 /**
  * バージョンごとの段階的マイグレーションステップ。`from` のバージョンのファイルを
- * 1つ新しいバージョンへ変換する関数をここへ追加していく。現行バージョンは '1.0' のみで
- * それより古い実データは存在しないため、初回実装では空（migrateMapFile が version を
- * 揃えるだけの恒等変換になる）。
+ * 1つ新しいバージョンへ変換する関数をここへ追加していく。
+ *
+ * '1.0' → '1.1'（Phase 52）: ノードに `linkedMapId`/`linkedMapOrigin` が追加されたが、
+ * どちらも optional でデータ変換は不要なため、バージョン番号を進めるだけの恒等マイグレーション。
  */
-const MIGRATION_STEPS: ReadonlyArray<{ from: string; migrate: (file: MapFile) => MapFile }> = []
+const MIGRATION_STEPS: ReadonlyArray<{ from: string; migrate: (file: MapFile) => MapFile }> = [
+  { from: '1.0', migrate: (file) => file },
+]
 
 /**
  * 読み込んだ `MapFile` を現行バージョンへ移行する。外部ファイル起源のデータ
