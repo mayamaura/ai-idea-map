@@ -95,7 +95,7 @@ ai-idea-map/
 │   │       │   ├── mapStore.ts      # マップ状態のストア本体（スライスを合成するだけ）
 │   │       │   ├── map/             # mapStore のスライス（Phase 29 で分割）
 │   │       │   │   ├── types.ts     # IdeaNode / Snapshot / 各スライスの型・MapState
-│   │       │   │   ├── constants.ts # ノード色・矢印マーカー・初期ノード・makeEdge
+│   │       │   │   ├── constants.ts # ノード色・矢印マーカー・初期ノード・makeEdge（Phase 48 で packages/core の index.ts から export）
 │   │       │   │   ├── history.ts   # past / future / undo / redo・snapshot / pushPast
 │   │       │   │   ├── nodeSlice.ts # ノード追加・編集・削除・整列・コピー＆ペースト
 │   │       │   │   ├── edgeSlice.ts # エッジ作成・向き変更・ラベル・削除
@@ -112,10 +112,11 @@ ai-idea-map/
 │   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
 │   │       │   ├── openaiProvider.ts # OpenAIProvider（/v1/chat/completions・/v1/models、Phase 39）
 │   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35、Phase 39 で OpenAI 対応）
-│   │       │   └── aiService.ts     # AI機能7関数（旧 claudeService.ts。Phase 44 で extractMapFromText、Phase 45 で generateArtifactFromMap 追加）
+│   │       │   └── aiService.ts     # AI機能9関数（旧 claudeService.ts。Phase 44 で extractMapFromText、Phase 45 で generateArtifactFromMap、Phase 47 で reviewMap、Phase 48 で debateNode 追加）
 │   │       ├── services/
 │   │       │   ├── driveService.ts  # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
 │   │       │   ├── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
+│   │       │   ├── mapReview.ts     # 放置ノードの構造的指標検出（findNeglectedNodeIds、Phase 47）
 │   │       │   └── textToMap.ts     # AI抽出結果 → SerializedNode/Edge 変換（buildMapFragmentFromExtracted、Phase 44）
 │   │       ├── templates/mapTemplates.ts # 思考フレームワークのテンプレートマップ5種（Phase 46）
 │   │       ├── layout/
@@ -134,7 +135,7 @@ ai-idea-map/
 │           │   ├── canvas/          # IdeaCanvas / IdeaNode / GroupNode / FloatingEdge / ContextMenu
 │           │   ├── panels/          # NodePanel / NodeDetailPanel / AISuggestionPanel / SettingsPanel /
 │           │   │                    # ExportImportPanel / MapAnalysisPanel / AIChatPanel / PresentationOrderPanel /
-│           │   │                    # ArtifactPanel（Phase 45）
+│           │   │                    # ArtifactPanel（Phase 45）/ PersonaDebatePanel（Phase 48）
 │           │   ├── screens/         # PresentationMode
 │           │   ├── toolbar/         # Toolbar（PC用）/ BottomNav（スマホ用）
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
@@ -268,6 +269,8 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 - `deleteNode`, `deleteNodes`, `deleteSelected`, `deleteNodeEdges` — 削除系
 - `reverseEdge`, `toggleEdgeDirection`, `updateEdgeLabel`, `deleteEdge` — エッジ操作
 - `copyNodes`, `paste` — コピー・ペースト（Phase 22: `copyNodes` は選択ノード間のエッジも保存、`paste` は `Map<oldId,newId>` でエッジを再生成）
+- `mergeNodes(keepId, mergeId)` — ノード統合（AIガーデナー「統合」提案の適用、Phase 47、§9.4.3）。`mergeId` の本文を `keepId` に連結し、`mergeId` 宛のエッジを `keepId` へ張り替え（張替えで自己ループになるものは除外、向き問わず同じペアになったものは1本に絞る）、`mergeId` を削除する。1回の `set`・`pushPast` 1回
+- `addNodesWithEdges(nodes, edges)` — ノード配列とエッジ配列をまとめて1回の `set` で追加し、`past` に1回だけ積む（Phase 48）。ループで `addNode`/`onConnect` を繰り返すと1操作ごとに履歴が積まれ Undo が1ノードずつになってしまうため、「1操作＝複数ノード＋エッジ」向けの汎用アクションとして用意した。ペルソナ壁打ち（`PersonaDebatePanel`、§5.12）の子ノード一括追加で使用
 - `alignSelectedNodes(type)` — 複数選択ノードを整列（Phase 21）。`'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom'`。`selected && !parentId && type !== 'groupNode'` のノードが対象（2件未満は何もしない）。変更前スナップショットを `past` に push
 - `distributeSelectedNodes(direction)` — 複数選択ノードを等間隔配置（Phase 21）。`'horizontal' | 'vertical'`。対象3件未満は何もしない。中心座標でソートし、両端固定で中間を等間隔補間
 - `setNodes(nodes)` — ノード配列を更新し履歴に積む。内部で `syncGroupMeasured` を通してグループノードの `measured` を同期
@@ -321,7 +324,11 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `mapAnalysis` | `MapAnalysis \| null` | マップ全体分析結果（Phase 10） |
 | `connectionSuggestions` | `ConnectionSuggestion[]` | 接続提案リスト（Phase 10） |
 | `clusterSuggestions` | `ClusterSuggestion[]` | クラスタリング提案リスト（Phase 10） |
+| `gardenerSuggestions` | `GardenerSuggestion[]` | AIガーデナー（マップレビュー）の提案リスト（Phase 47） |
 | `isArtifactPanelOpen` | `boolean` | AI成果物生成パネル（`ArtifactPanel`）の開閉（Phase 45） |
+| `isPersonaDebatePanelOpen` | `boolean` | ペルソナ壁打ちパネル（`PersonaDebatePanel`）の開閉（Phase 48）。対象ノードIDは `selectedNodeId` を再利用し、専用の状態は持たない |
+| `personaDebateResult` | `PersonaOpinion[]` | ペルソナ壁打ちのAI応答結果（Phase 48） |
+| `isPersonaDebateLoading` | `boolean` | ペルソナ壁打ちのAI呼び出し中フラグ（Phase 48） |
 | `isChatPanelOpen` | `boolean` | AIチャットパネルの開閉（Phase 14） |
 | `chatMessages` | `ChatMessage[]` | チャット履歴（セッションメモリのみ、最大40件）（Phase 14） |
 | `isChatLoading` | `boolean` | AIチャット応答待ちフラグ（Phase 14） |
@@ -537,7 +544,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 
 | メニュー種別 | 表示項目 |
 |---|---|
-| node | **名前を変更（F2）**（Phase 22）/ 詳細を開く / アイデアを作成（接続）/ AIで拡張 / コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / **整列セクション**（Phase 21・選択2件以上で表示）/ 接続線のみ削除 / ノードを削除 |
+| node | **名前を変更（F2）**（Phase 22）/ 詳細を開く / アイデアを作成（接続）/ AIで拡張 / 🎭 ペルソナで壁打ち（Phase 48）/ コピー / 発表に追加（または発表から除外）/ カテゴリを変更 / **整列セクション**（Phase 21・選択2件以上で表示）/ 接続線のみ削除 / ノードを削除 |
 | edge | 向きを反転 / 双方向切替 / ラベルを編集 / 線を削除 |
 | pane | アイデアを作成（作成後インライン編集開始・Phase 22）/ グループを作成 / ここに貼り付け |
 
@@ -667,6 +674,15 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 - ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
 - `useSubtreeNodeIds()`（`packages/ui/src/hooks/useSubtreeNodeIds.ts`）: `uiStore.selectedNodeId` を起点に `mapStore` の edges（source→target、親→子）をBFSしたノードID集合を返す。選択なしなら `null`（＝マップ全体扱い）。`nodes`/`edges` は `useShallow` で id と `source>target` 文字列だけを購読し、ドラッグ中の座標更新では再計算しない
 
+### 5.12 PersonaDebatePanel（packages/ui/src/components/panels/PersonaDebatePanel.tsx、Phase 48）
+
+選択ノードについて複数ペルソナの意見を `debateNode`（§9.4.4）で生成し、選んだ意見を選択ノードの子ノードとして一括追加するモーダルパネル。`App.tsx` に常設し、`uiStore.isPersonaDebatePanelOpen` で開閉する。入口はノードの `ContextMenu`「🎭 ペルソナで壁打ち」（§5.4）と `NodeDetailPanel` の「🎭 壁打ち」ボタン。いずれも `setSelectedNodeId(targetId)` → `setPersonaDebatePanelOpen(true)` を呼ぶ（対象ノードIDに専用の state は持たず `selectedNodeId` を再利用）。
+
+- **ペルソナ選択**: プリセット4種（楽観家・批評家・顧客・投資家）のトグルチップ＋自由入力（追加ボタンまたは Enter でリストに追加）。プリセットの選択集合（`Set`）と自由入力の配列をマージした `activePersonas` をリクエストに渡す。1件も選ばれていなければ生成不可
+- **意見の選択**: 生成結果はペルソナごとにカード表示し、`personaIdx-opinionIdx` をキーにした `Set<string>`（`selectedOpinions`）で意見単位にチェックボックス選択できる。生成直後は全件が選択済みの状態になる
+- **子ノード追加**: `handleAddSelected` が選択された意見それぞれについて `calcSuggestionPositions(selectedNode.position.x, selectedNode.position.y, count, nodes)` で位置を求めた `IdeaNode[]` と、選択ノードへの `makeEdge({ source: selectedNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })` の `Edge[]` を組み立て、`addNodesWithEdges`（§4.1）を1回呼ぶ。追加後は選択ノード＋新規ノード群へ `fitView` する
+- ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
+
 ---
 
 ## 6. 型定義（packages/core/src/types/index.ts）
@@ -751,6 +767,21 @@ interface ClusterSuggestion {
   categoryId: string           // 適用するカテゴリID
   nodeIds: string[]
   nodeTitles: string[]
+}
+
+// Phase 47: AIガーデナー（マップレビュー）
+interface GardenerSuggestion {
+  kind: 'deepen' | 'merge' | 'bridge' | 'question'
+  reason: string                // 提案理由（1文）
+  targetNodeIds: string[]       // 意味は kind により変わる: deepen/question=対象1件（question はなければ空配列） / merge/bridge=対象2件
+  title?: string                 // deepen・question で新規追加するノードのタイトル
+  body?: string                  // deepen・question で新規追加するノードの本文（省略可）
+}
+
+// Phase 48: ペルソナ壁打ち会議
+interface PersonaOpinion {
+  persona: string
+  opinions: { title: string; body: string }[]  // 1ペルソナ分の意見（複数件になりうる）
 }
 
 // Phase 14: AIチャット
@@ -986,6 +1017,8 @@ return safeParseJson<T>(jsonMatch[0])
 | `chatWithMap(req, onText?, signal?)` | 2048 | ストリーミング + system パラメータ化 |
 | `extractMapFromText(req, signal?)` | 4096 | Phase 44。`completeJsonWithRetry` 方式（§9.4.1） |
 | `generateArtifactFromMap(req, onText?, signal?)` | 4096 | Phase 45。ストリーミング方式（§9.4.2） |
+| `reviewMap(req, signal?)` | 3072 | Phase 47。`completeJsonWithRetry` 方式（§9.4.3） |
+| `debateNode(req, signal?)` | 3072 | Phase 48。`completeJsonWithRetry` 方式（§9.4.4） |
 
 分析系3関数の `signal` は Phase 32 でサービス層まで通したが `MapAnalysisPanel` 側のUIが無かった。Phase 35 で `abortRef`（`AbortController`）と3タブ共通の `CancelButton` を追加し、キャンセル時は `isAbortError(e)` で握り潰してトーストを出さないようにしている。ローカルLLMは応答が長くかかりうるため必要性が上がったことが理由。
 
@@ -1033,6 +1066,34 @@ export interface GenerateArtifactRequest {
 `chatWithMap` と違い `system` パラメータは使わず、ノード一覧・接続関係・フォーマット別の指示文（`ARTIFACT_FORMAT_INSTRUCTIONS`）をすべて1つの user メッセージに組み立てて `provider.stream()` に渡す。
 
 **`focusNodeIds` のフィルタは関数内部で行う。** `mapContext.nodes`/`edges` を呼び出し側で絞り込む設計ではなく、`generateArtifactFromMap` が `focusNodeIds` の `Set` で `mapContext` 全体をフィルタしてからプロンプトを組み立てる（`ArtifactPanel` は `useSubtreeNodeIds()` の結果をそのまま `focusNodeIds` として渡すだけでよい）。
+
+### 9.4.3 AIガーデナー（マップレビュー、`reviewMap`、Phase 47）
+
+```typescript
+interface ReviewMapRequest {
+  provider: LLMProvider
+  nodes: { id: string; title: string; body?: string; categoryId?: string; createdBy: 'user' | 'ai' }[]
+  edges: { source: string; target: string }[]
+  categories: Category[]
+}
+```
+
+`reviewMap(req, signal?)` は `findNeglectedNodeIds`（`packages/core/src/services/mapReview.ts`）の結果を「【放置されている可能性のあるノード（参考）】」セクションとしてプロンプトに埋め込んだ上で `completeJsonWithRetry` を呼び、`GARDENER_SCHEMA` に従う `{ suggestions: GardenerSuggestion[] }` を取得する。プロンプトには4種の提案（深掘り／統合／橋渡し／問いかけ）の判断基準を明記し、最大6件までに絞るよう指示する。放置ノードが1件もなければ参考セクション自体を省略する。`targetNodeIds` が配列でない要素は空配列に落とす（小型モデルの逸脱への防御）。
+
+`findNeglectedNodeIds(nodes, edges)` は「子ノードを持たない（`edges` の `source` に現れない）葉ノード」かつ「`body` が空、または `createdBy === 'ai'`」を満たすノードIDを返す純粋関数（LLM呼び出しなし）。`IdeaNodeData`/`SerializedNode` に更新時刻フィールドが無いため、時刻ベースの「放置期間」判定ではなく構造的指標で代替している。
+
+### 9.4.4 ペルソナ壁打ち会議（`debateNode`、Phase 48）
+
+```typescript
+interface DebateNodeRequest {
+  provider: LLMProvider
+  mapContext: MapContext
+  nodeId: string
+  personas: string[]
+}
+```
+
+`debateNode(req, signal?)` は `mapContext.nodes` から `nodeId` に一致するノードを探し（見つからなければ `対象ノードが見つかりません` を投げる）、そのタイトル・本文と、1ホップ隣接ノード（`mapContext.edges` を双方向に探索した結果）を「つながっているアイデア」としてプロンプトに埋め込む。`personas` 全員分の意見を **1回の `completeJsonWithRetry` 呼び出し**でまとめて構造化生成する（ペルソナごとに個別に呼ぶとAPI呼び出しがペルソナ数倍になるため、`generateSuggestions` が1回で複数件出す設計と同じ考え方）。`DEBATE_SCHEMA` に従う `{ personas: PersonaOpinion[] }` を取得し、`personas` が配列でなければ `AIからの応答形式が正しくありません` を投げ、各ペルソナの `opinions` が配列でなければ空配列に落とす（小型モデルの逸脱への防御）。
 
 ### 9.5 chatWithMap のストリーミング設計（Phase 23）
 

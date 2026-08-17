@@ -2250,70 +2250,83 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 47: AIガーデナー（マップレビュー）
+### Phase 47: AIガーデナー（マップレビュー） 🔨 実装済み（確認中）
 
 **目標**: マップ全体を庭師のようにレビューし、「深掘り」「統合」「橋渡し」「問いかけ」の4種の提案をワンクリックで適用できるようにする。既存の分析3タブ（全体分析・つながり・グループ化）と並ぶ第4のタブとして `MapAnalysisPanel` に統合する（v1.2「育てるAI」の1つ目、`docs/roadmap.md` §5.1）。
 
 **設計判断（起票時点）**: 「長く放置されているノード」の判定は、`IdeaNodeData`/`SerializedNode` に時刻フィールド（`updatedAt` 等）を持たないため、本フェーズでは**構造的指標のヒューリスティック**で代替する（子を持たない葉ノードで本文が空、または `createdBy: 'ai'` のまま子も本文も追加されていない、など）。時刻ベースの正確な「放置期間」判定はスキーマ変更を伴うため v1.3（`docs/roadmap.md` §6.1、Phase 49想定）に送る。
 
 #### A. 構造的指標とAIレビューロジック（`packages/core`）
-- [ ] `packages/core/src/services/mapReview.ts` を新規作成し、`findNeglectedNodeIds(nodes: { id: string; body?: string; createdBy: 'user' | 'ai' }[], edges: { source: string; target: string }[]): string[]` を実装する。「子ノードを持たない（`edges` に `source` として現れない）」かつ「`body` が空、または `createdBy === 'ai'`」を満たすノードIDを返す純粋関数（LLM呼び出しなし）
-- [ ] `packages/core/src/services/mapReview.test.ts` を作成し、葉ノード＋空本文／`createdBy: 'ai'`／子あり／本文ありの組み合わせを網羅する
-- [ ] `packages/core/src/types/index.ts` に `GardenerSuggestion`（`{ kind: 'deepen' | 'merge' | 'bridge' | 'question'; reason: string; targetNodeIds: string[]; title?: string; body?: string }`）を追加する。`targetNodeIds` の意味は `kind` により変わる（deepen=深掘り対象1件 / merge=統合する2件 / bridge=橋渡しする2件 / question=関連ノードがあれば1件、なければ空配列）。`title`/`body` は deepen・question で新規追加するノードの内容に使う。`ConnectionSuggestion`/`ClusterSuggestion` と同じ「uiStore に保持する結果型は types/index.ts に置く」方針に合わせる
-- [ ] `packages/core/src/llm/aiService.ts` に `GARDENER_SCHEMA`（`GardenerSuggestion` に対応する `JsonSchema`）と `reviewMap(req: ReviewMapRequest, signal?: AbortSignal): Promise<GardenerSuggestion[]>` を追加する。`req = { provider, nodes: { id, title, body?, categoryId?, createdBy }[], edges: { source, target }[], categories }`（`AnalyzeMapRequest` と同型に `createdBy` を足した形）。実装内で `findNeglectedNodeIds` を呼び、結果を「【放置されている可能性のあるノード（参考）】」セクションとしてプロンプトに埋め込んだ上で `completeJsonWithRetry` を使う（`analyzeMap`/`suggestClusters` と同じパターン）。プロンプトには4種の提案の判断基準（放置ノードの深掘り／内容が重複するノードの統合／つながっていないクラスタ間の橋渡し／抜けている観点への問いかけ）を明記する
-- [ ] パース結果の防御的検証（`Array.isArray`、`targetNodeIds` が配列でなければ空配列に落とす等）を `suggestClusters` と同様に行う
-- [ ] `packages/core/src/llm/aiService.test.ts` に `reviewMap` のプロンプト構築（放置ノード候補の埋め込み）とレスポンス検証のテストを追加する
+- [x] `packages/core/src/services/mapReview.ts` を新規作成し、`findNeglectedNodeIds(nodes: { id: string; body?: string; createdBy: 'user' | 'ai' }[], edges: { source: string; target: string }[]): string[]` を計画通り実装した。「子ノードを持たない（`edges` に `source` として現れない）」かつ「`body` が空、または `createdBy === 'ai'`」を満たすノードIDを返す純粋関数（LLM呼び出しなし）（2026-08-17 実装）
+- [x] `packages/core/src/services/mapReview.test.ts` を作成した（5件。葉ノード＋空本文／`createdBy: 'ai'`／子あり／本文あり／空白のみの本文の組み合わせを網羅）（2026-08-17 実装）
+- [x] `packages/core/src/types/index.ts` に `GardenerSuggestion`（`{ kind: 'deepen' | 'merge' | 'bridge' | 'question'; reason: string; targetNodeIds: string[]; title?: string; body?: string }`）を計画通り追加した（2026-08-17 実装）
+- [x] `packages/core/src/llm/aiService.ts` に `GARDENER_SCHEMA` と `reviewMap(req: ReviewMapRequest, signal?: AbortSignal): Promise<GardenerSuggestion[]>` を計画通り追加した（max_tokens は 3072）。`req = { provider, nodes: { id, title, body?, categoryId?, createdBy }[], edges: { source, target }[], categories }`。実装内で `findNeglectedNodeIds` を呼び、結果を「【放置されている可能性のあるノード（参考）】」セクションとしてプロンプトに埋め込んだ上で `completeJsonWithRetry` を使う。プロンプトに4種の提案の判断基準を明記し、最大6件までに絞るよう指示する（2026-08-17 実装）
+- [x] パース結果の防御的検証（`Array.isArray(parsed.suggestions)`、`targetNodeIds` が配列でなければ空配列に落とす）を計画通り実装した（2026-08-17 実装）
+- [x] `packages/core/src/llm/aiService.test.ts` に `reviewMap` のテストを4件追加した（放置ノード候補の埋め込み／参考セクション省略／`suggestions` 非配列時の空配列フォールバック／`targetNodeIds` 非配列時の空配列フォールバック）（2026-08-17 実装）
 
 #### B. mapStore: ノード統合アクション（`packages/core`）
-- [ ] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `mergeNodes: (keepId: string, mergeId: string) => void` を追加する。`mergeId` の `body` を `keepId` の `body` に連結し、`mergeId` に接続していたエッジを `keepId` へ張り替え（張替え後に `keepId` 自身とのエッジや重複エッジができる場合は除外）、`mergeId` を削除する。`deleteNode`（`nodeSlice.ts`）と同様に1回の `set`・`pushPast` 1回でまとめる（「1操作＝1historyエントリ」の規約）
-- [ ] `packages/core/src/stores/map/nodeSlice.ts` に `mergeNodes` を実装する
-- [ ] `packages/core/src/stores/mapStore.test.ts` に `mergeNodes` のテスト（本文連結・エッジ張替え・重複エッジの除外・Undo で元に戻ること）を追加する
+- [x] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `mergeNodes: (keepId: string, mergeId: string) => void` を計画通り追加した（2026-08-17 実装）
+- [x] `packages/core/src/stores/map/nodeSlice.ts` に `mergeNodes` を実装した。`mergeId` の `body` を `keepId` の `body` に連結（`\n\n` 区切り、両方空なら `undefined`）し、`mergeId` に接続していたエッジを `keepId` へ張り替え（張替えで自己ループになるものは除外、向き問わず同じペアになったものは1本に絞る）、`mergeId` を削除する。1回の `set`・`pushPast` 1回でまとめる（2026-08-17 実装）
+- [x] `packages/core/src/stores/mapStore.test.ts` に `mergeNodes` のテストを追加した（本文連結・エッジ張替え・重複エッジの除外・Undo で元に戻ることを1テストで検証）（2026-08-17 実装）
 
 #### C. UI: MapAnalysisPanel に「ガーデナー」タブを追加
-- [ ] `packages/core/src/stores/uiStore.ts` に `gardenerSuggestions: GardenerSuggestion[]` と `setGardenerSuggestions` を追加する（`connectionSuggestions`/`setConnectionSuggestions` と同じ形）
-- [ ] `packages/ui/src/components/panels/MapAnalysisPanel.tsx` の `TabKey` に `'gardener'` を追加し、タブラベル `🌱 ガーデナー` を追加する。`handleReviewMap`（`handleAnalyze` と同じ loading/abort/エラー処理パターン）で `reviewMap` を呼び `setGardenerSuggestions` に格納する
-- [ ] ガーデナータブの提案カードは `kind` ごとに表示・適用ボタンを出し分ける:
-  - `deepen`: 対象ノードのタイトルと `title`/`body`（深掘り案）を表示し、適用ボタンで `calcSuggestionPositions(targetNode.x, targetNode.y, 1, nodes)` の位置に `addNode(title, x, y, 'ai', color, undefined, body)` → `onConnect({ source: targetNodeId, target: newId, ... })`（`AISuggestionPanel.tsx` の `handleAddSelected` と同じ組み立て）
-  - `merge`: `targetNodeIds` 2件のタイトル・本文を並べて表示し、適用ボタンで `mergeNodes(targetNodeIds[0], targetNodeIds[1])` を呼ぶ
-  - `bridge`: `targetNodeIds` 2件を `ConnectionSuggestion` と同じ見た目のカードで表示し、適用ボタンは既存の `addSuggestedEdge(targetNodeIds[0], targetNodeIds[1])` をそのまま呼ぶ
-  - `question`: `title`/`body` を表示し、適用ボタンで `targetNodeIds[0]` があればそれを親に `addConnectedNode` 相当の配置＋接続、なければ `findFreePosition`（`packages/core/src/layout/mapLayout.ts`、`nodeSlice.ts` の `addSiblingNode` で使われているのと同じ関数）で独立ノードとして追加する
-  - 適用済みの提案は `AISuggestionPanel`/`MapAnalysisPanel` 既存タブと同様に一覧から取り除く／`opacity-50` で無効化する
-- [ ] エラー表示・キャンセルボタン・ローディング表示は既存3タブの `CancelButton`/`rawErrorResponse` の仕組みをそのまま再利用する
+- [x] `packages/core/src/stores/uiStore.ts` に `gardenerSuggestions: GardenerSuggestion[]` と `setGardenerSuggestions` を計画通り追加した（2026-08-17 実装）
+- [x] `packages/ui/src/components/panels/MapAnalysisPanel.tsx` の `TabKey` に `'gardener'` を追加し、タブラベル `🌱 ガーデナー` を追加した。`handleReviewMap`（`handleAnalyze` と同じ loading/abort/エラー処理パターン）で `reviewMap` を呼び `setGardenerSuggestions` に格納する（2026-08-17 実装）
+- [x] ガーデナータブの提案カードは `kind` ごとに表示・適用ボタンを計画通り出し分けた:
+  - `deepen`: 対象ノードのタイトルと `title`/`body`（深掘り案）を表示し、適用ボタンで `calcSuggestionPositions(targetNode.x, targetNode.y, 1, nodes)` の位置に `addNode(title, x, y, 'ai', '#f3f4ff', undefined, body)` → `onConnect({ source: targetNode.id, target: newId, ... })`
+  - `merge`: `targetNodeIds` 2件のタイトルを並べて表示し、適用ボタンで `mergeNodes(targetNodeIds[0], targetNodeIds[1])` を呼ぶ
+  - `bridge`: `targetNodeIds` 2件を矢印アイコン付きのカードで表示し、適用ボタンは既存の `addSuggestedEdge(targetNodeIds[0], targetNodeIds[1])` をそのまま呼ぶ
+  - `question`: `title`/`body` を表示し、適用ボタンで `targetNodeIds[0]` があれば `calcSuggestionPositions` でその近くに配置して接続、なければ `findFreePosition({ x: 0, y: 0 }, nodes)` で独立ノードとして追加する（**計画の「`addConnectedNode` 相当」ではなく、deepen と共通の1つの分岐にまとめて実装した**。対象ノードの有無だけで配置ロジックを出し分ける形の方が実装がシンプルだったため）（2026-08-17 実装、docs 訂正）
+  - 適用済みの提案は `appliedGardener: Set<number>` に index を積み、カードを `opacity-50` にして「適用済み」ボタン表示に変える（一覧からは取り除かない。他タブの `dismissedConnections`/`appliedClusters` と同じ「取り除かず無効化」方式）（2026-08-17 実装、docs 訂正）
+- [x] エラー表示・キャンセルボタン・ローディング表示は既存3タブの `CancelButton`/`rawErrorResponse` の仕組みをそのまま再利用した（2026-08-17 実装）
 
 #### D. ドキュメント更新
-- [ ] `docs/design.md` §9（AI連携設計）に `reviewMap`・`GARDENER_SCHEMA`・「放置ノード」の構造的指標という設計判断を追記し、§4.1（mapStore）に `mergeNodes` を追記する
-- [ ] `docs/requirements.md` §2.2（AI拡張機能）に「AIガーデナー（マップレビュー）」の機能要件を追記する。「放置ノード判定は時刻ではなく構造的指標による」旨を明記する
+- [x] `docs/design.md` §9.4.3（AI連携設計）に `reviewMap`・`GARDENER_SCHEMA`・「放置ノード」の構造的指標という設計判断を追記し、§4.1（mapStore）に `mergeNodes` を追記した（2026-08-17 実装）
+- [x] `docs/requirements.md` §2.2.8 に「AIガーデナー（マップレビュー）」の機能要件を追記した。「放置ノード判定は時刻ではなく構造的指標による」旨を明記した（2026-08-17 実装）
+
+**残りの手動確認項目**:
+- [ ] 実際にAPIキー／Ollamaでマップをレビューし、放置ノードを含むマップで deepen 提案が意味のある内容になることを確認する
+- [ ] merge 提案を適用し、本文の連結・エッジの張替え・重複排除後の見た目が破綻しないことを確認する
+- [ ] bridge・question 提案を適用し、いずれも Undo 1回で元に戻ることを確認する
+- [ ] 小型ローカルモデル（Ollama）で `targetNodeIds` が単一文字列など壊れた形で返っても、UI がクラッシュせず空配列として扱われることを確認する
 
 **完了条件**: 型検査・ビルド・`pnpm test` が通過すること。ガーデナータブから4種の提案が表示され、それぞれのワンクリック適用（deepen/merge/bridge/question）が動作し、各適用が Undo 1回で取り消せること。
 
 ---
 
-### Phase 48: ペルソナ壁打ち会議
+### Phase 48: ペルソナ壁打ち会議 🔨 実装済み（確認中）
 
 **目標**: ノードを指定して複数ペルソナ（楽観家・批評家・顧客・投資家などのプリセット＋自由入力）に意見を出させ、選択した意見を子ノードとして一括追加する（v1.2「育てるAI」の2つ目、`docs/roadmap.md` §5.2）。
 
 #### A. mapStore: 複数ノード一括追加アクション（`packages/core`）
-- [ ] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `addNodesWithEdges: (nodes: IdeaNode[], edges: Edge[]) => void` を追加する。1回の `set` でノード配列とエッジ配列をまとめて追加し、`past` に1回だけ積む。ループで `addNode`/`onConnect` を繰り返すと1操作ごとに履歴が積まれ Undo が1ノードずつになってしまう問題を避けるための汎用アクション（`nodeSlice.ts` の `setNodes`/`paste` と同じ「1回の set にまとめる」パターン）
-- [ ] `packages/core/src/stores/map/nodeSlice.ts` に実装する
-- [ ] `packages/core/src/stores/mapStore.test.ts` に `addNodesWithEdges` のテスト（ノード・エッジがまとめて追加されること、`past` が1回しか積まれないこと、Undo 1回で全て取り消せること）を追加する
-- [ ] **注記（本フェーズのタスクではない）**: `documentSlice.ts` の `loadFromSerialized` は `past: [], future: []` で履歴を消去するため、Phase 44 の「既存マップへの追記」モード（`ExportImportPanel.tsx` が `loadFromSerialized([...既存, ...新規], ...)` を呼ぶ実装）は追記のたびに Undo 履歴が失われている。`addNodesWithEdges` はこの問題も解消できるため、将来 Phase 44 の追記処理をこのアクションに置き換える余地があるが、対象ファイルが異なるため本フェーズのスコープには含めない
+- [x] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `addNodesWithEdges: (nodes: IdeaNode[], edges: Edge[]) => void` を計画通り追加した。1回の `set` でノード配列とエッジ配列をまとめて追加し、`past` に1回だけ積む（2026-08-17 実装）
+- [x] `packages/core/src/stores/map/nodeSlice.ts` に実装した（2026-08-17 実装）
+- [x] `packages/core/src/stores/mapStore.test.ts` に `addNodesWithEdges` のテストを追加した（ノード・エッジがまとめて追加されること、`past` が1回しか積まれないこと、Undo 1回で全て取り消せることを1テストで検証）（2026-08-17 実装）
+- [x] **計画にはなかった追加対応**: `addNodesWithEdges` を `PersonaDebatePanel`（`packages/ui`）から呼ぶために `@ideamap/core` の公開APIとして必要になり、あわせてテストで使う `makeEdge`（`packages/core/src/stores/map/constants.ts`）も外部から import できるようにするため、`packages/core/src/index.ts` に `export * from './stores/map/constants'` を追加した。それまで `constants.ts` は `mapStore.ts` 経由の再エクスポートがなく、`packages/ui`/テストから `makeEdge`/`DEFAULT_NODE_COLOR` 等を直接 import できなかった（2026-08-17 実装、docs 訂正）
+- [x] **注記（本フェーズのタスクではない）**: `documentSlice.ts` の `loadFromSerialized` は `past: [], future: []` で履歴を消去するため、Phase 44 の「既存マップへの追記」モード（`ExportImportPanel.tsx` が `loadFromSerialized([...既存, ...新規], ...)` を呼ぶ実装）は追記のたびに Undo 履歴が失われている。`addNodesWithEdges` はこの問題も解消できるため、将来 Phase 44 の追記処理をこのアクションに置き換える余地があるが、対象ファイルが異なるため本フェーズのスコープには含めない（2026-08-17 実装）
 
 #### B. AI壁打ちロジック（`packages/core`）
-- [ ] `packages/core/src/types/index.ts` に `PersonaOpinion`（`{ persona: string; opinions: { title: string; body: string }[] }`）を追加する。`AISuggestion`/`ConnectionSuggestion` と同じく、uiStore に結果を保持するため型定義側に置く
-- [ ] `packages/core/src/llm/aiService.ts` に `DEBATE_SCHEMA`（`{ personas: PersonaOpinion[] }` に対応する `JsonSchema`）と `debateNode(req: DebateNodeRequest, signal?: AbortSignal): Promise<PersonaOpinion[]>` を追加する。`req = { provider, mapContext: MapContext, nodeId: string, personas: string[] }`。`mapContext.nodes` から `nodeId` に対応するノードを探しタイトル・本文を組み込み、`mapContext.edges` から1ホップ隣接ノードを「つながっているアイデア」として提示する（`generateSuggestions` の `connectedSection` と同じ考え方）。1回の `completeJsonWithRetry` 呼び出しで `personas` の全員分の意見をまとめて構造化出力させる（コストを増やさないため。ペルソナごとに複数回呼ぶ設計にはしない）
-- [ ] パース結果の防御的検証（`Array.isArray`、各ペルソナの `opinions` が配列でなければ空配列に落とす）を行う
-- [ ] `packages/core/src/llm/aiService.test.ts` に `debateNode` のプロンプト構築（対象ノード・隣接ノード・ペルソナ一覧の埋め込み）とレスポンス検証のテストを追加する
+- [x] `packages/core/src/types/index.ts` に `PersonaOpinion`（`{ persona: string; opinions: { title: string; body: string }[] }`）を計画通り追加した（2026-08-17 実装）
+- [x] `packages/core/src/llm/aiService.ts` に `DEBATE_SCHEMA` と `debateNode(req: DebateNodeRequest, signal?: AbortSignal): Promise<PersonaOpinion[]>` を計画通り追加した（max_tokens は 3072）。`req = { provider, mapContext: MapContext, nodeId: string, personas: string[] }`。`mapContext.nodes` から `nodeId` に対応するノードを探しタイトル・本文を組み込み（見つからなければ `対象ノードが見つかりません` を投げる）、`mapContext.edges` から1ホップ隣接ノードを「つながっているアイデア」として提示する。1回の `completeJsonWithRetry` 呼び出しで `personas` の全員分の意見をまとめて構造化出力させる（2026-08-17 実装）
+- [x] パース結果の防御的検証（`personas` が配列でなければ `AIからの応答形式が正しくありません` を投げる、各ペルソナの `opinions` が配列でなければ空配列に落とす）を計画通り実装した（2026-08-17 実装）
+- [x] `packages/core/src/llm/aiService.test.ts` に `debateNode` のテストを4件追加した（対象ノード・隣接ノード（1ホップのみ）・ペルソナ一覧のプロンプト埋め込み／対象ノード不在時のエラー／`personas` 非配列時のエラー／`opinions` 非配列時の空配列フォールバック）（2026-08-17 実装）
 
 #### C. UI: 新パネル `PersonaDebatePanel` と入口
-- [ ] `packages/core/src/stores/uiStore.ts` に `isPersonaDebatePanelOpen`/`setPersonaDebatePanelOpen`・`personaDebateResult: PersonaOpinion[]`/`setPersonaDebateResult`・`isPersonaDebateLoading`/`setPersonaDebateLoading` を追加する（`isAnalysisPanelOpen`/`mapAnalysis`/`isAnalysisLoading` と同じ構成。対象ノードIDは既存の `selectedNodeId` を再利用し、専用の state は持たない）
-- [ ] `packages/ui/src/components/panels/PersonaDebatePanel.tsx` を新規作成する。プリセットペルソナ（楽観家・批評家・顧客・投資家）のトグルチップ＋自由入力テキストボックス（追加ボタンでリストに足す）→「議論を始める」ボタン→ローディング（`CancelButton`/`AbortController` パターン踏襲）→ペルソナごとに意見カードを表示し、`AISuggestionPanel.tsx` の `selected: Set<number>` と同じ考え方でペルソナ×意見の組を個別に選択可能にする→「選択した意見を子ノードとして追加」ボタンで、選択された意見それぞれに対して `calcSuggestionPositions(selectedNode.x, selectedNode.y, count, nodes)` で位置を求めた `IdeaNode[]` と、選択ノードへの `Edge[]`（`makeEdge` 相当、`packages/core/src/stores/map/constants.ts` の `makeEdge` を参照）を組み立てて `addNodesWithEdges` を1回呼ぶ
-- [ ] `packages/ui/src/App.tsx` に `<PersonaDebatePanel />` を追加し、`packages/ui/src/index.ts` から export する
-- [ ] `packages/ui/src/components/canvas/ContextMenu.tsx` のノードメニューに、既存の `✦ AIで拡張`（`setAIPanelOpen(true)`）の直後へ `🎭 ペルソナで壁打ち` 項目を追加し、`setSelectedNodeId(targetId)` → `setPersonaDebatePanelOpen(true)` を呼ぶ
-- [ ] `packages/ui/src/components/panels/NodeDetailPanel.tsx` のヘッダーの `AI拡張` ボタン（`handleAIExpand`）の隣に同様の壁打ち起動ボタンを追加する
+- [x] `packages/core/src/stores/uiStore.ts` に `isPersonaDebatePanelOpen`/`setPersonaDebatePanelOpen`・`personaDebateResult: PersonaOpinion[]`/`setPersonaDebateResult`・`isPersonaDebateLoading`/`setPersonaDebateLoading` を計画通り追加した（対象ノードIDは既存の `selectedNodeId` を再利用し、専用の state は持たない）（2026-08-17 実装）
+- [x] `packages/ui/src/components/panels/PersonaDebatePanel.tsx` を新規作成した。プリセットペルソナ（楽観家・批評家・顧客・投資家）のトグルチップ＋自由入力テキストボックス（追加ボタンまたは Enter でリストに足す）→「議論を始める」ボタン→ローディング（`CancelButton`/`AbortController` パターン踏襲）→ペルソナごとに意見カードを表示し、`personaIdx-opinionIdx` をキーにした `Set<string>` でペルソナ×意見の組を個別に選択可能にする（生成直後は全件選択済み）→「選択した意見を子ノードとして追加」ボタンで、選択された意見それぞれに対して `calcSuggestionPositions(selectedNode.position.x, selectedNode.position.y, count, nodes)` で位置を求めた `IdeaNode[]` と、選択ノードへの `makeEdge({ source, target, sourceHandle: 'right', targetHandle: 'left' })` の `Edge[]` を組み立てて `addNodesWithEdges` を1回呼ぶ。追加後は選択ノード＋新規ノード群へ `fitView` する（2026-08-17 実装）
+- [x] `packages/ui/src/App.tsx` に `<PersonaDebatePanel />` を追加し、`packages/ui/src/index.ts` から export した（2026-08-17 実装）
+- [x] `packages/ui/src/components/canvas/ContextMenu.tsx` のノードメニューに、既存の `✦ AIで拡張`（`setAIPanelOpen(true)`）の直後へ `🎭 ペルソナで壁打ち` 項目を計画通り追加した（2026-08-17 実装）
+- [x] `packages/ui/src/components/panels/NodeDetailPanel.tsx` のヘッダーの `AI拡張` ボタンの隣に壁打ち起動ボタン（`🎭 壁打ち`）を追加した（2026-08-17 実装）
 
 #### D. ドキュメント更新
-- [ ] `docs/design.md` §9（AI連携設計）に `debateNode`・`DEBATE_SCHEMA` を追記し、§4.1（mapStore）に `addNodesWithEdges` を追記し、§5（コンポーネント設計）に `PersonaDebatePanel` を追記し、§5.4（ContextMenu）に「ペルソナで壁打ち」項目を追記する
-- [ ] `docs/requirements.md` §2.2（AI拡張機能）に「ペルソナ壁打ち会議」の機能要件を追記する
+- [x] `docs/design.md` §9.4.4（AI連携設計）に `debateNode`・`DEBATE_SCHEMA` を追記し、§4.1（mapStore）に `addNodesWithEdges` を追記し、§5.12（コンポーネント設計）に `PersonaDebatePanel` を追記し、§5.4（ContextMenu）に「ペルソナで壁打ち」項目を追記した（2026-08-17 実装）
+- [x] `docs/requirements.md` §2.2.9 に「ペルソナ壁打ち会議」の機能要件を追記した（2026-08-17 実装）
+
+**残りの手動確認項目**:
+- [ ] ContextMenu・NodeDetailPanel の両方から壁打ちパネルを開けることを実機で確認する
+- [ ] プリセットペルソナと自由入力ペルソナを組み合わせて実際にAI呼び出しを行い、ペルソナごとの意見が意味のある内容になることを確認する
+- [ ] 意見の個別選択（一部だけ採用）で選んだ分だけ子ノードが追加され、Undo 1回で全て取り消せることを確認する
+- [ ] 小型ローカルモデル（Ollama）で複数ペルソナを指定した場合の応答品質・所要時間を確認する
 
 **完了条件**: 型検査・ビルド・`pnpm test` が通過すること。ContextMenu またはノード詳細から壁打ちパネルを開き、プリセット／自由入力ペルソナで意見を生成し、選択した意見を子ノードとして一括追加でき、その追加が Undo 1回で取り消せること。
 
