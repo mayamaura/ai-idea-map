@@ -99,12 +99,11 @@ describe('nodeSlice', () => {
     expect(state.nodes.find((n) => n.id === id)?.position).toEqual({ x: 80, y: 80 })
     expect(state.past.length).toBe(pastLen + 1)
 
-    // バグ: dragging:true の中間フレームは非履歴更新として state.nodes を直接書き換えるため、
-    // 確定(dragging:false)時に push される past スナップショットは「ドラッグ開始前(0,0)」ではなく
-    // 「直前の dragging:true フレーム(50,50)」を捉えてしまう。実際の React Flow のドラッグ終了イベントは
-    // 直前の drag イベントと同じ座標で dragging:false を発火するため、実運用でも undo でドラッグ開始位置には戻らない。
+    // Undo はドラッグ開始前の位置(0,0)まで戻る。中間フレームは非履歴更新で state.nodes を
+    // 直接動かすため、確定時のスナップショットではなく「最初の dragging:true で控えた
+    // スナップショット」が past に積まれることを検証する
     useMapStore.getState().undo()
-    expect(useMapStore.getState().nodes.find((n) => n.id === id)?.position).toEqual({ x: 50, y: 50 })
+    expect(useMapStore.getState().nodes.find((n) => n.id === id)?.position).toEqual({ x: 0, y: 0 })
   })
 })
 

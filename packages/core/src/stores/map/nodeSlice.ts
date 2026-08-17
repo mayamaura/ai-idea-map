@@ -24,6 +24,16 @@ function getSize(n: IdeaNode): { width: number; height: number } {
   }
 }
 
+/**
+ * ドラッグ開始時点のスナップショット。
+ * dragging=true の中間フレームは非履歴更新で state.nodes を直接動かすため、
+ * 確定（dragging=false）時に state から取ったスナップショットは「最後の中間位置」になってしまい
+ * Undo でドラッグ開始位置に戻れない。最初の dragging=true でここに控え、確定時にこれを past に積む。
+ * 確定されないまま終わったドラッグ（コンポーネント破棄等）が残っても、その移動は履歴に積まれて
+ * いないので、次の確定時にこれを使うことは「最後に確定した状態へ戻す」という点で正しい。
+ */
+let dragStartSnapshot: ReturnType<typeof snapshot> | null = null
+
 export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
   nodes: initialNodes,
   clipboard: { nodes: [], edges: [] },
@@ -88,7 +98,13 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
         (c.type === 'position' && !(c as { dragging?: boolean }).dragging) ||
         c.type === 'remove'
     )
+    const isDragging = processedChanges.some(
+      (c) => c.type === 'position' && (c as { dragging?: boolean }).dragging === true
+    )
     set((state) => {
+      if (isDragging && dragStartSnapshot === null) {
+        dragStartSnapshot = snapshot(state.nodes, state.edges)
+      }
       let newNodes = applyNodeChanges(processedChanges, state.nodes) as IdeaNode[]
       if (groupResizeEnds.length > 0) {
         newNodes = newNodes.map((n) => {
@@ -98,9 +114,11 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
         })
       }
       if (isHistoric) {
+        const before = dragStartSnapshot ?? snapshot(state.nodes, state.edges)
+        dragStartSnapshot = null
         return {
           nodes: newNodes,
-          past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+          past: pushPast(state.past, before),
           future: [],
         }
       }
