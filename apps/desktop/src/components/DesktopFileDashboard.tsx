@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getPlatform, type FileRef } from '@ideamap/platform'
 import { useUIStore, type MapFile } from '@ideamap/core'
-import { openLoadedMap, startNewMap, useDashboardEscapeToClose } from '@ideamap/ui'
+import { openLoadedMap, startNewMap, startNewMapFromTemplate, useDashboardEscapeToClose, TemplatePickerModal } from '@ideamap/ui'
 import { loadLastAutosave } from '../platform'
 import { openMapFile } from '../openMap'
 import { DriveSection } from './DriveSection'
@@ -26,6 +26,7 @@ export function DesktopFileDashboard({ cloudAuth }: DesktopFileDashboardProps) {
   const [recent, setRecent] = useState<{ ref: FileRef; title: string }[]>([])
   const [autosaved, setAutosaved] = useState<MapFile | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
 
   useEffect(() => {
     if (!isFileDashboardOpen) return
@@ -178,6 +179,16 @@ export function DesktopFileDashboard({ cloudAuth }: DesktopFileDashboardProps) {
               新規作成
             </button>
             <button
+              onClick={() => setShowTemplates(true)}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              テンプレート
+            </button>
+            <button
               onClick={() => void handleOpen()}
               disabled={isBusy}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
@@ -191,6 +202,14 @@ export function DesktopFileDashboard({ cloudAuth }: DesktopFileDashboardProps) {
           </div>
         </div>
       </div>
+      <TemplatePickerModal
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelect={(id) => {
+          setShowTemplates(false)
+          startNewMapFromTemplate(id)
+        }}
+      />
     </div>
   )
 

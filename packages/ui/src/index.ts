@@ -8,6 +8,7 @@ export { MasterPasswordModal } from './components/common/MasterPasswordModal'
 export { SearchBar } from './components/common/SearchBar'
 export { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal'
 export { ApiKeyRequired } from './components/common/ApiKeyRequired'
+export { TemplatePickerModal } from './components/common/TemplatePickerModal'
 
 export { IdeaCanvas } from './components/canvas/IdeaCanvas'
 export { ContextMenu } from './components/canvas/ContextMenu'
@@ -26,7 +27,7 @@ export { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 export { useFocusTrap } from './hooks/useFocusTrap'
 export { useOnlineStatus } from './hooks/useOnlineStatus'
 export { useNodeFocus } from './hooks/useNodeFocus'
-export { startNewMap, openLoadedMap, useDashboardEscapeToClose } from './hooks/useFileDashboard'
+export { startNewMap, startNewMapFromTemplate, openLoadedMap, useDashboardEscapeToClose } from './hooks/useFileDashboard'
 
 export { renderMarkdownSimple } from './utils/markdown'
 

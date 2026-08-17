@@ -11,7 +11,7 @@ import {
   type MapFile,
   type DriveFile,
 } from '@ideamap/core'
-import { openLoadedMap, startNewMap, useDashboardEscapeToClose } from '@ideamap/ui'
+import { openLoadedMap, startNewMap, startNewMapFromTemplate, useDashboardEscapeToClose, TemplatePickerModal } from '@ideamap/ui'
 import { loadRecentMaps, saveRecentMap, loadMapLocally } from '../../services/storageService'
 
 interface FileOpenDashboardProps {
@@ -35,6 +35,7 @@ export function FileOpenDashboard({
   const [driveError, setDriveError] = useState<string | null>(null)
   const [filterText, setFilterText] = useState('')
   const [busyFileId, setBusyFileId] = useState<string | null>(null)
+  const [showTemplates, setShowTemplates] = useState(false)
   const recentMaps = loadRecentMaps()
   const localMap = loadMapLocally()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -389,6 +390,16 @@ export function FileOpenDashboard({
               新規作成
             </button>
             <button
+              onClick={() => setShowTemplates(true)}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              テンプレート
+            </button>
+            <button
               onClick={() => fileInputRef.current?.click()}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
@@ -408,6 +419,14 @@ export function FileOpenDashboard({
           </div>
         </div>
       </div>
+      <TemplatePickerModal
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelect={(id) => {
+          setShowTemplates(false)
+          startNewMapFromTemplate(id)
+        }}
+      />
     </div>
   )
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { FileRef } from '@ideamap/platform'
-import { useMapStore, useUIStore, type MapFile } from '@ideamap/core'
+import { getMapTemplate, useMapStore, useUIStore, type MapFile } from '@ideamap/core'
 
 /**
  * 起動画面（ファイルダッシュボード）の共通部分。
@@ -14,6 +14,23 @@ export function startNewMap(): void {
   const ui = useUIStore.getState()
   useMapStore.getState().reset()
   ui.setMapTitle('新しいマップ')
+  ui.setCurrentFileId(null)
+  ui.setCurrentMapId(null)
+  ui.setPresentationNodeIds([])
+  ui.setSaveStatus('unsaved')
+  ui.setFileDashboardOpen(false)
+}
+
+/** テンプレート（SWOT等）から新規マップを作ってキャンバスに入る（Phase 46） */
+export function startNewMapFromTemplate(templateId: string): void {
+  const template = getMapTemplate(templateId)
+  if (!template) return
+  const ui = useUIStore.getState()
+  const map = useMapStore.getState()
+  map.reset()
+  map.loadFromSerialized(template.nodes, template.edges)
+  ui.setMapTitle(template.mapTitle)
+  // startNewMap と同じ手順で保存先の紐付けを外す（前回ファイルへの誤保存を防ぐ）
   ui.setCurrentFileId(null)
   ui.setCurrentMapId(null)
   ui.setPresentationNodeIds([])
