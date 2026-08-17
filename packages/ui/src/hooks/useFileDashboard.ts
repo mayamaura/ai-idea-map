@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import { getMapTemplate, migrateMapFile, useMapStore, useUIStore, type MapFile } from '@ideamap/core'
+import { getMapTemplate, migrateMapFile, saveMergeBase, useMapStore, useUIStore, type MapFile } from '@ideamap/core'
 
 /**
  * 起動画面（ファイルダッシュボード）の共通部分。
@@ -62,6 +62,8 @@ export function openLoadedMap(
   ui.setSaveStatus(fileId ? 'saved' : 'unsaved')
   ui.setFileDashboardOpen(false)
   if (warning) ui.addToast(warning, 'info')
+  // マップを開いた時点を3方向マージ（Phase 53）の base にする
+  if (data.mapId) void saveMergeBase(data.mapId, data)
 }
 
 /**

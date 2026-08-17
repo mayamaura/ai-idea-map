@@ -1,7 +1,19 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import { useMapStore, useUIStore, useSettingsStore, buildMapFile, migrateMapFile, recordSnapshot, type MapFile } from '@ideamap/core'
+import {
+  useMapStore,
+  useUIStore,
+  useSettingsStore,
+  buildMapFile,
+  migrateMapFile,
+  recordSnapshot,
+  mergeMapFiles,
+  applyConflictResolutions,
+  getMergeBase,
+  saveMergeBase,
+  type MapFile,
+} from '@ideamap/core'
 
 const DEBOUNCE_MS = 3000
 /** バックグラウンドから戻った際に再チェックを走らせる閾値（ミリ秒） */
@@ -139,24 +151,101 @@ export function useAutoSave(options: AutoSaveOptions) {
                   '自分の編集内容を上書き保存すると、保存先にある別の内容が失われます。',
                 confirmLabel: '上書き保存',
                 danger: true,
-                secondaryAction: {
-                  label: '最新版を読み込む',
-                  onClick: async () => {
-                    // 保存先から最新版を再ロード
-                    const opened = await file.openFile(ref)
-                    const raw = opened?.content as (MapFile & { mapId?: string }) | undefined
-                    if (!raw) return
-                    const { file: data, warning } = migrateMapFile(raw)
-                    loadFromSerialized(data.nodes, data.edges)
-                    useUIStore.getState().setPresentationNodeIds(data.presentationNodeIds ?? [])
-                    useUIStore.getState().setMapTitle(data.title || mapTitle)
-                    setCurrentMapId(data.mapId ?? null)
-                    hasCheckedThisSessionRef.current = true
-                    isSuspendedRef.current = false
-                    setSS('saved')
-                    if (warning) useUIStore.getState().addToast(warning, 'info')
+                secondaryActions: [
+                  {
+                    label: '最新版を読み込む',
+                    onClick: async () => {
+                      // 保存先から最新版を再ロード
+                      const opened = await file.openFile(ref)
+                      const raw = opened?.content as (MapFile & { mapId?: string }) | undefined
+                      if (!raw) return
+                      const { file: data, warning } = migrateMapFile(raw)
+                      loadFromSerialized(data.nodes, data.edges)
+                      useUIStore.getState().setPresentationNodeIds(data.presentationNodeIds ?? [])
+                      useUIStore.getState().setMapTitle(data.title || mapTitle)
+                      setCurrentMapId(data.mapId ?? null)
+                      hasCheckedThisSessionRef.current = true
+                      isSuspendedRef.current = false
+                      setSS('saved')
+                      // 読み込んだ内容がその時点の base になる（Phase 53）
+                      if (data.mapId) void saveMergeBase(data.mapId, data)
+                      if (warning) useUIStore.getState().addToast(warning, 'info')
+                    },
                   },
-                },
+                  {
+                    label: 'マージを試す',
+                    onClick: async () => {
+                      const addToast = useUIStore.getState().addToast
+                      if (!effectiveMapId) {
+                        addToast('マージの基準データがないため、通常の方法で解決してください', 'info')
+                        return
+                      }
+                      const base = await getMergeBase(effectiveMapId)
+                      if (!base) {
+                        addToast('マージの基準データがないため、通常の方法で解決してください', 'info')
+                        return
+                      }
+
+                      try {
+                        setSS('saving')
+                        // 保存先から相手側（theirs）を取得
+                        const opened = await file.openFile(ref)
+                        const raw = opened?.content as (MapFile & { mapId?: string }) | undefined
+                        if (!raw) {
+                          addToast('マージ対象の読み込みに失敗しました', 'error')
+                          setSS('conflict')
+                          return
+                        }
+                        const { file: theirs } = migrateMapFile(raw)
+                        const mine = buildMapFile(effectiveMapId)
+                        const { merged, conflicts } = mergeMapFiles(base, mine, theirs)
+
+                        // マージ結果を反映して保存まで行う（衝突解決後の適用もこれを経由する）。
+                        // 保存の成否を呼び出し側に伝えるため真偽値を返す
+                        const applyAndSave = async (finalFile: MapFile): Promise<boolean> => {
+                          loadFromSerialized(finalFile.nodes, finalFile.edges)
+                          useUIStore.getState().setPresentationNodeIds(finalFile.presentationNodeIds ?? [])
+                          useUIStore.getState().setMapTitle(finalFile.title)
+                          setCurrentMapId(finalFile.mapId)
+                          hasCheckedThisSessionRef.current = true
+                          isSuspendedRef.current = false
+                          try {
+                            const savedRef = await file.saveFile(ref, finalFile)
+                            setCurrentFileId(savedRef.id, savedRef.origin)
+                            failureCountRef.current = 0
+                            setSS('saved')
+                            useUIStore.getState().setLastSavedAt(new Date().toISOString())
+                            void recordSnapshot(finalFile.mapId, finalFile)
+                            void saveMergeBase(finalFile.mapId, finalFile)
+                            return true
+                          } catch {
+                            setSS('error')
+                            addToast('マージ結果の保存に失敗しました', 'error')
+                            return false
+                          }
+                        }
+
+                        if (conflicts.length === 0) {
+                          const ok = await applyAndSave(merged)
+                          if (ok) addToast('マージが完了しました', 'success')
+                          return
+                        }
+
+                        // 自動保存は衝突解決ダイアログが閉じるまで停止したまま
+                        setSS('conflict')
+                        useUIStore.getState().openMergeConflictDialog({
+                          conflicts,
+                          onResolve: (choices) => {
+                            void applyAndSave(applyConflictResolutions(merged, conflicts, choices))
+                          },
+                        })
+                      } catch {
+                        setSS('conflict')
+                        addToast('マージに失敗しました', 'error')
+                      }
+                    },
+                  },
+                ],
                 onConfirm: () => {
                   // 強制上書き：チェック済みにしてすぐ保存を再開
                   hasCheckedThisSessionRef.current = true
@@ -197,6 +286,8 @@ export function useAutoSave(options: AutoSaveOptions) {
           // 新規保存確定時・上書き保存成功時のどちらもここを通る（!ref の分岐は id 確定のみ）。
           // 保存先未確定のローカル控えのみの分岐（下の else）は正式な保存ではないため記録しない
           void recordSnapshot(mapFile.mapId, mapFile)
+          // 今回の保存内容を次回の3方向マージ（Phase 53）の base にする
+          void saveMergeBase(mapFile.mapId, mapFile)
         }
       } catch (err) {
         if (isMountedRef.current) {

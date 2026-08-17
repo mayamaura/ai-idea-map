@@ -28,7 +28,7 @@ export function ConfirmDialog() {
 
   if (!confirmDialog) return null
 
-  const { title, message, confirmLabel = '削除', danger = true, onConfirm, onCancel, secondaryAction } = confirmDialog
+  const { title, message, confirmLabel = '削除', danger = true, onConfirm, onCancel, secondaryActions } = confirmDialog
 
   const handleConfirm = () => {
     onConfirm()
@@ -40,8 +40,8 @@ export function ConfirmDialog() {
     closeConfirmDialog()
   }
 
-  const handleSecondary = () => {
-    secondaryAction?.onClick()
+  const handleSecondary = (action: { onClick: () => void }) => {
+    action.onClick()
     closeConfirmDialog()
   }
 
@@ -73,14 +73,15 @@ export function ConfirmDialog() {
           >
             キャンセル
           </button>
-          {secondaryAction && (
+          {secondaryActions?.map((action) => (
             <button
-              onClick={handleSecondary}
+              key={action.label}
+              onClick={() => handleSecondary(action)}
               className="px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 border border-primary-300 dark:border-primary-600 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
             >
-              {secondaryAction.label}
+              {action.label}
             </button>
-          )}
+          ))}
           <button
             ref={confirmButtonRef}
             onClick={handleConfirm}

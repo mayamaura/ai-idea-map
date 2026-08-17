@@ -18,6 +18,7 @@ import { PresentationMode } from './components/screens/PresentationMode'
 import { ToastContainer } from './components/common/Toast'
 import { ContextMenu } from './components/canvas/ContextMenu'
 import { ConfirmDialog } from './components/common/ConfirmDialog'
+import { MergeConflictDialog } from './components/common/MergeConflictDialog'
 import { InputDialog } from './components/common/InputDialog'
 import { WelcomeModal } from './components/common/WelcomeModal'
 import { MasterPasswordModal } from './components/common/MasterPasswordModal'
@@ -175,6 +176,7 @@ function AppInner({
       <ToastContainer />
       <ContextMenu />
       <ConfirmDialog />
+      <MergeConflictDialog />
       <InputDialog />
       <MasterPasswordModal />
       <SearchBar />

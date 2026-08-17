@@ -132,7 +132,7 @@ export function NodeDetailPanel() {
       onCancel: () => {
         skipBlurCommit.current = false
       },
-      secondaryAction: { label: '保存して閉じる', onClick: commitAndClose },
+      secondaryActions: [{ label: '保存して閉じる', onClick: commitAndClose }],
     })
   }, [isDirty, discardAndClose, commitAndClose, closeNodeDetail, openConfirmDialog])
 

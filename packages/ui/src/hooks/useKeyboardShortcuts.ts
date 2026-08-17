@@ -81,6 +81,7 @@ export function useKeyboardShortcuts() {
         ui.isExportPanelOpen ||
         ui.confirmDialog ||
         ui.inputDialog ||
+        ui.mergeConflictDialog ||
         ui.contextMenu ||
         ui.isSearchOpen ||
         ui.isTimelapsePlaying

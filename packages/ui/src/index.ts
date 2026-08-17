@@ -2,6 +2,7 @@
 export { Header } from './components/common/Header'
 export { ToastContainer } from './components/common/Toast'
 export { ConfirmDialog } from './components/common/ConfirmDialog'
+export { MergeConflictDialog } from './components/common/MergeConflictDialog'
 export { InputDialog } from './components/common/InputDialog'
 export { WelcomeModal } from './components/common/WelcomeModal'
 export { MasterPasswordModal } from './components/common/MasterPasswordModal'

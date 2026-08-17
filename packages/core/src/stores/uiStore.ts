@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
 import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, GardenerSuggestion, PersonaOpinion, ChatMessage } from '../types'
+import type { MergeConflict } from '../services/mapMerge'
 
 /** 開いている Drive ファイルIDの永続化キー（リロード後も同じファイルへ保存を継続するため） */
 const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
@@ -35,11 +36,17 @@ export interface ConfirmDialogState {
   danger?: boolean
   onConfirm: () => void
   onCancel?: () => void
-  /** 3択が必要な場合（衝突ダイアログ等）に使うオプションの中央ボタン */
-  secondaryAction?: {
+  /** 3択以上が必要な場合（衝突ダイアログ等）に使うオプションの中央ボタン列。表示順で並ぶ */
+  secondaryActions?: Array<{
     label: string
     onClick: () => void
-  }
+  }>
+}
+
+/** 衝突解決ダイアログ（Phase 53: 3方向マージ）の状態 */
+export interface MergeConflictDialogState {
+  conflicts: MergeConflict[]
+  onResolve: (choices: Record<string, 'mine' | 'theirs'>) => void
 }
 
 /** 1行テキスト入力ダイアログ（window.prompt の代替） */
@@ -88,6 +95,8 @@ interface UIState {
   contextMenu: ContextMenuState | null
   confirmDialog: ConfirmDialogState | null
   inputDialog: InputDialogState | null
+  /** 3方向マージの衝突解決ダイアログ（Phase 53） */
+  mergeConflictDialog: MergeConflictDialogState | null
   // 検索 & カテゴリフィルター
   isSearchOpen: boolean
   searchQuery: string
@@ -171,6 +180,8 @@ interface UIState {
   closeConfirmDialog: () => void
   openInputDialog: (dialog: InputDialogState) => void
   closeInputDialog: () => void
+  openMergeConflictDialog: (dialog: MergeConflictDialogState) => void
+  closeMergeConflictDialog: () => void
   // 検索 & カテゴリフィルター
   setSearchOpen: (open: boolean) => void
   setSearchQuery: (query: string) => void
@@ -243,6 +254,7 @@ export const useUIStore = create<UIState>((set) => ({
   contextMenu: null,
   confirmDialog: null,
   inputDialog: null,
+  mergeConflictDialog: null,
   isSearchOpen: false,
   searchQuery: '',
   activeCategoryFilters: [],
@@ -338,6 +350,8 @@ export const useUIStore = create<UIState>((set) => ({
   closeConfirmDialog: () => set({ confirmDialog: null }),
   openInputDialog: (dialog) => set({ inputDialog: dialog }),
   closeInputDialog: () => set({ inputDialog: null }),
+  openMergeConflictDialog: (dialog) => set({ mergeConflictDialog: dialog }),
+  closeMergeConflictDialog: () => set({ mergeConflictDialog: null }),
   setSearchOpen: (open) => set({ isSearchOpen: open, ...(open ? {} : { searchQuery: '' }) }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   toggleCategoryFilter: (categoryId) =>
