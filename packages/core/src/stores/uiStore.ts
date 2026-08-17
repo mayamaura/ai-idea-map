@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { getPlatform, type FileRef } from '@ideamap/platform'
-import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, ChatMessage } from '../types'
+import type { AISuggestion, SaveStatus, MapAnalysis, ConnectionSuggestion, ClusterSuggestion, GardenerSuggestion, ChatMessage } from '../types'
 
 /** 開いている Drive ファイルIDの永続化キー（リロード後も同じファイルへ保存を継続するため） */
 const DRIVE_FILE_ID_KEY = 'ideamap-drive-fileid'
@@ -101,6 +101,7 @@ interface UIState {
   mapAnalysis: MapAnalysis | null
   connectionSuggestions: ConnectionSuggestion[]
   clusterSuggestions: ClusterSuggestion[]
+  gardenerSuggestions: GardenerSuggestion[]
   // AI成果物生成（Phase 45）
   isArtifactPanelOpen: boolean
   // AIチャット
@@ -195,6 +196,7 @@ interface UIState {
   setMapAnalysis: (analysis: MapAnalysis | null) => void
   setConnectionSuggestions: (suggestions: ConnectionSuggestion[]) => void
   setClusterSuggestions: (suggestions: ClusterSuggestion[]) => void
+  setGardenerSuggestions: (suggestions: GardenerSuggestion[]) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -230,6 +232,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapAnalysis: null,
   connectionSuggestions: [],
   clusterSuggestions: [],
+  gardenerSuggestions: [],
   isArtifactPanelOpen: false,
   isChatPanelOpen: false,
   chatMessages: [],
@@ -392,6 +395,7 @@ export const useUIStore = create<UIState>((set) => ({
   setMapAnalysis: (analysis) => set({ mapAnalysis: analysis }),
   setConnectionSuggestions: (suggestions) => set({ connectionSuggestions: suggestions }),
   setClusterSuggestions: (suggestions) => set({ clusterSuggestions: suggestions }),
+  setGardenerSuggestions: (suggestions) => set({ gardenerSuggestions: suggestions }),
   // ダッシュボードが閉じる＝マップを開いた/作成した直後なので hasActiveMap を立てる
   // （閉じる経路はマップ選択・新規作成・インポート・「キャンバスに戻る」のみ）
   setFileDashboardOpen: (open) =>

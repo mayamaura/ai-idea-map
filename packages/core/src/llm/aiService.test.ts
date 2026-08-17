@@ -1,7 +1,7 @@
 // generateArtifactFromMap のテスト。LLMProvider は HTTP を経由しないので、
 // openaiProvider.test.ts 等と違い HttpAdapter をモックせず LLMProvider インターフェースを直接フェイクする。
 import { describe, expect, it } from 'vitest'
-import { generateArtifactFromMap } from './aiService'
+import { generateArtifactFromMap, reviewMap } from './aiService'
 import type { LLMProvider, LLMRequest, ModelInfo } from './types'
 import type { MapContext } from '../types'
 
@@ -29,6 +29,27 @@ function fakeProvider(responseText: string, onRequest?: (req: LLMRequest) => voi
       }
       return acc
     },
+    listModels: async (): Promise<ModelInfo[]> => [],
+  }
+}
+
+/** completeJson() が固定レスポンスを返す最小限のフェイク（reviewMap 等の構造化出力テスト用） */
+function fakeJsonProvider(response: unknown, onRequest?: (req: LLMRequest) => void): LLMProvider {
+  return {
+    id: 'claude',
+    capabilities: {
+      streaming: true,
+      structuredOutput: 'prompt-only',
+      maxContextTokens: 200000,
+      billed: true,
+      supportsModelListing: false,
+    },
+    complete: async () => '',
+    completeJson: async <T,>(req: LLMRequest) => {
+      onRequest?.(req)
+      return response as T
+    },
+    stream: async () => '',
     listModels: async (): Promise<ModelInfo[]> => [],
   }
 }
@@ -107,5 +128,56 @@ describe('generateArtifactFromMap', () => {
     await generateArtifactFromMap({ provider, mapContext, format })
 
     expect(capturedPrompt).toContain(expectedFragment)
+  })
+})
+
+describe('reviewMap', () => {
+  // n2 は子を持たない葉ノードかつ本文なし → findNeglectedNodeIds が検出する
+  const nodes = [
+    { id: 'n1', title: 'ルート', body: 'ルートの本文', createdBy: 'user' as const },
+    { id: 'n2', title: '放置ノード', createdBy: 'user' as const },
+  ]
+  const edges = [{ source: 'n1', target: 'n2' }]
+
+  it('放置ノード候補（findNeglectedNodeIds の結果）をプロンプトに埋め込む', async () => {
+    let capturedPrompt = ''
+    const provider = fakeJsonProvider({ suggestions: [] }, (req) => {
+      capturedPrompt = req.messages[0].content
+    })
+
+    await reviewMap({ provider, nodes, edges, categories: [] })
+
+    expect(capturedPrompt).toContain('【放置されている可能性のあるノード（参考）】')
+    expect(capturedPrompt).toContain('[n2] 放置ノード')
+  })
+
+  it('放置ノードがなければ参考セクションを含めない', async () => {
+    let capturedPrompt = ''
+    const provider = fakeJsonProvider({ suggestions: [] }, (req) => {
+      capturedPrompt = req.messages[0].content
+    })
+    const allGoodNodes = [{ id: 'n1', title: 'ルート', body: '本文あり', createdBy: 'user' as const }]
+
+    await reviewMap({ provider, nodes: allGoodNodes, edges: [], categories: [] })
+
+    expect(capturedPrompt).not.toContain('【放置されている可能性のあるノード（参考）】')
+  })
+
+  it('suggestions が配列でなければ空配列を返す', async () => {
+    const provider = fakeJsonProvider({ suggestions: 'not-an-array' })
+
+    const result = await reviewMap({ provider, nodes, edges, categories: [] })
+
+    expect(result).toEqual([])
+  })
+
+  it('targetNodeIds が配列でない要素は空配列に落とす（小型モデルの逸脱への防御）', async () => {
+    const provider = fakeJsonProvider({
+      suggestions: [{ kind: 'deepen', reason: '理由', targetNodeIds: 'n2', title: 'タイトル' }],
+    })
+
+    const result = await reviewMap({ provider, nodes, edges, categories: [] })
+
+    expect(result).toEqual([{ kind: 'deepen', reason: '理由', targetNodeIds: [], title: 'タイトル' }])
   })
 })

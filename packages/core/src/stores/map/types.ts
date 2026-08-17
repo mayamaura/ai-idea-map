@@ -44,6 +44,8 @@ export interface NodeSlice {
   deleteNode: (id: string) => void
   deleteNodes: (ids: string[]) => void
   deleteSelected: () => void
+  /** mergeId を keepId に統合する（AIガーデナー「統合」提案の適用）。本文を連結し、mergeId 宛のエッジを keepId へ張り替え、mergeId を削除する */
+  mergeNodes: (keepId: string, mergeId: string) => void
   applyClusterCategory: (nodeIds: string[], categoryId: string, color: string) => void
   copyNodes: (ids: string[]) => void
   paste: (position?: { x: number; y: number }) => void

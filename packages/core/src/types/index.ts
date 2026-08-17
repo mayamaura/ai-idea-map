@@ -91,6 +91,20 @@ export interface ClusterSuggestion {
   nodeTitles: string[]
 }
 
+/**
+ * AIガーデナー（マップレビュー、Phase 47）の提案。
+ * targetNodeIds の意味は kind により変わる:
+ * deepen=深掘り対象1件 / merge=統合する2件 / bridge=橋渡しする2件 / question=関連ノードがあれば1件、なければ空配列
+ * title/body は deepen・question で新規追加するノードの内容に使う
+ */
+export interface GardenerSuggestion {
+  kind: 'deepen' | 'merge' | 'bridge' | 'question'
+  reason: string
+  targetNodeIds: string[]
+  title?: string
+  body?: string
+}
+
 export type Theme = 'light' | 'dark'
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 export type NodeShape = 'rounded' | 'ellipse' | 'hexagon'

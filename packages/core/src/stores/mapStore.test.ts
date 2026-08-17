@@ -49,6 +49,33 @@ describe('nodeSlice', () => {
     expect(state.past.length).toBe(pastLen + 1)
   })
 
+  it('mergeNodes: 本文を連結し、エッジを張り替え、重複エッジを除外し、Undo で戻る', () => {
+    const idA = useMapStore.getState().addNode('A', 0, 0, 'user', '#fff', undefined, 'Aの本文')
+    const idB = useMapStore.getState().addNode('B', 200, 0, 'user', '#fff', undefined, 'Bの本文')
+    const idC = useMapStore.getState().addNode('C', 400, 0)
+    // B→C と A→C を用意し、B→C が A に張り替わると A→C と重複するようにする
+    useMapStore.getState().onConnect({ source: idB, target: idC, sourceHandle: null, targetHandle: null })
+    useMapStore.getState().onConnect({ source: idA, target: idC, sourceHandle: null, targetHandle: null })
+    const beforeNodes = useMapStore.getState().nodes
+    const beforeEdges = useMapStore.getState().edges
+    const pastLen = useMapStore.getState().past.length
+
+    useMapStore.getState().mergeNodes(idA, idB)
+
+    const state = useMapStore.getState()
+    expect(state.nodes.find((n) => n.id === idB)).toBeUndefined()
+    expect(state.nodes.find((n) => n.id === idA)?.data.body).toBe('Aの本文\n\nBの本文')
+    expect(state.edges.filter((e) => e.source === idA && e.target === idC)).toHaveLength(1)
+    expect(state.edges.some((e) => e.source === idB || e.target === idB)).toBe(false)
+    expect(state.past.length).toBe(pastLen + 1)
+
+    useMapStore.getState().undo()
+    const afterUndo = useMapStore.getState()
+    expect(afterUndo.nodes).toEqual(beforeNodes)
+    expect(afterUndo.edges).toEqual(beforeEdges)
+    expect(afterUndo.past.length).toBe(pastLen)
+  })
+
   it('undo/redo: 複数操作の往復で状態が戻る', () => {
     const initialNodes = useMapStore.getState().nodes
     const initialEdges = useMapStore.getState().edges

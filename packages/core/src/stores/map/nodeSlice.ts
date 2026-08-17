@@ -359,6 +359,42 @@ export const createNodeSlice: MapSliceCreator<NodeSlice> = (set, get) => ({
       }
     }),
 
+  mergeNodes: (keepId, mergeId) => {
+    const state = get()
+    const keep = state.nodes.find((n) => n.id === keepId)
+    const merge = state.nodes.find((n) => n.id === mergeId)
+    if (!keep || !merge || keepId === mergeId) return
+
+    const mergedBody = [keep.data.body, merge.data.body].filter((b) => b?.trim()).join('\n\n')
+
+    // mergeId 宛のエッジを keepId へ張り替える。張替えで自己ループになるものは除外し、
+    // 既存エッジと向きを問わず同じペアになったものは重複として1本に絞る
+    const retargeted = state.edges
+      .map((e) => ({
+        ...e,
+        source: e.source === mergeId ? keepId : e.source,
+        target: e.target === mergeId ? keepId : e.target,
+      }))
+      .filter((e) => e.source !== e.target)
+
+    const seenPairs = new Set<string>()
+    const dedupedEdges = retargeted.filter((e) => {
+      const key = [e.source, e.target].sort().join(':')
+      if (seenPairs.has(key)) return false
+      seenPairs.add(key)
+      return true
+    })
+
+    set({
+      nodes: state.nodes
+        .filter((n) => n.id !== mergeId)
+        .map((n) => (n.id === keepId ? { ...n, data: { ...n.data, body: mergedBody || undefined } } : n)),
+      edges: dedupedEdges,
+      past: pushPast(state.past, snapshot(state.nodes, state.edges)),
+      future: [],
+    })
+  },
+
   applyClusterCategory: (nodeIds, categoryId, color) =>
     set((state) => ({
       nodes: state.nodes.map((n) =>

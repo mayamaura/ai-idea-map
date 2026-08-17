@@ -1,13 +1,87 @@
 import { useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { getPlatform } from '@ideamap/platform'
-import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, toFriendlyAIError, isAbortError, LLMError, type ConnectionSuggestion, type ClusterSuggestion, type WebSearchResult } from '@ideamap/core'
+import { useUIStore, useMapStore, useSettingsStore, analyzeMap, suggestConnections, suggestClusters, reviewMap, calcSuggestionPositions, findFreePosition, toFriendlyAIError, isAbortError, LLMError, type ConnectionSuggestion, type ClusterSuggestion, type GardenerSuggestion, type WebSearchResult } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import { WebSearchToggle, WebSearchSources } from '../common/WebSearchToggle'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
 import { useWebSearch } from '../../hooks/useWebSearch'
 
-type TabKey = 'analysis' | 'connections' | 'clusters'
+type TabKey = 'analysis' | 'connections' | 'clusters' | 'gardener'
+
+/** ガーデナー提案の見た目・ラベルを kind ごとに出し分ける提案カード */
+function GardenerCard({
+  suggestion,
+  applied,
+  getTitle,
+  onApply,
+}: {
+  suggestion: GardenerSuggestion
+  applied: boolean
+  getTitle: (id: string) => string
+  onApply: () => void
+}) {
+  const KIND_LABEL: Record<GardenerSuggestion['kind'], string> = {
+    deepen: '🌱 深掘り',
+    merge: '🔗 統合',
+    bridge: '🌉 橋渡し',
+    question: '❓ 問いかけ',
+  }
+
+  return (
+    <div
+      className={`p-3 rounded-xl border border-emerald-100 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 space-y-2 transition-opacity ${
+        applied ? 'opacity-50' : ''
+      }`}
+    >
+      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{KIND_LABEL[suggestion.kind]}</p>
+
+      {suggestion.kind === 'merge' ? (
+        <div className="space-y-1">
+          {suggestion.targetNodeIds.map((id) => (
+            <p key={id} className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+              {getTitle(id)}
+            </p>
+          ))}
+        </div>
+      ) : suggestion.kind === 'bridge' ? (
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="font-medium text-gray-800 dark:text-gray-100 truncate max-w-[120px]">
+            {getTitle(suggestion.targetNodeIds[0] ?? '')}
+          </span>
+          <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+          <span className="font-medium text-gray-800 dark:text-gray-100 truncate max-w-[120px]">
+            {getTitle(suggestion.targetNodeIds[1] ?? '')}
+          </span>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {suggestion.targetNodeIds[0] && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">対象: {getTitle(suggestion.targetNodeIds[0])}</p>
+          )}
+          {suggestion.title && (
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{suggestion.title}</p>
+          )}
+          {suggestion.body && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3">{suggestion.body}</p>
+          )}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-500 dark:text-gray-400">{suggestion.reason}</p>
+
+      <button
+        onClick={onApply}
+        disabled={applied}
+        className="w-full py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        {applied ? '適用済み' : '適用する'}
+      </button>
+    </div>
+  )
+}
 
 /** 実行中の分析を中断するボタン。3タブとも同じ見た目で出す */
 function CancelButton({ onClick }: { onClick: () => void }) {
@@ -33,6 +107,8 @@ export function MapAnalysisPanel() {
     setConnectionSuggestions,
     clusterSuggestions,
     setClusterSuggestions,
+    gardenerSuggestions,
+    setGardenerSuggestions,
     addToast,
     setSettingsOpen,
   } = useUIStore(
@@ -47,18 +123,26 @@ export function MapAnalysisPanel() {
       setConnectionSuggestions: s.setConnectionSuggestions,
       clusterSuggestions: s.clusterSuggestions,
       setClusterSuggestions: s.setClusterSuggestions,
+      gardenerSuggestions: s.gardenerSuggestions,
+      setGardenerSuggestions: s.setGardenerSuggestions,
       addToast: s.addToast,
       setSettingsOpen: s.setSettingsOpen,
     }))
   )
 
   // nodes / edges は解析実行時にしか使わないため購読せず getState() から読む
-  const { addSuggestedEdge, applyClusterCategory } = useMapStore(
+  const { addSuggestedEdge, applyClusterCategory, mergeNodes, addNode, onConnect } = useMapStore(
     useShallow((s) => ({
       addSuggestedEdge: s.addSuggestedEdge,
       applyClusterCategory: s.applyClusterCategory,
+      mergeNodes: s.mergeNodes,
+      addNode: s.addNode,
+      onConnect: s.onConnect,
     }))
   )
+  // ガーデナータブの提案カードはノードタイトル表示のため購読する。
+  // このパネルはバックドロップでキャンバス操作をブロックするモーダルなので、ドラッグ中の再レンダーは発生しない
+  const nodes = useMapStore((s) => s.nodes)
   const { categories, getCategoryById } = useSettingsStore(
     useShallow((s) => ({
       categories: s.categories,
@@ -71,6 +155,7 @@ export function MapAnalysisPanel() {
   const [activeTab, setActiveTab] = useState<TabKey>('analysis')
   const [dismissedConnections, setDismissedConnections] = useState<Set<string>>(new Set())
   const [appliedClusters, setAppliedClusters] = useState<Set<number>>(new Set())
+  const [appliedGardener, setAppliedGardener] = useState<Set<number>>(new Set())
   const [rawErrorResponse, setRawErrorResponse] = useState<string | null>(null)
   const [searchSources, setSearchSources] = useState<WebSearchResult[]>([])
   // ローカルLLMは応答が長くかかりうるので3機能とも中断できるようにする（Phase 32 からの積み残し）
@@ -176,6 +261,82 @@ export function MapAnalysisPanel() {
     }
   }, [isReady, notReadyMessage, provider, categories, setAnalysisLoading, setClusterSuggestions, addToast])
 
+  const handleReviewMap = useCallback(async () => {
+    if (!isReady) {
+      addToast(notReadyMessage, 'error')
+      return
+    }
+    setAnalysisLoading(true)
+    setGardenerSuggestions([])
+    setAppliedGardener(new Set())
+    setRawErrorResponse(null)
+    const { nodes, edges } = useMapStore.getState()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    try {
+      const result = await reviewMap({
+        provider,
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          title: n.data.title,
+          body: n.data.body,
+          categoryId: n.data.categoryId,
+          createdBy: n.data.createdBy,
+        })),
+        edges: edges.map((e) => ({ source: e.source, target: e.target })),
+        categories,
+      }, ctrl.signal)
+      setGardenerSuggestions(result)
+      if (result.length === 0) addToast('提案はありませんでした', 'info')
+    } catch (e) {
+      if (isAbortError(e)) return
+      addToast(toFriendlyAIError(e), 'error')
+      if (e instanceof LLMError && e.rawResponse) setRawErrorResponse(e.rawResponse)
+    } finally {
+      setAnalysisLoading(false)
+      abortRef.current = null
+    }
+  }, [isReady, notReadyMessage, provider, categories, setAnalysisLoading, setGardenerSuggestions, addToast])
+
+  /** 対象ノードのタイトルを解決する。マップから消えている場合のフォールバック文言も返す */
+  const getNodeTitle = useCallback(
+    (id: string) => nodes.find((n) => n.id === id)?.data.title ?? '(不明なノード)',
+    [nodes],
+  )
+
+  /**
+   * kind ごとの適用処理。deepen/question は「新規ノードを追加し、対象ノードがあれば接続する」という
+   * 共通の形なのでまとめて扱う（deepen は常に対象あり、question は対象なしのとき独立ノードになる）
+   */
+  const handleApplyGardener = useCallback(
+    (suggestion: GardenerSuggestion, idx: number) => {
+      const { nodes: currentNodes } = useMapStore.getState()
+
+      if (suggestion.kind === 'merge') {
+        if (suggestion.targetNodeIds.length < 2) return
+        mergeNodes(suggestion.targetNodeIds[0], suggestion.targetNodeIds[1])
+        addToast('ノードを統合しました', 'success')
+      } else if (suggestion.kind === 'bridge') {
+        if (suggestion.targetNodeIds.length < 2) return
+        addSuggestedEdge(suggestion.targetNodeIds[0], suggestion.targetNodeIds[1])
+        addToast('ノードを接続しました', 'success')
+      } else {
+        if (!suggestion.title) return
+        const targetId = suggestion.targetNodeIds[0]
+        const targetNode = targetId ? currentNodes.find((n) => n.id === targetId) : undefined
+        const pos = targetNode
+          ? calcSuggestionPositions(targetNode.position.x, targetNode.position.y, 1, currentNodes)[0]
+          : findFreePosition({ x: 0, y: 0 }, currentNodes)
+        const newId = addNode(suggestion.title, pos.x, pos.y, 'ai', '#f3f4ff', undefined, suggestion.body)
+        if (targetNode) onConnect({ source: targetNode.id, target: newId, sourceHandle: null, targetHandle: null })
+        addToast(`「${suggestion.title}」を追加しました`, 'success')
+      }
+
+      setAppliedGardener((prev) => new Set([...prev, idx]))
+    },
+    [mergeNodes, addSuggestedEdge, addNode, onConnect, addToast],
+  )
+
   const handleApproveConnection = useCallback(
     (suggestion: ConnectionSuggestion) => {
       addSuggestedEdge(suggestion.sourceId, suggestion.targetId)
@@ -257,8 +418,13 @@ export function MapAnalysisPanel() {
           <>
             {/* タブ */}
             <div className="flex border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
-              {(['analysis', 'connections', 'clusters'] as TabKey[]).map((tab) => {
-                const labels: Record<TabKey, string> = { analysis: '📊 全体分析', connections: '🔗 つながり', clusters: '🗂 グループ' }
+              {(['analysis', 'connections', 'clusters', 'gardener'] as TabKey[]).map((tab) => {
+                const labels: Record<TabKey, string> = {
+                  analysis: '📊 全体分析',
+                  connections: '🔗 つながり',
+                  clusters: '🗂 グループ',
+                  gardener: '🌱 ガーデナー',
+                }
                 return (
                   <button
                     key={tab}
@@ -530,6 +696,51 @@ export function MapAnalysisPanel() {
                     <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
                       <span className="text-3xl mb-3 block">🗂</span>
                       AIがノードをテーマ別にグループ分けして、カテゴリを提案します
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ガーデナータブ */}
+              {activeTab === 'gardener' && (
+                <div className="p-5 space-y-4">
+                  <button
+                    onClick={handleReviewMap}
+                    disabled={isAnalysisLoading}
+                    className="w-full py-2.5 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isAnalysisLoading ? 'AI がレビュー中...' : 'マップをレビュー'}
+                  </button>
+
+                  {isAnalysisLoading && (
+                    <div className="flex flex-col items-center gap-3 py-8">
+                      <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                      <p className="text-sm text-gray-500 dark:text-gray-400">庭師の目でマップを見ています...</p>
+                      <CancelButton onClick={handleCancel} />
+                    </div>
+                  )}
+
+                  {!isAnalysisLoading && gardenerSuggestions.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {gardenerSuggestions.length}件の提案があります
+                      </p>
+                      {gardenerSuggestions.map((suggestion, idx) => (
+                        <GardenerCard
+                          key={idx}
+                          suggestion={suggestion}
+                          applied={appliedGardener.has(idx)}
+                          getTitle={getNodeTitle}
+                          onApply={() => handleApplyGardener(suggestion, idx)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {!isAnalysisLoading && gardenerSuggestions.length === 0 && (
+                    <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
+                      <span className="text-3xl mb-3 block">🌱</span>
+                      AIが庭師のようにマップを見て、深掘り・統合・橋渡し・問いかけを提案します
                     </div>
                   )}
                 </div>
