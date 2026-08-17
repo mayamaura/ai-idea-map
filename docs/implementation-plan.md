@@ -2423,6 +2423,122 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
+### Phase 51: PWA化とオフライン対応（Web版）
+
+**目標**: Web版をインストール可能なPWAにし、Service Workerでアプリシェルをキャッシュしてオフライン起動を可能にする。マップ編集自体は既存の localStorage ミラーで既にオフライン継続できているため、本フェーズは「オフラインでもアプリを開き直せる」「オンライン復帰時に確実に Drive へ再同期される」の2点を主眼に置く（v2.0「どこでも・つながる」の1つ目、`docs/roadmap.md` §7.1）。
+
+**現状確認（起票時点）**: `apps/web/vite.config.ts` は `base: '/ai-idea-map/'` で GitHub Pages のサブパスにビルドし、本番ビルド時のみ（`apply: 'build'`）CSPメタタグを注入している（`script-src 'self' https://accounts.google.com/gsi/client`、`worker-src` は未指定で `script-src` へのフォールバックに依存）。`devDependencies` は `"vite": "8.1.0"` で `rolldownOptions`（Rolldownベースのビルド設定、`apps/web/vite.config.ts` 55-77行目）を使っており、`vite-plugin-pwa` がこの構成で正式動作するかは未検証。オフライン時のローカル編集継続自体は既に動作している: `packages/ui/src/hooks/useAutoSave.ts` の `performSave` は保存のたびに `file.saveLocalMirror(mapFile)`（Web実装は `apps/web/src/platform/file.web.ts` の `saveLocalMirror` → `apps/web/src/services/storageService.ts` の `saveMapLocally`、`localStorage` へ直接書く）を呼び、`packages/ui/src/components/common/Header.tsx` は `packages/ui/src/hooks/useOnlineStatus.ts`（`navigator.onLine`／`online`・`offline`イベント）でオフラインバナーを既に表示している。一方で `useAutoSave.ts` の保存失敗時のリトライは `credentialKey`（Webはアクセストークン）が変化したときにしか発火せず（234-242行目）、`apps/web/src/WebApp.tsx` の `onSaveError` はエラーメッセージに `'401'` を含むかでしか分岐しないため、オフライン中の保存失敗（`fetch` の `TypeError`）は毎回「Googleドライブへの保存に失敗しました」トーストを出し、オンライン復帰後も次の編集が起きるまで再送されない。この2点を D で修正する。
+
+#### A. `vite-plugin-pwa` 導入とマニフェスト
+- [ ] `apps/web/package.json` の `devDependencies` に `vite-plugin-pwa` を追加する
+- [ ] `apps/web/vite.config.ts` に `VitePWA` プラグインを追加する。`registerType: 'prompt'`（自動リロードではなく C の更新通知経由でユーザー操作によりリロードする）、`injectRegister: false`（既定の自動挿入インライン `<script>` は CSP の `script-src 'self'`（`'unsafe-inline'` なし）に違反するため、登録は C で `main.tsx` から明示的に行う）、`devOptions: { enabled: false }`（`injectCsp` と同じく本番ビルドのみ有効化し、開発時の HMR と衝突させない）を指定する
+- [ ] `manifest`（`name`/`short_name`/`description`/`theme_color`/`background_color`/`display: 'standalone'`）を設定する。`start_url`/`scope` は Vite の `base`（`/ai-idea-map/`）を `vite-plugin-pwa` が自動で反映するため明示指定は不要だが、次のタスクで実際の出力を確認する
+- [ ] 既存の `apps/web/public/icon-512.svg` から 192×192・512×512・512×512（`purpose: 'maskable'`）の PNG を書き出し `apps/web/public` に追加し、`manifest.icons` に登録する（Android Chrome のインストール可否判定は SVG のみでは満たせない環境があるため）
+- [ ] `apps/web/tsconfig.app.json` の `compilerOptions.types` に `"vite-plugin-pwa/client"` を追加する（`virtual:pwa-register` の型定義を解決するため）
+- [ ] `pnpm build` を実行し、`apps/web/dist` に `manifest.webmanifest`・Service Worker（`generateSW` 既定のファイル名）が `base` パス配下（`/ai-idea-map/...`）で正しい URL として出力されることを確認する
+
+#### B. CSP と Service Worker の整合
+- [ ] `apps/web/vite.config.ts` の `CSP_CONTENT` に `worker-src 'self'` を追加する（現状 `worker-src` 未指定でブラウザの CSP3 フォールバック実装に依存しており、明示したほうが安全なため）
+- [ ] `pnpm build && pnpm preview` で本番相当のビルドを起動し、DevTools コンソールに CSP 違反（Service Worker 登録・スクリプト実行に関するもの）が出ないことを確認する
+
+#### C. `main.tsx` での SW 登録と更新通知
+- [ ] `apps/web/src/main.tsx` に `virtual:pwa-register` の `registerSW({ onNeedRefresh, onOfflineReady })` 呼び出しを追加する。`restorePersistedState().finally()` の初回描画処理とは独立に（描画をブロックしない）呼ぶ
+- [ ] `onNeedRefresh` から `useUIStore.getState().addToast(message, 'info', { label: '更新', onClick })`（`Toast['action']` は既存の型をそのまま使う。`apps/web/src/WebApp.tsx` の `onSaveError` の「再接続」トーストと同じ形）を呼び、「新しいバージョンがあります」と表示する。`onClick` で `registerSW` が返す `updateSW(true)` を呼び、SW を更新してリロードする
+- [ ] `onOfflineReady` から「オフラインで利用できる準備ができました」の軽いトースト（初回インストール後の確認用、任意）を出すかはタスク実施時に決める
+
+#### D. オフライン→オンライン復帰時の自動保存
+- [ ] `packages/ui/src/hooks/useAutoSave.ts` に `window` の `'online'` イベントを購読する `useEffect` を追加し、`pendingRetryRef.current` が `true` ならその時点で `failureCountRef.current` をリセットして `scheduleSave()` を呼ぶ（既存の `credentialKey` 変化時のリトライ、234-242行目と同じ仕組みをオンライン復帰でも発火させる）
+- [ ] `apps/web/src/WebApp.tsx` の `onSaveError`（31-50行目）に分岐を追加する: `navigator.onLine === false`（オフライン中の保存失敗）のときはトーストを出さずに `'retry'` を返す。オフラインバナー（`Header.tsx`）が既に状態を示しているため、保存失敗トーストの連打を避ける
+- [ ] 手動確認: DevTools の Network を Offline にしてノードを編集 → localStorage ミラーへ保存されオフラインバナーが表示されることを確認 → Online に戻す → Drive への保存が自動的に再試行され `saveStatus` が `'saved'` に戻ることを確認する
+
+#### E. ドキュメント更新
+- [ ] `docs/requirements.md` §3.4（オフライン対応）に PWA インストール・Service Worker によるオフライン起動・オンライン復帰時の自動再送を追記する
+- [ ] `docs/design.md` に「PWA / Service Worker」の節を新設し、`vite-plugin-pwa` の設定（`registerType`/`injectRegister`/`manifest`/アイコン）・CSP との整合・オンライン復帰時の自動保存リトライの仕組みを記載する
+
+**完了条件**: 型検査・ビルドが通過すること。ビルド後の `apps/web/dist` が GitHub Pages のサブパスでインストール可能な PWA として認識されること（Chrome DevTools の Application タブで確認）。オフライン状態でリロードしてもアプリシェルが表示されること。新バージョンのデプロイ後、開いたままのタブに更新通知が出て、クリックで最新化できること。オフライン編集後にオンライン復帰すると、Drive への保存が自動的に再試行されること。`vite-plugin-pwa` が Rolldown ベースの Vite 8 ビルドで問題なく動作するか未検証だった場合はその旨を本ドキュメントに記録すること。
+
+---
+
+### Phase 52: マップ横断（ワークスペース）
+
+**目標**: ノードから別マップへのリンクを張れるようにし、リンクチップから対象マップを開けるようにする。あわせて「最近開いたマップ＋現在のマップ」を対象にした横断全文検索を実装する。embedding 導入は行わず、まず全文検索で価値を確認する（v2.0「どこでも・つながる」の2つ目、`docs/roadmap.md` §7.2）。
+
+**現状確認（起票時点）**: `packages/platform/src/types.ts` の `FileAdapter.listRecent(): Promise<RecentFileEntry[]>`（`RecentFileEntry = { ref: FileRef; title: string }`）は Web版・デスクトップ版の両方に実装済みだが、いずれも「最近開いたマップ」の小さな一覧に限定される。Web版（`apps/web/src/platform/file.web.ts`）は `apps/web/src/services/storageService.ts` の `loadRecentMaps()`（localStorage、最大5件、Driveのファイルを開く／保存するたびに `saveRecentMap` で追記）をそのまま返し、Drive の全ファイル一覧を取得する `driveService.listMaps()` は使っていない（それを使うのは Web専用の `apps/web/src/components/panels/MapListPanel.tsx`）。デスクトップ版（`apps/desktop/src/platform/file.desktop.ts`）も同様に、移動・削除されていない「開いたことのあるファイル」のみを返す。`FileAdapter.openFile(ref)` は `ref.origin`（`'cloud' | 'local'`）で Drive／ローカルファイルシステムのどちらから読むかを分岐しており、`ref.id` 単体では復元できない。ノード側の型（`packages/core/src/types/index.ts` の `SerializedNode`/`IdeaNodeData`）、マイグレーション基盤（`packages/core/src/utils/mapFileCompat.ts` の `CURRENT_MAP_FILE_VERSION`/`MIGRATION_STEPS`/`migrateMapFile`）は Phase 49 で実装済み（現行バージョン `'1.0'`、`MIGRATION_STEPS` は空）。検索は `packages/ui/src/components/common/SearchBar.tsx` が現在のマップ（`useMapStore` の `nodes`）のタイトル・本文を対象にした単一の検索窓を持っており、他マップを跨ぐ仕組みは存在しない。
+
+#### A. スキーマ拡張: `linkedMapId`（Phase 49 のマイグレーション基盤に新バージョンとして追加）
+- [ ] `packages/core/src/types/index.ts` の `SerializedNode`/`IdeaNodeData` に `linkedMapId?: string`（リンク先の `FileRef.id`）を追加する。**あわせて `linkedMapOrigin?: 'cloud' | 'local'`（`FileRef.origin`）も追加する。** `id` だけでは Web の Drive fileId とデスクトップの絶対パスを区別できず、開く際に `FileAdapter.openFile(ref)` が要求する `origin` を復元できないため（デスクトップ版は自マップ内で Drive 上のマップとローカルのマップを両方開ける実装〔`apps/desktop/src/platform/file.desktop.ts` の `openFile`〕になっており省略できない）
+- [ ] `packages/core/src/utils/mapFileCompat.ts` の `CURRENT_MAP_FILE_VERSION` を `'1.0'` → `'1.1'` へ上げ、`MIGRATION_STEPS` に `{ from: '1.0', migrate: (file) => file }`（`linkedMapId` 等は optional でデータ変換は不要、バージョン番号を進めるだけの恒等マイグレーション）を追加する。これが `MIGRATION_STEPS` への初めての実エントリになる
+- [ ] `packages/core/src/utils/mapFileCompat.test.ts` に、`version: '1.0'` のファイルが読み込み後に `'1.1'` へ上がること、未知の新バージョン（例 `'1.2'`）は警告つきで読めることのケースを追加する
+- [ ] `packages/core/src/stores/map/types.ts` の `NodeSlice` に `updateNodeLinkedMap: (id: string, link: { mapId: string; origin: 'cloud' | 'local' } | undefined) => void` を追加し、`nodeSlice.ts` に `updateNodeUrl`（324-333行目）と同型で実装する（`updatedAt` 刻印を含む）
+- [ ] `documentSlice.ts` の `loadFromSerialized`（29-38行目）／`getSerializedNodes`（71-85行目）で `linkedMapId`/`linkedMapOrigin` を往復させる
+- [ ] `packages/core/src/stores/mapStore.test.ts` に `updateNodeLinkedMap` のテストと `loadFromSerialized`/`getSerializedNodes` の往復テストを追加する
+
+#### B. NodeDetailPanel: リンク先マップの選択
+- [ ] `packages/ui/src/components/panels/NodeDetailPanel.tsx` に「リンク先マップ」セクションを追加する。開いたら `getPlatform().file.listRecent()` を呼び候補一覧（タイトル・保存先種別アイコン）を表示し、選択で `updateNodeLinkedMap(nodeDetailId, { mapId: ref.id, origin: ref.origin })` を呼ぶ。「リンク解除」ボタンで `undefined` を渡す。候補から現在開いているマップ（`useUIStore.getState().currentMapId`）自身は除外する
+- [ ] **候補範囲についての判断**: `listRecent()` は「最近開いたマップ」（Web最大5件、デスクトップは開いたことのある未移動ファイル）のみを返し、Drive の全ファイル一覧は返さない。Web専用の Drive 全件一覧（`MapListPanel.tsx` が使う `driveService.listMaps()`）を `NodeDetailPanel` から使うには `packages/ui` から Web専用機能を直接呼べない制約（`CLAUDE.md` の Web専用機能は `App` の props 経由という規約）があり、追加の配線が要る。本フェーズは `listRecent()` ベースの最小構成にとどめ、Drive 全件一覧からのリンクは見送る。この判断を `docs/design.md` に明記する
+
+#### C. ノード上のリンクチップと遷移
+- [ ] `packages/ui/src/components/canvas/IdeaNode.tsx` に、`linkedMapId` があるとき URLチップ（302-312行目）と同じ位置パターンで「🗺️ リンク先マップ名」チップを追加する。表示名のキャッシュ方法（`listRecent()` の結果をどこに保持するか）はタスク実施時に決める。取得できない場合は `linkedMapId` を短縮表示する
+- [ ] チップクリック時、`useUIStore.getState().saveStatus` が `'unsaved' | 'saving'` なら `openConfirmDialog` で「保存されていない変更があります。リンク先のマップを開くと失われます」の確認を挟む（`packages/ui/src/App.tsx` の `onBeforeExit` と同じ判定式を再利用する）。確認後（または未保存がない場合は即座に）、`getPlatform().file.openFile({ id: linkedMapId, origin: linkedMapOrigin, name: '', updatedAt: '' })` → `migrateMapFile` → `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()` でキャンバスへ反映する
+- [ ] リンク先が存在しない（削除済み・アクセス不可）場合のエラートースト表示を追加する
+
+#### D. 複数マップの横断検索
+- [ ] `packages/core/src/services/crossMapSearch.ts`（新規）に `searchAcrossMaps(query: string, entries: RecentFileEntry[]): Promise<CrossMapSearchResult[]>` を実装する。各 `entry` について `getPlatform().file.openFile(entry.ref)` で内容を取得し `migrateMapFile` → タイトル・ノードの `title`/`body` を大小文字無視で部分一致検索する（`SearchBar.tsx` の `matchesQuery` と同じ判定ロジックを踏襲する）。取得結果は呼び出し元でセッション内メモリキャッシュし、パネルを開くたびに再取得しない（Drive へのリクエスト数を抑えるため。「検索時点で最新とは限らない」トレードオフを許容する）
+- [ ] `packages/core/src/services/crossMapSearch.test.ts` を作成する（複数マップでのヒット・0件・現在のマップ自身の除外・取得に失敗した1マップがあっても他マップの結果は返ることを検証する）
+- [ ] `packages/ui/src/components/common/SearchBar.tsx` を拡張する。「他のマップも検索」トグル（既定OFF。既存の即時ローカル検索と外部通信を伴う検索を混同させないため明示トグルにする）を追加し、ON のときだけ `crossMapSearch` を呼ぶ。結果は現在のマップの検索結果とは別セクション（マップタイトルごとの見出し）で表示する
+- [ ] 他マップの検索結果クリック時は C と同じ未保存確認 → `openLoadedMap` の流れで対象マップを開いたうえで該当ノードへジャンプする。ロードは非同期でありジャンプ先ノードは新しいマップにしか存在しないため、pending なジャンプ対象を一時的にどこへ持たせるか（`uiStore` に一時状態を追加する等）はタスク実施時に決める
+
+#### E. ドキュメント更新
+- [ ] `docs/design.md` §6（型定義）に `linkedMapId`/`linkedMapOrigin` を追記する。§5.3（IdeaNode）にリンクチップを追記する。`crossMapSearch`/`SearchBar` 拡張の設計と、候補範囲を `listRecent()` に絞った理由（B参照）を追記する
+- [ ] `docs/requirements.md` §2.3（データ管理）・§2.5（検索）にマップ横断リンク・横断検索の機能要件を追記する
+
+**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。既存の（`version: '1.0'` の）`.ideamap` ファイルが警告なく読み込め、新規保存時に `version: '1.1'` が書き込まれること。NodeDetailPanel から最近開いたマップへリンクを設定・解除でき、ノード上のリンクチップから未保存確認を挟んで対象マップへ遷移できること。検索バーで「他のマップも検索」を有効にすると、最近開いたマップ＋現在のマップを対象にタイトル・ノード内容の全文検索ができ、結果から対象マップ・ノードへジャンプできること。
+
+---
+
+### Phase 53: 非同期共同編集（Drive 共有フォルダ経由）
+
+**目標**: リアルタイム共同編集・自前バックエンドは実装しない（`docs/roadmap.md` §8）。代わりに、Google Drive の共有フォルダ経由で複数人が非同期に編集したマップを、保存時の3方向マージ（base/mine/theirs）で可能な限り自動統合し、真に衝突する箇所だけをダイアログで解決する（v2.0「どこでも・つながる」の3つ目、`docs/roadmap.md` §7.3）。Drive 共有フォルダ自体の共有設定（誰とフォルダを共有するか）は Google Drive の UI 側で行う前提とし、IdeaMap 側には共有設定UIを作らない。
+
+**現状確認（起票時点）**: 衝突検知は `packages/ui/src/hooks/useAutoSave.ts` の `performSave` に既に実装されている（128-172行目）。上書き保存前に `FileAdapter.getMetadata(ref)`（Web・デスクトップとも Drive の `appProperties.mapId` またはファイル内 `mapId` を照合、`packages/platform/src/types.ts` の `getMetadata`）で保存先の `mapId` と現在編集中の `mapId` を比較し、不一致なら `openConfirmDialog` で「上書き保存」（`onConfirm`）／「最新版を読み込む」（`secondaryAction`）の二択＋キャンセルを提示する。`packages/core/src/stores/uiStore.ts` の `ConfirmDialogState.secondaryAction` は `{ label: string; onClick: () => void }` という**単一**オブジェクトで、コメントに「3択が必要な場合（衝突ダイアログ等）に使うオプションの中央ボタン」とある通り最大3ボタン（キャンセル／secondary／confirm）構成になっており、4択目（マージ）を追加する余地がない。`secondaryAction` の呼び出し元は現状2箇所（`NodeDetailPanel.tsx` の「保存して閉じる」、`useAutoSave.ts` の「最新版を読み込む」）のみ。3方向マージのための base スナップショット（前回読み込み・保存時点の内容）を保持する仕組みは存在しない。
+
+#### A. 検知導線の拡張: `ConfirmDialog` の複数アクション化
+- [ ] `packages/core/src/stores/uiStore.ts` の `ConfirmDialogState.secondaryAction`（単一の `{ label, onClick }`）を `secondaryActions?: Array<{ label: string; onClick: () => void }>` に変更する
+- [ ] `packages/ui/src/components/common/ConfirmDialog.tsx` の描画（76-83行目）を、単一ボタン前提から `secondaryActions.map()` によるボタン列に変更する
+- [ ] 既存呼び出し元2箇所（`packages/ui/src/components/panels/NodeDetailPanel.tsx` の「保存して閉じる」・`packages/ui/src/hooks/useAutoSave.ts` の「最新版を読み込む」）を、単一オブジェクトから1要素配列を渡す形に書き換える（挙動は変えない）
+- [ ] `useAutoSave.ts` の衝突ダイアログ（128-172行目）の `secondaryActions` に「マージを試す」ボタンを追加する（受け皿のみ。実装は E で結線する）
+
+#### B. base スナップショットの保持
+- [ ] `packages/core/src/services/mapMergeBase.ts`（新規）に `saveMergeBase(mapId: string, file: MapFile): Promise<void>` / `getMergeBase(mapId: string): Promise<MapFile | null>` を実装する。`packages/core/src/services/errorLog.ts` と同じ「StorageAdapter 経由 + プロセス内メモリキャッシュ」パターンだが、リングバッファではなく `mapId` ごとに直近1件だけを上書き保持する。ストレージキーは `ideamap-merge-base-${mapId}`
+- [ ] `packages/core/src/services/mapMergeBase.test.ts` を作成する（保存・取得・`mapId` ごとの分離・未保存時は `null` を返すことを検証する）
+- [ ] 呼び出し箇所3つに `saveMergeBase` を配線する: (1) `packages/ui/src/hooks/useFileDashboard.ts` の `openLoadedMap()`（マップを開いた時点を base にする）、(2) `useAutoSave.ts` の保存成功時（197行目付近。Phase 50 実装後は `recordSnapshot` の呼び出しと同じ箇所に並べる）、(3) `useAutoSave.ts` の衝突ダイアログ「最新版を読み込む」ハンドラ（読み込んだ内容がその時点の base になる）
+
+#### C. 3方向マージロジック
+- [ ] `packages/core/src/services/mapMerge.ts`（新規）に `mergeMapFiles(base: MapFile, mine: MapFile, theirs: MapFile): { merged: MapFile; conflicts: MergeConflict[] }` を実装する。ノード・エッジをそれぞれ id 単位で base/mine/theirs の3集合比較する: base にあり mine/theirs 双方から消えていれば削除を採用、片方だけが base と異なる内容（追加・変更を含む）ならその内容を採用、双方が base と異なりかつ内容も異なる（片方の削除ともう片方の変更を含む）場合は `conflicts` に積み `merged` 側は暫定的に mine を採用しておく（D の選択結果で上書きされる前提）。内容の一致判定は `updatedAt` を除くフィールド（`title`/`body`/`color`/`categoryId`/`x`/`y`/`width`/`height`/`parentId`/`url`/`image`。Phase 52 実装後は `linkedMapId`/`linkedMapOrigin` も含む）で行う（`updatedAt` は編集のたびに変わるため一致判定に使うと誤検出する）
+- [ ] `MergeConflict` 型（`{ kind: 'node' | 'edge'; id: string; base: T | null; mine: T | null; theirs: T | null }`）を定義する
+- [ ] `packages/core/src/services/mapMerge.test.ts` を作成する（片方のみ変更・両方が同一の変更・真の衝突・片方削除+片方編集・双方追加・双方削除の各パターンを検証する）
+
+#### D. 衝突解決ダイアログ
+- [ ] `packages/core/src/stores/uiStore.ts` に `mergeConflictDialog: { conflicts: MergeConflict[]; onResolve: (choices: Record<string, 'mine' | 'theirs'>) => void } | null` と `openMergeConflictDialog`/`closeMergeConflictDialog` を追加する
+- [ ] `packages/ui/src/components/common/MergeConflictDialog.tsx`（新規）を作成する。`conflicts` を1件ずつ「自分の内容 / 相手の内容」を並べて表示し、対象ごとにラジオボタンで選択、「適用」で `choices` を確定して `onResolve` を呼ぶ
+- [ ] `packages/ui/src/App.tsx` に `<MergeConflictDialog />` を追加し、`packages/ui/src/index.ts` から export する
+
+#### E. 結線: 「マージを試す」の実装
+- [ ] `useAutoSave.ts` の衝突ダイアログに追加した「マージを試す」の `onClick` を実装する: `getMergeBase(currentMapId)` を読み、base がなければ（この仕組みを初めて使う等）マージ不可としてトースト表示のうえ従来の二択にとどめる。base があれば `file.openFile(ref)` で theirs を取得 → `migrateMapFile` → `buildMapFile()` で mine を組み立て → `mergeMapFiles(base, mine, theirs)` を呼ぶ。`conflicts` が空なら即座に `loadFromSerialized(merged.nodes, merged.edges)` して保存・`saveMergeBase` 更新まで行う。`conflicts` があれば `openMergeConflictDialog` で選択させ、選択結果を `merged` に反映してから同様に適用・保存する
+- [ ] マージ適用後の `mapTitle`/`presentationNodeIds` の扱い（自分側を優先し変更しない）を実装する
+
+#### F. 運用前提の明記
+- [ ] Drive 共有フォルダ自体の共有操作（フォルダを他ユーザーと共有する設定）は Google Drive の UI 側で行う前提であり、IdeaMap 側には共有設定UIを作らないことを `docs/design.md`・`docs/requirements.md` に明記する
+- [ ] マージ機能は `origin`（`'cloud'`/`'local'`）を問わず `useAutoSave` の衝突ダイアログが出る場面すべてで使えるが、想定ユースケースは Drive 共有フォルダ経由の非同期共同編集であることを明記する
+
+#### G. ドキュメント更新
+- [ ] `docs/design.md` §12.5（mapId 衝突検出）を拡張し、三択（上書き／読み直し／マージ）のフローと `mapMerge.ts`/`mapMergeBase.ts` の設計を追記する。§6 に `MergeConflict` 型を追記する
+- [ ] `docs/requirements.md` に「非同期共同編集（3方向マージ）」の機能要件を追記する
+
+**完了条件**: 型検査・ビルド・`pnpm test` が通過すること。同じ `mapId` のファイルを2箇所で編集し保存すると衝突ダイアログに「マージを試す」が現れ、非衝突箇所は自動統合され、真に衝突する箇所だけ選択UIが出ること。マージ後の保存で base スナップショットが更新され、以後の衝突でも繰り返しマージできること。
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
