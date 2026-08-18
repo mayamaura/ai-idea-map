@@ -31,6 +31,8 @@ export function PersonaDebatePanel() {
     selectedNodeId,
     personaDebateResult,
     setPersonaDebateResult,
+    personaDebateTargetId,
+    setPersonaDebateTargetId,
     isPersonaDebateLoading,
     setPersonaDebateLoading,
     mapTitle,
@@ -42,6 +44,8 @@ export function PersonaDebatePanel() {
       selectedNodeId: s.selectedNodeId,
       personaDebateResult: s.personaDebateResult,
       setPersonaDebateResult: s.setPersonaDebateResult,
+      personaDebateTargetId: s.personaDebateTargetId,
+      setPersonaDebateTargetId: s.setPersonaDebateTargetId,
       isPersonaDebateLoading: s.isPersonaDebateLoading,
       setPersonaDebateLoading: s.setPersonaDebateLoading,
       mapTitle: s.mapTitle,
@@ -116,6 +120,7 @@ export function PersonaDebatePanel() {
     setError(null)
     setPersonaDebateLoading(true)
     setPersonaDebateResult([])
+    setPersonaDebateTargetId(selectedNode.id)
     setSelectedOpinions(new Set())
 
     const ctrl = new AbortController()
@@ -143,10 +148,13 @@ export function PersonaDebatePanel() {
       setPersonaDebateLoading(false)
       abortRef.current = null
     }
-  }, [selectedNode, isReady, providerId, activePersonas, provider, mapTitle, setPersonaDebateLoading, setPersonaDebateResult])
+  }, [selectedNode, isReady, providerId, activePersonas, provider, mapTitle, setPersonaDebateLoading, setPersonaDebateResult, setPersonaDebateTargetId])
 
   const handleAddSelected = useCallback(() => {
-    if (!selectedNode) return
+    // エッジの接続元は議論を実行したノード。追加時点の選択状態には依存しない
+    const { nodes } = useMapStore.getState()
+    const targetNode = nodes.find((n) => n.id === personaDebateTargetId)
+    if (!targetNode) return
     const chosen: { title: string; body: string }[] = []
     personaDebateResult.forEach((p, pi) => {
       p.opinions.forEach((o, oi) => {
@@ -155,8 +163,7 @@ export function PersonaDebatePanel() {
     })
     if (chosen.length === 0) return
 
-    const { nodes } = useMapStore.getState()
-    const positions = calcSuggestionPositions(selectedNode.position.x, selectedNode.position.y, chosen.length, nodes)
+    const positions = calcSuggestionPositions(targetNode.position.x, targetNode.position.y, chosen.length, nodes)
 
     const newNodes: IdeaNode[] = chosen.map((op, idx) => ({
       id: uuidv4(),
@@ -165,19 +172,20 @@ export function PersonaDebatePanel() {
       data: { title: op.title, body: op.body || undefined, color: DEFAULT_NODE_COLOR, createdBy: 'ai' },
     }))
     const newEdges = newNodes.map((n) =>
-      makeEdge({ source: selectedNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })
+      makeEdge({ source: targetNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })
     )
 
     addNodesWithEdges(newNodes, newEdges)
     setPersonaDebatePanelOpen(false)
     setPersonaDebateResult([])
+    setPersonaDebateTargetId(null)
     setSelectedOpinions(new Set())
 
-    const focusIds = [selectedNode.id, ...newNodes.map((n) => n.id)]
+    const focusIds = [targetNode.id, ...newNodes.map((n) => n.id)]
     requestAnimationFrame(() => {
       fitView({ nodes: focusIds.map((id) => ({ id })), padding: 0.3, duration: 500 })
     })
-  }, [selectedNode, personaDebateResult, selectedOpinions, addNodesWithEdges, setPersonaDebatePanelOpen, setPersonaDebateResult, fitView])
+  }, [personaDebateTargetId, personaDebateResult, selectedOpinions, addNodesWithEdges, setPersonaDebatePanelOpen, setPersonaDebateResult, setPersonaDebateTargetId, fitView])
 
   if (!isPersonaDebatePanelOpen) return null
 

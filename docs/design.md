@@ -335,8 +335,9 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `isArtifactPanelOpen` | `boolean` | AI成果物生成パネル（`ArtifactPanel`）の開閉（Phase 45） |
 | `isHistoryPanelOpen` | `boolean` | バージョン履歴パネル（`HistoryPanel`）の開閉（Phase 50） |
 | `isTimelapsePlaying` | `boolean` | タイムラプス再生中フラグ（Phase 50）。`true` の間はキャンバスの編集操作・キーボードショートカット・ツールバー類をブロックする |
-| `isPersonaDebatePanelOpen` | `boolean` | ペルソナ壁打ちパネル（`PersonaDebatePanel`）の開閉（Phase 48）。対象ノードIDは `selectedNodeId` を再利用し、専用の状態は持たない |
+| `isPersonaDebatePanelOpen` | `boolean` | ペルソナ壁打ちパネル（`PersonaDebatePanel`）の開閉（Phase 48） |
 | `personaDebateResult` | `PersonaOpinion[]` | ペルソナ壁打ちのAI応答結果（Phase 48） |
+| `personaDebateTargetId` | `string \| null` | 議論を実行した対象ノードのID（Phase 48 バグ修正）。ライブな `selectedNodeId` ではなくこちらを子ノード追加時のエッジ接続元に使うことで、パネルを閉じた後に別ノードを選び直して追加した際の誤接続を防ぐ。`setPersonaDebatePanelOpen(true)` 時にこの値が現在の `selectedNodeId` と異なれば前回の議論結果を破棄する |
 | `isPersonaDebateLoading` | `boolean` | ペルソナ壁打ちのAI呼び出し中フラグ（Phase 48） |
 | `isChatPanelOpen` | `boolean` | AIチャットパネルの開閉（Phase 14） |
 | `chatMessages` | `ChatMessage[]` | チャット履歴（セッションメモリのみ、最大40件）（Phase 14） |
@@ -719,11 +720,11 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 
 ### 5.12 PersonaDebatePanel（packages/ui/src/components/panels/PersonaDebatePanel.tsx、Phase 48）
 
-選択ノードについて複数ペルソナの意見を `debateNode`（§9.4.4）で生成し、選んだ意見を選択ノードの子ノードとして一括追加するモーダルパネル。`App.tsx` に常設し、`uiStore.isPersonaDebatePanelOpen` で開閉する。入口はノードの `ContextMenu`「🎭 ペルソナで壁打ち」（§5.4）と `NodeDetailPanel` の「🎭 壁打ち」ボタン。いずれも `setSelectedNodeId(targetId)` → `setPersonaDebatePanelOpen(true)` を呼ぶ（対象ノードIDに専用の state は持たず `selectedNodeId` を再利用）。
+選択ノードについて複数ペルソナの意見を `debateNode`（§9.4.4）で生成し、選んだ意見を対象ノードの子ノードとして一括追加するモーダルパネル。`App.tsx` に常設し、`uiStore.isPersonaDebatePanelOpen` で開閉する。入口はノードの `ContextMenu`「🎭 ペルソナで壁打ち」（§5.4）と `NodeDetailPanel` の「🎭 壁打ち」ボタン。いずれも `setSelectedNodeId(targetId)` → `setPersonaDebatePanelOpen(true)` を呼ぶ。`handleDebate` 実行時に `setPersonaDebateTargetId(selectedNode.id)` で対象ノードIDをスナップショットし（`uiStore.personaDebateTargetId`）、子ノード追加時はライブな `selectedNodeId` ではなくこちらを使う。パネルを閉じてから別ノードを選び直して開いた場合は、`setPersonaDebatePanelOpen(true)` 側で前回の議論結果が自動的に破棄される（誤ったノードへの接続を防ぐバグ修正）。
 
 - **ペルソナ選択**: プリセット4種（楽観家・批評家・顧客・投資家）のトグルチップ＋自由入力（追加ボタンまたは Enter でリストに追加）。プリセットの選択集合（`Set`）と自由入力の配列をマージした `activePersonas` をリクエストに渡す。1件も選ばれていなければ生成不可
 - **意見の選択**: 生成結果はペルソナごとにカード表示し、`personaIdx-opinionIdx` をキーにした `Set<string>`（`selectedOpinions`）で意見単位にチェックボックス選択できる。生成直後は全件が選択済みの状態になる
-- **子ノード追加**: `handleAddSelected` が選択された意見それぞれについて `calcSuggestionPositions(selectedNode.position.x, selectedNode.position.y, count, nodes)` で位置を求めた `IdeaNode[]` と、選択ノードへの `makeEdge({ source: selectedNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })` の `Edge[]` を組み立て、`addNodesWithEdges`（§4.1）を1回呼ぶ。追加後は選択ノード＋新規ノード群へ `fitView` する
+- **子ノード追加**: `handleAddSelected` が `personaDebateTargetId` から対象ノードを解決し、選択された意見それぞれについて `calcSuggestionPositions(targetNode.position.x, targetNode.position.y, count, nodes)` で位置を求めた `IdeaNode[]` と、対象ノードへの `makeEdge({ source: targetNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })` の `Edge[]` を組み立て、`addNodesWithEdges`（§4.1）を1回呼ぶ。追加後は対象ノード＋新規ノード群へ `fitView` し、`personaDebateTargetId` をクリアする
 - ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
 
 ### 5.13 HistoryPanel（packages/ui/src/components/panels/HistoryPanel.tsx、Phase 50）

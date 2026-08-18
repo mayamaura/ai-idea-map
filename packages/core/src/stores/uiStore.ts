@@ -116,9 +116,11 @@ interface UIState {
   // バージョン履歴・タイムラプス再生（Phase 50）
   isHistoryPanelOpen: boolean
   isTimelapsePlaying: boolean
-  // ペルソナ壁打ち会議（Phase 48）。対象ノードIDは selectedNodeId を再利用する
+  // ペルソナ壁打ち会議（Phase 48）
   isPersonaDebatePanelOpen: boolean
   personaDebateResult: PersonaOpinion[]
+  // 議論を実行した対象ノードID。追加時のエッジ接続元はライブな selectedNodeId ではなくこちらを使う
+  personaDebateTargetId: string | null
   isPersonaDebateLoading: boolean
   // AIチャット
   isChatPanelOpen: boolean
@@ -200,6 +202,7 @@ interface UIState {
   // ペルソナ壁打ち会議
   setPersonaDebatePanelOpen: (open: boolean) => void
   setPersonaDebateResult: (result: PersonaOpinion[]) => void
+  setPersonaDebateTargetId: (id: string | null) => void
   setPersonaDebateLoading: (loading: boolean) => void
   // AIチャット
   setChatPanelOpen: (open: boolean) => void
@@ -271,6 +274,7 @@ export const useUIStore = create<UIState>((set) => ({
   isTimelapsePlaying: false,
   isPersonaDebatePanelOpen: false,
   personaDebateResult: [],
+  personaDebateTargetId: null,
   isPersonaDebateLoading: false,
   isChatPanelOpen: false,
   chatMessages: [],
@@ -370,8 +374,15 @@ export const useUIStore = create<UIState>((set) => ({
   setArtifactPanelOpen: (open) => set({ isArtifactPanelOpen: open }),
   setHistoryPanelOpen: (open) => set({ isHistoryPanelOpen: open }),
   setTimelapsePlaying: (playing) => set({ isTimelapsePlaying: playing }),
-  setPersonaDebatePanelOpen: (open) => set({ isPersonaDebatePanelOpen: open }),
+  setPersonaDebatePanelOpen: (open) =>
+    set((state) =>
+      // 前回と別のノードで開いたときは前回の議論結果を破棄する（別ノードへの誤接続防止）
+      open && state.personaDebateTargetId !== null && state.personaDebateTargetId !== state.selectedNodeId
+        ? { isPersonaDebatePanelOpen: true, personaDebateResult: [], personaDebateTargetId: null }
+        : { isPersonaDebatePanelOpen: open }
+    ),
   setPersonaDebateResult: (result) => set({ personaDebateResult: result }),
+  setPersonaDebateTargetId: (id) => set({ personaDebateTargetId: id }),
   setPersonaDebateLoading: (loading) => set({ isPersonaDebateLoading: loading }),
   setChatPanelOpen: (open) => set({ isChatPanelOpen: open }),
   addChatMessage: (message) =>
