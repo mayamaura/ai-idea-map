@@ -316,6 +316,7 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `mapTitle` | `string` | 現在のマップタイトル |
 | `currentFileId` | `string \| null` | 現在開いているファイルの ID（Web=Drive の fileId、Desktop=Drive の fileId またはローカル絶対パス、null=未保存の新規/インポート）。fileId の単一の真実源。`setCurrentFileId` で `StorageAdapter` と同期 |
 | `currentFileOrigin` | `FileRef['origin'] \| null`（`'cloud' \| 'local'`） | `currentFileId` が指す保存先の種別（Phase 38）。デスクトップ版が Drive 上のマップとローカルファイルを同じ `useAutoSave` 経由で扱うために追加した。Web版は常に `'cloud'`。`currentFileId` が `null` のときだけ `null` になる。Phase 38 より前に永続化された値には origin が無いため、`restoreCurrentFileId()` はそれを読んだとき `FileAdapter.origin`（既定値）に寄せる（当時は保存先がアプリごとに1つだけだったので、これが正しい復元になる） |
+| `currentMapId` | `string \| null` | 現在開いているマップの論理ID（JSON 内 `mapId` と同値）。セッション内メモリのみで `localStorage` には永続化しない。`setCurrentMapId(id)` で更新 |
 | `toasts` | `Toast[]` | トースト通知リスト（4秒後自動削除） |
 | `contextMenu` | `ContextMenuState \| null` | 右クリックメニューの表示状態 |
 | `confirmDialog` | `ConfirmDialogState \| null` | 確認ダイアログの表示状態 |
@@ -349,7 +350,9 @@ UIの表示状態と、現在開いているマップのメタ情報（タイト
 | `renderAllNodes` | `boolean` | 画像エクスポート時のみ true。`onlyRenderVisibleElements` を一時無効化して全ノードをDOM描画させ、マップ全体エクスポートの欠落を防ぐ（Phase 24） |
 | `connectingFromNodeId` | `string \| null` | 接続モード中の接続元ノードID。null=接続モードでない。`setConnectingFromNodeId(id)` で更新（Phase 26） |
 | `dragOverNodeId` | `string \| null` | ドラッグ中のノードが重なっている接続先候補ノードID（ドロップでエッジ作成・緑リング表示、§5.2.1）。null=重なりなし。`setDragOverNodeId(id)` で更新（Phase 40） |
+| `dragOverGroupId` | `string \| null` | ドラッグ中のノードが重なっているグループノードID（ハイライト表示用）。null=重なりなし。`setDragOverGroupId(id)` で更新 |
 | `pendingJumpNodeId` | `string \| null` | 別マップを開いた直後にジャンプすべきノードID（Phase 52、§24.3）。マップ横断検索・リンクチップからの遷移は非同期でマップを読み込むため、ジャンプ先を一時的にここへ置き、読み込み完了後に `IdeaCanvas` が消費する |
+| `isShortcutsModalOpen` | `boolean` | キーボードショートカット一覧モーダルの開閉 |
 
 ### 4.3 settingsStore（packages/core/src/stores/settingsStore.ts）
 
@@ -500,7 +503,7 @@ React Flow の主要設定:
 - `onPaneClick` → 選択解除 + コンテキストメニュー閉じる
 - `onNodeDragStart` / `onNodeDrag` / `onNodeDragStop` → ドラッグ&ドロップ接続（Phase 40、§5.2.1）
 
-フォーカス／発表／接続モードの dim は `FocusStateContext` 経由で各ノード・エッジに配る（§16.3）。`<ReactFlow>` に渡す `nodes` / `edges` はストアの配列そのままで、加工しない。
+フォーカス／発表／接続モードの dim は `FocusStateContext` 経由で各ノード・エッジに配る（§15.3）。`<ReactFlow>` に渡す `nodes` / `edges` はストアの配列そのままで、加工しない。
 
 ### 5.2.1 ドラッグ&ドロップ接続（Phase 40）
 
@@ -775,6 +778,7 @@ interface MapFile {
   updatedAt: string    // ISO 8601
   nodes: SerializedNode[]
   edges: SerializedEdge[]
+  presentationNodeIds?: string[] // 発表順（ノードIDの配列）。省略時は空リストとして扱う
 }
 
 interface SerializedNode {
@@ -805,12 +809,12 @@ interface AISuggestion {
   title: string        // 短いタイトル（20字以内）
   body?: string        // 補足説明・詳細（省略可）
   categoryId?: string  // AIが自動判定したカテゴリID
+  parentNodeId?: string // 兄弟モード・複数親のとき AI が選んだ接続先の親ノード ID
 }
 
 type Theme = 'light' | 'dark'
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 type NodeShape = 'rounded' | 'ellipse' | 'hexagon'
-type SuggestionType = '関連' | '深掘り' | '対比' | '応用'
 
 // Phase 10: AI高度化
 interface MapAnalysis {
@@ -1659,13 +1663,13 @@ SVG は「黒で図形を1回描いてから、同じ図形を白で描き直す
 
 ---
 
-## 16. 大規模マップのパフォーマンス（Phase 24 / Phase 28）
+## 15. 大規模マップのパフォーマンス（Phase 24 / Phase 28）
 
-### 16.1 onlyRenderVisibleElements
+### 15.1 onlyRenderVisibleElements
 
 `<ReactFlow onlyRenderVisibleElements={!renderAllNodes}>` を有効化し、ビューポート外のノードの DOM 描画をスキップする。ノード数が多いマップでのパン・ズームの描画負荷を軽減する。
 
-### 16.2 エクスポート干渉対策（renderAllNodes フラグ）
+### 15.2 エクスポート干渉対策（renderAllNodes フラグ）
 
 `exportService` の画像エクスポートは `.react-flow__viewport` の DOM を直接 html-to-image で撮影する。`onlyRenderVisibleElements` が有効な状態では画面外ノードが DOM から除外されるため、「マップ全体」モードでエクスポートすると画面外ノードが欠落する。
 
@@ -1675,13 +1679,13 @@ SVG は「黒で図形を1回描いてから、同じ図形を白で描き直す
 3. `exportMapAsImage(...)` を実行
 4. `finally` ブロックで `setRenderAllNodes(false)` に戻す（成功・失敗どちらでも戻す）
 
-### 16.2.1 PNG/SVG書き出しのデータURLデコード（Phase 33 不具合修正・2026-08-07）
+### 15.2.1 PNG/SVG書き出しのデータURLデコード（Phase 33 不具合修正・2026-08-07）
 
 `html-to-image` の `toPng`/`toSvg` はどちらも画像本体ではなく、`data:image/png;base64,...` または `data:image/svg+xml;charset=utf-8,<percent-encoded XML>` という**データURL文字列**を返す。`exportMapAsImage`（`packages/ui/src/services/exportService.ts`）は `dataUrlToBlob()` でこれをデコードしてバイト列の `Blob` に戻し、`getPlatform().file.exportBlob()`（`downloadBlob()` 経由）でファイルとして書き出す。
 
 SVGは移行直後この変換を行わず、`toSvg()` が返すデータURL文字列をそのままファイル内容として書き出していた。そのため出力した `.svg` の先頭が `data:image/svg+xml;charset=utf-8,` から始まり、ブラウザが XML として解析できない不具合があった（`error on line 1 at column 1: Start tag expected, '<' not found`）。PNG と同じ `dataUrlToBlob()` → `downloadBlob()` の経路に統一して解消した。
 
-### 16.3 フォーカス表示の Context 配布（`packages/ui/src/hooks/useNodeFocus.ts`）（Phase 28）
+### 15.3 フォーカス表示の Context 配布（`packages/ui/src/hooks/useNodeFocus.ts`）（Phase 28）
 
 フォーカスモード（選択ノードと直接接続だけを明るく表示）・発表モード・接続モードの dim / 強調は、**ノード配列に `style` を差し込まない**。
 
@@ -1708,7 +1712,7 @@ const groupChildPairs = useMapStore(
 
 ドラッグでは配列の内容が変わらないので `useShallow` が同一と判定し、`focusState` の参照も変わらない。結果としてドラッグ中はノード・エッジの再描画が発生しない。
 
-### 16.4 Zustand セレクタ方針（Phase 28）
+### 15.4 Zustand セレクタ方針（Phase 28）
 
 `useMapStore()` / `useUIStore()` のようなストア全体購読は、無関係な状態変化でもコンポーネントを再描画させる。特に `mapStore.nodes` はドラッグ中に毎フレーム更新されるため影響が大きい。以下の方針で購読を絞る。
 
@@ -1722,7 +1726,7 @@ const groupChildPairs = useMapStore(
 
 `IdeaNode` は `color` と `categoryId` をストアから直接読むために `nodes.find()` を2回走らせていた（全ノード × 毎更新）。Phase 28 で `useShallow` による1セレクタに統合した。`NodeActionBar` の親ノード探索も、絶対座標 `{ x, y }` だけを返す1セレクタに統合している。
 
-### 16.5 バンドル分割と動的 import（Phase 28）
+### 15.5 バンドル分割と動的 import（Phase 28）
 
 **分割前**: 単一チャンク 845.81 kB（gzip 247.86 kB）。Vite が 500 kB 超の警告を出していた。
 
@@ -1745,7 +1749,7 @@ const groupChildPairs = useMapStore(
 
 ---
 
-## 15. ノードカラーパレット
+## 16. ノードカラーパレット
 
 全コンポーネントで共通の8色パレット:
 
