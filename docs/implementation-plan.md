@@ -70,7 +70,7 @@
 | 55 | 死んだコード削除と小粒な重複解消（約1日） | 🔨 実装済み（確認中） | 本ファイル |
 | 56 | UI の AI 実行フロー共通化（約2日） | 🔨 実装済み（確認中） | 本ファイル |
 | 57 | core の LLM 重複統合とストア分割（約2日） | 🔨 実装済み（確認中） | 本ファイル |
-| 58 | Web/Desktop ダッシュボード共通化とパネル分割（約1.5日） | 未着手 | 本ファイル |
+| 58 | Web/Desktop ダッシュボード共通化とパネル分割（約1.5日） | 🔨 実装済み（確認中） | 本ファイル |
 
 ### Phase 25: スマホ表示・レイアウトの最適化（約2日）🔨 実装済み（確認中）
 
@@ -1389,17 +1389,17 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 58: Web/Desktop ダッシュボード共通化とパネル分割（約1.5日）
+### Phase 58: Web/Desktop ダッシュボード共通化とパネル分割（約1.5日）🔨 実装済み（確認中）
 
 **目標**: Web/Desktop 間で丸ごと重複している画面 JSX を `packages/ui` に引き上げる。
 
 #### タスク
-- [ ] `FileOpenDashboard.tsx` / `DesktopFileDashboard.tsx` で完全一致している JSX（ヘッダーブロック33行・再開カード29行・アクションボタン列30行）を `packages/ui` の `DashboardShell` / `ResumeMapCard` / `DashboardActionBar` に抽出し、両アプリから利用する
-- [ ] `SettingsPanel.tsx`（1181行）内の分割済み9サブコンポーネントを `panels/settings/*.tsx` へファイル移動する（ロジック変更なし。ファイル移動コミットとロジック変更コミットを分離するルールに従う）
-- [ ] `ExportImportPanel.tsx`（706行）を ExportTab / ImportTab / ShareTab に分割する
-- [ ] `IdeaCanvas.tsx` 内の独立コンポーネント `NodeActionBar`（約120行）を `canvas/NodeActionBar.tsx` へ移動する
+- [x] `FileOpenDashboard.tsx` / `DesktopFileDashboard.tsx` で完全一致している JSX（ヘッダーブロック33行・再開カード29行・アクションボタン列30行）を `packages/ui` の `DashboardShell` / `ResumeMapCard` / `DashboardActionBar` に抽出し、両アプリから利用する
+- [x] `SettingsPanel.tsx`（1181行）内の分割済み9サブコンポーネントを `panels/settings/*.tsx` へファイル移動する（ロジック変更なし。ファイル移動コミットとロジック変更コミットを分離するルールに従う）
+- [x] `ExportImportPanel.tsx`（706行）を ExportTab / ImportTab / ShareTab に分割する
+- [x] `IdeaCanvas.tsx` 内の独立コンポーネント `NodeActionBar`（約120行）を `canvas/NodeActionBar.tsx` へ移動する
 
-**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。→ 2026-08-19 実装完了。build 通過・テスト231件パス。lint は既存16件のまま。両アプリの意図的な差分（カードのスクロール可否・開くボタンの disabled 条件）は DashboardShell/DashboardActionBar の props として保存。SettingsPanel は 1181→230行、ExportImportPanel は 701→364行、IdeaCanvas は 596→469行。
 
 ---
 
