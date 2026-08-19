@@ -11,6 +11,13 @@ export { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsMod
 export { ApiKeyRequired } from './components/common/ApiKeyRequired'
 export { TemplatePickerModal } from './components/common/TemplatePickerModal'
 
+export { DashboardShell } from './components/dashboard/DashboardShell'
+export type { DashboardShellProps } from './components/dashboard/DashboardShell'
+export { ResumeMapCard } from './components/dashboard/ResumeMapCard'
+export type { ResumeMapCardProps } from './components/dashboard/ResumeMapCard'
+export { DashboardActionBar } from './components/dashboard/DashboardActionBar'
+export type { DashboardActionBarProps } from './components/dashboard/DashboardActionBar'
+
 export { IdeaCanvas } from './components/canvas/IdeaCanvas'
 export { ContextMenu } from './components/canvas/ContextMenu'
 
