@@ -1,5 +1,6 @@
 import { getPlatform } from '@ideamap/platform'
 import { LLMError } from './types'
+import { createTimeoutSignal } from './httpProviderUtils'
 
 /**
  * Ollama の Web Search API（https://docs.ollama.com/capabilities/web-search）。
@@ -51,13 +52,8 @@ export class OllamaWebSearchClient implements WebSearchClient {
   async search(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
     if (!query.trim()) return []
 
-    // 呼び出し側の中断と検索自体のタイムアウトの両方で打ち切る。
-    // AbortSignal.timeout() を直接 plugin-http に渡すと読了後の abort が
-    // ボディの二重解放になるため、必ず自前のタイマーを clearTimeout する（design.md §9.1.2）
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-    const onOuterAbort = () => controller.abort()
-    signal?.addEventListener('abort', onOuterAbort)
+    // 呼び出し側の中断と検索自体のタイムアウトの両方で打ち切る
+    const { signal: reqSignal, cleanup } = createTimeoutSignal(TIMEOUT_MS, signal)
 
     let res: Response
     try {
@@ -68,7 +64,7 @@ export class OllamaWebSearchClient implements WebSearchClient {
           Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({ query, max_results: MAX_RESULTS }),
-        signal: controller.signal,
+        signal: reqSignal,
       })
     } catch (e) {
       if (signal?.aborted) {
@@ -80,8 +76,7 @@ export class OllamaWebSearchClient implements WebSearchClient {
         { provider: 'ollama', cause: e },
       )
     } finally {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', onOuterAbort)
+      cleanup()
     }
 
     if (!res.ok) throw await toSearchError(res)

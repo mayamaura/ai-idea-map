@@ -7,7 +7,8 @@ import type {
   ProviderCapabilities,
 } from './types'
 import { LLMError } from './types'
-import { safeParseJson } from './jsonUtils'
+import { extractJsonBlock } from './jsonUtils'
+import { createTimeoutSignal, postWithParamFallback, readLineStream } from './httpProviderUtils'
 
 const CHAT_URL = 'https://api.openai.com/v1/chat/completions'
 const MODELS_URL = 'https://api.openai.com/v1/models'
@@ -159,15 +160,12 @@ export class OpenAIProvider implements LLMProvider {
 
   /** POST /chat/completions の共通処理。到達失敗・中断・HTTPエラーを LLMError に正規化する */
   private async post(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
-    let res = await this.send(body, signal)
-    if (res.status === 400 && OPTIONAL_PARAMS.some((k) => k in body)) {
-      await res.text().catch(() => '') // 破棄するレスポンスのボディを解放する
-      const relaxed = { ...body }
-      for (const key of OPTIONAL_PARAMS) delete relaxed[key]
-      res = await this.send(relaxed, signal)
-    }
-    if (!res.ok) throw await this.toHttpError(res)
-    return res
+    return postWithParamFallback(
+      (b) => this.send(b, signal),
+      body,
+      OPTIONAL_PARAMS,
+      (res) => this.toHttpError(res),
+    )
   }
 
   async complete(req: LLMRequest, signal?: AbortSignal): Promise<string> {
@@ -204,9 +202,7 @@ export class OpenAIProvider implements LLMProvider {
     const content = data.choices?.[0]?.message?.content ?? ''
     try {
       // response_format が落ちて前置き付きで返る場合に備え、最初の {...} ブロックを取り出す
-      const jsonMatch = content.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('JSONブロックが見つかりません')
-      return safeParseJson<T>(jsonMatch[0])
+      return extractJsonBlock<T>(content)
     } catch (e) {
       throw new LLMError('parse', 'AIの応答形式が不正でした。もう一度お試しください。', {
         provider: 'openai',
@@ -238,57 +234,39 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     // レスポンスは SSE。`data: {...}` の行が並び、`data: [DONE]` で終わる
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
     let accumulated = ''
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? '' // 最後の未完成行は次のチャンクへ持ち越す
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed.startsWith('data:')) continue
-          const payload = trimmed.slice(5).trim()
-          if (payload === '[DONE]') return accumulated
-          const delta = (JSON.parse(payload) as ChatCompletionChunk).choices?.[0]?.delta?.content
-          if (delta) {
-            accumulated += delta
-            onText(accumulated)
-          }
+    await readLineStream(
+      res.body,
+      (line) => {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) return
+        const payload = trimmed.slice(5).trim()
+        if (payload === '[DONE]') return true
+        const delta = (JSON.parse(payload) as ChatCompletionChunk).choices?.[0]?.delta?.content
+        if (delta) {
+          accumulated += delta
+          onText(accumulated)
         }
-      }
-    } catch (e) {
-      // 中断時はそれまでの累積テキストを返す（ClaudeProvider と同じ規約）
-      if (signal?.aborted) return accumulated
-      throw new LLMError('unknown', 'ストリーミング中にエラーが発生しました', {
-        provider: 'openai',
-        cause: e,
-      })
-    }
+      },
+      signal,
+      'openai',
+    )
     return accumulated
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    // 応答を読み切った時点でタイマーを止める。AbortSignal.timeout() だと Tauri 側で
-    // 解放済みボディの二重解放になる（OllamaProvider.getWithTimeout と同じ理由）
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), LIST_MODELS_TIMEOUT_MS)
+    const { signal, cleanup } = createTimeoutSignal(LIST_MODELS_TIMEOUT_MS)
     let res: Response
     try {
       res = await getPlatform().http.request(MODELS_URL, {
         method: 'GET',
         headers: { Authorization: `Bearer ${this.apiKey}` },
-        signal: controller.signal,
+        signal,
       })
     } catch (e) {
       throw this.connectionError(e)
     } finally {
-      clearTimeout(timer)
+      cleanup()
     }
     if (!res.ok) throw await this.toHttpError(res)
 

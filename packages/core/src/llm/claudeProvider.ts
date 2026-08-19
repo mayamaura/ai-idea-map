@@ -8,7 +8,7 @@ import type {
   ProviderCapabilities,
 } from './types'
 import { LLMError } from './types'
-import { safeParseJson } from './jsonUtils'
+import { AIParseError, extractJsonBlock } from './jsonUtils'
 
 const CLAUDE_MODELS: ModelInfo[] = [
   { id: 'claude-sonnet-5', label: 'Claude Sonnet 5（高品質）' },
@@ -133,22 +133,23 @@ export class ClaudeProvider implements LLMProvider {
     // Claude は schema を使わない。呼び出し側プロンプトの「JSON形式のみで回答」指示に依存する。
     const text = await this.complete(req, signal)
 
-    // 前置き説明文への耐性のため、最初の {...} ブロックだけを取り出す
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      throw new LLMError('parse', 'AIからの応答を解析できませんでした。もう一度お試しください。', {
-        provider: 'claude',
-        rawResponse: text,
-      })
-    }
     try {
-      return safeParseJson<T>(jsonMatch[0])
+      // 前置き説明文への耐性のため、最初の {...} ブロックだけを取り出す
+      return extractJsonBlock<T>(text)
     } catch (e) {
-      throw new LLMError('parse', 'AIの応答形式が不正でした。もう一度お試しください。', {
-        provider: 'claude',
-        rawResponse: jsonMatch[0],
-        cause: e,
-      })
+      // ブロックが見つからない場合とパースに失敗した場合とで案内文を変える
+      const found = text.match(/\{[\s\S]*\}/) !== null
+      throw new LLMError(
+        'parse',
+        found
+          ? 'AIの応答形式が不正でした。もう一度お試しください。'
+          : 'AIからの応答を解析できませんでした。もう一度お試しください。',
+        {
+          provider: 'claude',
+          rawResponse: e instanceof AIParseError ? e.rawResponse : text,
+          cause: e,
+        },
+      )
     }
   }
 

@@ -8,6 +8,7 @@ import type {
 } from './types'
 import { LLMError } from './types'
 import { safeParseJson } from './jsonUtils'
+import { createTimeoutSignal, postWithParamFallback, readLineStream } from './httpProviderUtils'
 
 export const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
 
@@ -129,22 +130,21 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  /** POST /api/chat の共通処理。到達失敗・中断・HTTPエラーを LLMError に正規化する */
+  /**
+   * POST /api/chat の共通処理。到達失敗・中断・HTTPエラーを LLMError に正規化する。
+   * think を解釈しないバージョン・モデルの組み合わせがありうるので、400 のときだけ外して1回だけ再送する
+   */
   private async post(
     path: string,
     body: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<Response> {
-    let res = await this.send(path, body, signal)
-    // think を解釈しないバージョン・モデルの組み合わせがありうるので、400 のときだけ外して1回だけ再送する
-    if (res.status === 400 && 'think' in body) {
-      await res.text().catch(() => '') // 破棄するレスポンスのボディを解放する
-      const withoutThink = { ...body }
-      delete withoutThink.think
-      res = await this.send(path, withoutThink, signal)
-    }
-    if (!res.ok) throw await this.toHttpError(res)
-    return res
+    return postWithParamFallback(
+      (b) => this.send(path, b, signal),
+      body,
+      ['think'],
+      (res) => this.toHttpError(res),
+    )
   }
 
   async complete(req: LLMRequest, signal?: AbortSignal): Promise<string> {
@@ -212,53 +212,30 @@ export class OllamaProvider implements LLMProvider {
     }
 
     // Ollama のストリーミング応答は NDJSON（改行区切りでJSONオブジェクトが1行ずつ届く）
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
     let accumulated = ''
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? '' // 最後の未完成行は次のチャンクへ持ち越す
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const chunk = JSON.parse(line) as OllamaChatStreamChunk
-          if (chunk.message?.content) {
-            accumulated += chunk.message.content
-            onText(accumulated)
-          }
+    await readLineStream(
+      res.body,
+      (line) => {
+        if (!line.trim()) return
+        const chunk = JSON.parse(line) as OllamaChatStreamChunk
+        if (chunk.message?.content) {
+          accumulated += chunk.message.content
+          onText(accumulated)
         }
-      }
-    } catch (e) {
-      // 中断時はそれまでの累積テキストを返す（ClaudeProvider と同じ規約）
-      if (signal?.aborted) return accumulated
-      throw new LLMError('unknown', 'ストリーミング中にエラーが発生しました', { provider: 'ollama', cause: e })
-    }
+      },
+      signal,
+      'ollama',
+    )
     return accumulated
   }
 
-  /**
-   * タイムアウト付きの GET。
-   *
-   * `AbortSignal.timeout()` を使わないのは、Tauri の http プラグインが signal の abort で
-   * レスポンスボディの解放（fetch_cancel_body）を呼ぶため。読み終わったあとにタイマーが発火すると
-   * 解放済みリソースを二重に解放して「The resource id ... is invalid」の未処理例外になる。
-   * 応答を読み切った時点でタイマーを止める形にして、abort が後から走らないようにしている。
-   */
+  /** タイムアウト付きの GET */
   private async getWithTimeout(path: string): Promise<Response> {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), LIST_MODELS_TIMEOUT_MS)
+    const { signal, cleanup } = createTimeoutSignal(LIST_MODELS_TIMEOUT_MS)
     try {
-      return await getPlatform().http.request(this.endpoint(path), {
-        method: 'GET',
-        signal: controller.signal,
-      })
+      return await getPlatform().http.request(this.endpoint(path), { method: 'GET', signal })
     } finally {
-      clearTimeout(timer)
+      cleanup()
     }
   }
 

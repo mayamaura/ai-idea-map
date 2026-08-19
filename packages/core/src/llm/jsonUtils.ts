@@ -51,6 +51,20 @@ export class AIParseError extends Error {
   }
 }
 
+/**
+ * 応答テキストから最初の `{...}` ブロックを抽出してパースする（Phase 57、Claude/OpenAI で重複していた処理）。
+ * 両プロバイダとも前置き説明文つきで返ってくることがあるため、テキスト全体ではなく最初のJSONブロックだけを
+ * 取り出す。ブロックが見つからない場合も safeParseJson と同じ AIParseError を投げ、rawResponse には
+ * テキスト全体を入れる（パースに失敗した場合は safeParseJson が一致したブロックを rawResponse にする）。
+ */
+export function extractJsonBlock<T>(text: string): T {
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new AIParseError('JSONブロックが見つかりません', text)
+  }
+  return safeParseJson<T>(jsonMatch[0])
+}
+
 export function safeParseJson<T>(raw: string): T {
   try {
     return JSON.parse(raw) as T
