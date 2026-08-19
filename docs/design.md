@@ -532,6 +532,10 @@ React Flow の主要設定:
 - AIノード (`createdBy === 'ai'`): `node-ai-generated` クラス（`✦` バッジ + pulse アニメーション）
 - ドロップ接続先候補（`dragOverNodeId === id`、Phase 40・§5.2.1）: 緑リング `outline: 3px solid #10b981` ＋ `NodeToolbar` によるガイドツールチップ「ドロップでこのアイデアを親にして接続」（ズーム非依存）
 
+**幅と本文プレビュー:**
+- 幅は `min-w-24 max-w-72`（96〜288px）固定。幅は内容に追従して縮むため上限だけを決めており、タイトル長による出し分けはしない。タイトルは `text-balance`（折り返し時の行長を均等化）と `word-break: auto-phrase`（日本語を文節単位で改行）を併用する
+- `data.body` があるノードは本文を `renderMarkdownSimple` で整形して表示する。非選択時は `max-height: 2.6rem`（先頭2行相当）で切り、**選択中は `max-height: 24rem` まで下方向に伸ばして全文を表示する**（詳細パネルへの目線移動を減らすため）。上限に達したときのスクロールがキャンバスのズームに奪われないよう、選択中は React Flow の `nowheel` クラスを付ける
+
 **関連リンク・画像添付（Phase 49）:**
 - `data.image` があれば本文の下にサムネイル（`<img>`、`max-h-20 object-cover`）を表示する
 - `data.url` があれば `new URL(url).hostname` で取得したドメイン名をリンクチップ（`🔗 ドメイン名`）として表示する。不正なURL（`new URL()` が例外を投げる）はチップ自体を表示しない。クリックで `getPlatform().system.openExternalUrl(url)` を呼ぶ（`SystemAdapter.openExternalUrl` は既存メソッド。§5.10 の `ExternalLink` と同じ Adapter 経由だが、IdeaNode 自身がボタンとして実装しておりコンポーネント共有はしていない）

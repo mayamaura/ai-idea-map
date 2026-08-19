@@ -292,11 +292,14 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
               <p className="text-sm text-gray-800 leading-snug break-words text-balance [word-break:auto-phrase] select-none">
                 {nodeData.title}
               </p>
-              {/* 本文プレビュー（Markdown整形・先頭2行相当） */}
+              {/* 本文プレビュー（Markdown整形・先頭2行相当）。選択中は全文まで下に伸ばし、詳細パネルへの目線移動を省く */}
               {hasBody && (
                 <div
-                  className="text-xs text-gray-500 leading-snug select-none mt-1 opacity-75 overflow-hidden"
-                  style={{ maxHeight: '2.6rem' }}
+                  className={`text-xs text-gray-500 leading-snug select-none mt-1 opacity-75 ${
+                    // nowheel: 展開が上限に達したときのホイール操作をキャンバスのズームに奪われないようにする
+                    selected ? 'nowheel overflow-y-auto' : 'overflow-hidden'
+                  }`}
+                  style={{ maxHeight: selected ? '24rem' : '2.6rem' }}
                   dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(nodeData.body!) }}
                 />
               )}
