@@ -28,10 +28,9 @@ export interface HistorySlice {
   redo: () => void
 }
 
-/** ノードの追加・編集・削除・整列 */
+/** ノードの追加・編集・削除 */
 export interface NodeSlice {
   nodes: IdeaNode[]
-  clipboard: Clipboard
   onNodesChange: (changes: NodeChange<IdeaNode>[]) => void
   addNode: (title: string, x: number, y: number, createdBy?: 'user' | 'ai', color?: string, categoryId?: string, body?: string) => string
   addConnectedNode: (parentId: string, title?: string) => string | null
@@ -51,10 +50,6 @@ export interface NodeSlice {
   /** mergeId を keepId に統合する（AIガーデナー「統合」提案の適用）。本文を連結し、mergeId 宛のエッジを keepId へ張り替え、mergeId を削除する */
   mergeNodes: (keepId: string, mergeId: string) => void
   applyClusterCategory: (nodeIds: string[], categoryId: string, color: string) => void
-  copyNodes: (ids: string[]) => void
-  paste: (position?: { x: number; y: number }) => void
-  alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
-  distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
   setNodes: (nodes: IdeaNode[]) => void
   /**
    * ノード配列とエッジ配列をまとめて1回の set で追加し、past に1回だけ積む（Phase 48）。
@@ -90,6 +85,19 @@ export interface EdgeSlice {
   hasConnectedEdges: (nodeId: string) => boolean
 }
 
+/** クリップボード（コピー・貼り付け） */
+export interface ClipboardSlice {
+  clipboard: Clipboard
+  copyNodes: (ids: string[]) => void
+  paste: (position?: { x: number; y: number }) => void
+}
+
+/** 選択ノードの整列・等間隔分配 */
+export interface AlignmentSlice {
+  alignSelectedNodes: (type: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => void
+  distributeSelectedNodes: (direction: 'horizontal' | 'vertical') => void
+}
+
 /** グループノードと所属関係の操作 */
 export interface GroupSlice {
   addGroupNode: (label: string, x: number, y: number, width?: number, height?: number) => string
@@ -112,7 +120,13 @@ export interface DocumentSlice {
   reset: () => void
 }
 
-export type MapState = HistorySlice & NodeSlice & EdgeSlice & GroupSlice & DocumentSlice
+export type MapState = HistorySlice &
+  NodeSlice &
+  ClipboardSlice &
+  AlignmentSlice &
+  EdgeSlice &
+  GroupSlice &
+  DocumentSlice
 
 /** 各スライスは MapState 全体に対して set/get できる（スライスをまたぐ更新があるため） */
 export type MapSliceCreator<T> = StateCreator<MapState, [], [], T>
