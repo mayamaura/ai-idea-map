@@ -9,6 +9,7 @@ import {
   type MapFile,
   type DriveFile,
 } from '@ideamap/core'
+import { formatMapDate } from '@ideamap/ui'
 
 interface MapListPanelProps {
   accessToken: string | null
@@ -145,10 +146,7 @@ export function MapListPanel({ accessToken }: MapListPanelProps) {
                         {file.name.replace(/\.json$/, '')}
                       </p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(file.modifiedTime).toLocaleDateString('ja-JP', {
-                          year: 'numeric', month: 'short', day: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
+                        {formatMapDate(file.modifiedTime)}
                       </p>
                     </div>
                   </div>

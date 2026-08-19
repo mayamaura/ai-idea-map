@@ -12,7 +12,7 @@ import {
   type MapFile,
   type DriveFile,
 } from '@ideamap/core'
-import { openLoadedMap, startNewMap, startNewMapFromTemplate, useDashboardEscapeToClose, TemplatePickerModal } from '@ideamap/ui'
+import { openLoadedMap, startNewMap, startNewMapFromTemplate, useDashboardEscapeToClose, TemplatePickerModal, formatMapDate } from '@ideamap/ui'
 import { loadRecentMaps, saveRecentMap, loadMapLocally } from '../../services/storageService'
 
 interface FileOpenDashboardProps {
@@ -154,12 +154,6 @@ export function FileOpenDashboard({
     reader.readAsText(file)
   }
 
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('ja-JP', {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    })
-
   const visibleFiles = filterText.trim()
     ? driveFiles.filter((f) => f.name.toLowerCase().includes(filterText.trim().toLowerCase()))
     : driveFiles
@@ -223,7 +217,7 @@ export function FileOpenDashboard({
                     {localMap.title || '無題のマップ'}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {localMap.updatedAt ? formatDate(localMap.updatedAt) : ''} · ノード {localMap.nodes.length} 件
+                    {localMap.updatedAt ? formatMapDate(localMap.updatedAt) : ''} · ノード {localMap.nodes.length} 件
                   </p>
                 </div>
               </button>
@@ -310,7 +304,7 @@ export function FileOpenDashboard({
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
                           {file.name.replace(/\.json$/, '')}
                         </p>
-                        <p className="text-xs text-gray-400">{formatDate(file.modifiedTime)}</p>
+                        <p className="text-xs text-gray-400">{formatMapDate(file.modifiedTime)}</p>
                       </div>
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button
@@ -372,7 +366,7 @@ export function FileOpenDashboard({
                       </svg>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{m.title}</p>
-                        <p className="text-xs text-gray-400">{formatDate(m.updatedAt)}</p>
+                        <p className="text-xs text-gray-400">{formatMapDate(m.updatedAt)}</p>
                       </div>
                     </button>
                   )

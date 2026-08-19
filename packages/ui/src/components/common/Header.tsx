@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore, useSettingsStore, type SaveStatus } from '@ideamap/core'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
+import { useClickOutside } from '../../hooks/useClickOutside'
 
 const saveStatusLabel: Record<SaveStatus, { text: string; color: string }> = {
   saved: { text: '保存済み', color: 'text-green-500' },
@@ -73,16 +74,7 @@ export function Header({
   const accountMenuRef = useRef<HTMLDivElement>(null)
 
   // メニュー外クリックで閉じる（Toolbar と同じパターン）
-  useEffect(() => {
-    if (!showAccountMenu) return
-    const handler = (e: MouseEvent) => {
-      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Element)) {
-        setShowAccountMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showAccountMenu])
+  useClickOutside(accountMenuRef, showAccountMenu, () => setShowAccountMenu(false))
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
@@ -288,96 +280,41 @@ export function Header({
         )}
 
         {/* AIチャットボタン */}
-        <button
+        <HeaderActionButton
           onClick={() => setChatPanelOpen(true)}
-          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors hidden sm:flex"
+          color="blue"
+          label="AIチャット"
           title="AIとチャット（Ctrl+Shift+C）"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-          <span>AIチャット</span>
-        </button>
-        <button
-          onClick={() => setChatPanelOpen(true)}
-          className="p-2 rounded-lg text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors sm:hidden"
-          title="AIとチャット"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-        </button>
+          iconTitle="AIとチャット"
+          iconPath="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        />
 
         {/* マップ分析ボタン */}
-        <button
+        <HeaderActionButton
           onClick={() => setAnalysisPanelOpen(true)}
-          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-700 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors hidden sm:flex"
+          color="violet"
+          label="マップ分析"
           title="AIでマップ全体を分析"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-          <span>マップ分析</span>
-        </button>
-        <button
-          onClick={() => setAnalysisPanelOpen(true)}
-          className="p-2 rounded-lg text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-200 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors sm:hidden"
-          title="AIでマップ全体を分析"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-        </button>
+          iconPath="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+        />
 
         {/* 成果物生成ボタン */}
-        <button
+        <HeaderActionButton
           onClick={() => setArtifactPanelOpen(true)}
-          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-700 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors hidden sm:flex"
+          color="teal"
+          label="成果物を作成"
           title="AIでマップから成果物を作成"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span>成果物を作成</span>
-        </button>
-        <button
-          onClick={() => setArtifactPanelOpen(true)}
-          className="p-2 rounded-lg text-teal-500 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors sm:hidden"
-          title="AIでマップから成果物を作成"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </button>
+          iconPath="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
 
         {/* 履歴ボタン */}
-        <button
+        <HeaderActionButton
           onClick={() => setHistoryPanelOpen(true)}
-          className="items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors hidden sm:flex"
+          color="amber"
+          label="履歴"
           title="バージョン履歴・タイムラプス再生"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>履歴</span>
-        </button>
-        <button
-          onClick={() => setHistoryPanelOpen(true)}
-          className="p-2 rounded-lg text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors sm:hidden"
-          title="バージョン履歴・タイムラプス再生"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </button>
+          iconPath="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
 
         {/* テーマ切替ボタン */}
         <button
@@ -412,6 +349,62 @@ export function Header({
       </div>
     </header>
     </div>
+  )
+}
+
+// Tailwind の JIT はソース中の文字列をそのまま拾うため、色ごとの class は
+// テンプレートリテラルで組み立てず、完全な文字列のまま並べておく必要がある
+const ACTION_BUTTON_COLORS = {
+  blue: {
+    flex: 'items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors hidden sm:flex',
+    icon: 'p-2 rounded-lg text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors sm:hidden',
+  },
+  violet: {
+    flex: 'items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-700 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors hidden sm:flex',
+    icon: 'p-2 rounded-lg text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-200 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors sm:hidden',
+  },
+  teal: {
+    flex: 'items-center gap-1.5 px-2.5 py-1.5 text-xs text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-700 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors hidden sm:flex',
+    icon: 'p-2 rounded-lg text-teal-500 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors sm:hidden',
+  },
+  amber: {
+    flex: 'items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors hidden sm:flex',
+    icon: 'p-2 rounded-lg text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors sm:hidden',
+  },
+} as const
+
+interface HeaderActionButtonProps {
+  onClick: () => void
+  color: keyof typeof ACTION_BUTTON_COLORS
+  label: string
+  title: string
+  /** アイコンのみ表示（sm未満）のときの title。省略時は title と同じ */
+  iconTitle?: string
+  /** アイコン中央の <path d> 。全ボタン共通で strokeLinecap/strokeLinejoin/strokeWidth=2 の単一パス */
+  iconPath: string
+}
+
+/**
+ * ヘッダー右側の「AIチャット／マップ分析／成果物作成／履歴」ボタン。
+ * sm以上ではラベル付きボタン、sm未満ではアイコンのみボタンを同時に描画し、Tailwind の
+ * hidden/sm:flex・sm:hidden で表示を切り替える（レスポンシブ対応にJSでの出し分けを使わないため）。
+ */
+function HeaderActionButton({ onClick, color, label, title, iconTitle, iconPath }: HeaderActionButtonProps) {
+  const classes = ACTION_BUTTON_COLORS[color]
+  return (
+    <>
+      <button onClick={onClick} className={classes.flex} title={title}>
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+        </svg>
+        <span>{label}</span>
+      </button>
+      <button onClick={onClick} className={classes.icon} title={iconTitle ?? title}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+        </svg>
+      </button>
+    </>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FileRef } from '@ideamap/platform'
 import { listMaps, useUIStore, type DriveFile } from '@ideamap/core'
+import { formatMapDate } from '@ideamap/ui'
 import { openMapFile } from '../openMap'
 import { saveCurrentMapToDrive } from '../saveToDrive'
 import type { useDesktopGoogleAuth } from '../hooks/useDesktopGoogleAuth'
@@ -83,17 +84,6 @@ export function DriveSection({ auth, onBusyChange }: DriveSectionProps) {
       setLoaded({ token: accessToken, files: await listMaps(accessToken) })
     })
 
-  const formatDate = (iso: string) =>
-    iso
-      ? new Date(iso).toLocaleDateString('ja-JP', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : ''
-
   return (
     <div className="px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-700">
       <div className="flex items-center justify-between mb-2">
@@ -156,7 +146,7 @@ export function DriveSection({ auth, onBusyChange }: DriveSectionProps) {
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
                       {file.name.replace(/\.json$/, '')}
                     </p>
-                    <p className="text-xs text-gray-400">{formatDate(file.modifiedTime)}</p>
+                    <p className="text-xs text-gray-400">{formatMapDate(file.modifiedTime)}</p>
                   </div>
                 </button>
               ))}

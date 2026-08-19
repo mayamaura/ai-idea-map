@@ -67,7 +67,7 @@
 | 52 | マップ横断（ワークスペース） | 🔨 実装済み（確認中） | 本ファイル |
 | 53 | 非同期共同編集（Drive 共有フォルダ経由） | 🔨 実装済み（確認中） | 本ファイル |
 | 54 | ドキュメント再構成（約1日） | ✅ 完了（2026-08-19） | アーカイブ |
-| 55 | 死んだコード削除と小粒な重複解消（約1日） | 未着手 | 本ファイル |
+| 55 | 死んだコード削除と小粒な重複解消（約1日） | 🔨 実装済み（確認中） | 本ファイル |
 | 56 | UI の AI 実行フロー共通化（約2日） | 未着手 | 本ファイル |
 | 57 | core の LLM 重複統合とストア分割（約2日） | 未着手 | 本ファイル |
 | 58 | Web/Desktop ダッシュボード共通化とパネル分割（約1.5日） | 未着手 | 本ファイル |
@@ -1343,19 +1343,19 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 55: 死んだコード削除と小粒な重複解消（約1日）
+### Phase 55: 死んだコード削除と小粒な重複解消（約1日）🔨 実装済み（確認中）
 
 **目標**: リスクゼロ〜極小の削除・抽出を先に片付ける。
 
 #### タスク
-- [ ] `packages/core/src/types/index.ts` の未使用型 `IdeaEdgeData`（L32-34）を削除する
-- [ ] 未使用の `HttpAdapter.canReach` を削除する（`packages/platform/src/types.ts:102`・`apps/web/src/platform/http.web.ts`・`apps/desktop/src/platform/http.desktop.ts` の3点を同一コミットで。テストのモックも追従させる）
-- [ ] `apps/web/src/hooks/useGoogleAuth.ts` の `GoogleAuthState`・`apps/desktop/src/hooks/useDesktopGoogleAuth.ts` の `DesktopGoogleAuthState` を削除し、`packages/ui` の `AppCloudAuth` を extend する形に変更する
-- [ ] 日付フォーマット4箇所（`FileOpenDashboard`／`DesktopFileDashboard`／`DriveSection`／`MapListPanel`）を `packages/ui` の `formatMapDate(iso)` 1関数に集約する
-- [ ] 外側クリックで閉じる処理4箇所（`Toolbar.tsx` の3メニュー＋`Header.tsx` のアカウントメニュー）を `packages/ui/src/hooks/useClickOutside.ts` に抽出する
-- [ ] `Header.tsx` のデスクトップ/モバイル二重定義ボタン4組（L290-380、約150行）を `HeaderActionButton` コンポーネントに抽出する
+- [x] `packages/core/src/types/index.ts` の未使用型 `IdeaEdgeData`（L32-34）を削除する
+- [x] 未使用の `HttpAdapter.canReach` を削除する（`packages/platform/src/types.ts:102`・`apps/web/src/platform/http.web.ts`・`apps/desktop/src/platform/http.desktop.ts` の3点を同一コミットで。テストのモックも追従させる）
+- [x] `apps/web/src/hooks/useGoogleAuth.ts` の `GoogleAuthState`・`apps/desktop/src/hooks/useDesktopGoogleAuth.ts` の `DesktopGoogleAuthState` を削除し、`packages/ui` の `AppCloudAuth` を extend する形に変更する
+- [x] 日付フォーマット4箇所（`FileOpenDashboard`／`DesktopFileDashboard`／`DriveSection`／`MapListPanel`）を `packages/ui` の `formatMapDate(iso)` 1関数に集約する
+- [x] 外側クリックで閉じる処理4箇所（`Toolbar.tsx` の3メニュー＋`Header.tsx` のアカウントメニュー）を `packages/ui/src/hooks/useClickOutside.ts` に抽出する
+- [x] `Header.tsx` のデスクトップ/モバイル二重定義ボタン4組（L290-380、約150行）を `HeaderActionButton` コンポーネントに抽出する
 
-**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。→ 2026-08-19 実装完了。build 通過・テスト226件パス。lint は既存の16件（React Compiler 系ルール、本フェーズ以前から main に存在）のみで、本フェーズの変更ファイルに新規指摘は0件。
 
 ---
 

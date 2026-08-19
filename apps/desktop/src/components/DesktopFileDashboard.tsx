@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getPlatform, type FileRef } from '@ideamap/platform'
 import { useUIStore, type MapFile } from '@ideamap/core'
-import { openLoadedMap, startNewMap, startNewMapFromTemplate, useDashboardEscapeToClose, TemplatePickerModal } from '@ideamap/ui'
+import { openLoadedMap, startNewMap, startNewMapFromTemplate, useDashboardEscapeToClose, TemplatePickerModal, formatMapDate } from '@ideamap/ui'
 import { loadLastAutosave } from '../platform'
 import { openMapFile } from '../openMap'
 import { DriveSection } from './DriveSection'
@@ -54,17 +54,6 @@ export function DesktopFileDashboard({ cloudAuth }: DesktopFileDashboardProps) {
     // 自動保存は「まだ名前を付けていないマップ」の控えなので保存先は未確定のまま復帰する
     openLoadedMap(autosaved, null, '無題のマップ')
   }
-
-  const formatDate = (iso: string) =>
-    iso
-      ? new Date(iso).toLocaleDateString('ja-JP', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : ''
 
   const content = (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gradient-to-br from-primary-50 to-violet-50 dark:from-gray-900 dark:to-gray-800 p-4">
@@ -124,7 +113,7 @@ export function DesktopFileDashboard({ cloudAuth }: DesktopFileDashboardProps) {
                     {autosaved.title || '無題のマップ'}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {formatDate(autosaved.updatedAt)} · ノード {autosaved.nodes.length} 件
+                    {autosaved.updatedAt ? formatMapDate(autosaved.updatedAt) : ''} · ノード {autosaved.nodes.length} 件
                   </p>
                 </div>
               </button>

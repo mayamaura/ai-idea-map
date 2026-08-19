@@ -29,11 +29,13 @@ export { PresentationMode } from './components/screens/PresentationMode'
 
 export { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 export { useFocusTrap } from './hooks/useFocusTrap'
+export { useClickOutside } from './hooks/useClickOutside'
 export { useOnlineStatus } from './hooks/useOnlineStatus'
 export { useNodeFocus } from './hooks/useNodeFocus'
 export { startNewMap, startNewMapFromTemplate, openLoadedMap, openLinkedMap, useDashboardEscapeToClose } from './hooks/useFileDashboard'
 
 export { renderMarkdownSimple } from './utils/markdown'
+export { formatMapDate } from './utils/formatMapDate'
 
 export { default as App } from './App'
 export type { AppProps, AppCloudAuth } from './App'

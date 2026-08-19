@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
 import { useMapStore, useUIStore, applyDagreLayout, applyRadialLayout, animateNodePositions, findFreePosition, useSettingsStore, type IdeaNodeData } from '@ideamap/core'
 import type { Node, Edge } from '@xyflow/react'
+import { useClickOutside } from '../../hooks/useClickOutside'
 
 export function Toolbar() {
   const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow()
@@ -66,38 +67,9 @@ export function Toolbar() {
   const animatingRef = useRef(false)
 
   // メニュー外クリックで閉じる
-  useEffect(() => {
-    if (!showLayoutMenu) return
-    const handler = (e: MouseEvent) => {
-      if (layoutMenuRef.current && !layoutMenuRef.current.contains(e.target as Element)) {
-        setShowLayoutMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showLayoutMenu])
-
-  useEffect(() => {
-    if (!showFilterMenu) return
-    const handler = (e: MouseEvent) => {
-      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Element)) {
-        setShowFilterMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showFilterMenu])
-
-  useEffect(() => {
-    if (!showPresentMenu) return
-    const handler = (e: MouseEvent) => {
-      if (presentMenuRef.current && !presentMenuRef.current.contains(e.target as Element)) {
-        setShowPresentMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showPresentMenu])
+  useClickOutside(layoutMenuRef, showLayoutMenu, () => setShowLayoutMenu(false))
+  useClickOutside(filterMenuRef, showFilterMenu, () => setShowFilterMenu(false))
+  useClickOutside(presentMenuRef, showPresentMenu, () => setShowPresentMenu(false))
 
   const handleAddNode = () => {
     const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
