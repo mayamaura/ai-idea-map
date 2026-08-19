@@ -120,7 +120,8 @@ ai-idea-map/
 │   │       │   ├── crossMapSearch.ts # マップ横断の全文検索（searchAcrossMaps、Phase 52）
 │   │       │   ├── mapMerge.ts      # 3方向マージ（mergeMapFiles/applyConflictResolutions、Phase 53）
 │   │       │   ├── mapMergeBase.ts  # マージ基準スナップショットの保持（saveMergeBase/getMergeBase、Phase 53）
-│   │       │   └── textToMap.ts     # AI抽出結果 → SerializedNode/Edge 変換（buildMapFragmentFromExtracted、Phase 44）
+│   │       │   ├── textToMap.ts     # AI抽出結果 → SerializedNode/Edge 変換（buildMapFragmentFromExtracted、Phase 44）
+│   │       │   └── driveReauthHandler.ts # Drive保存失敗時の401リトライ処理（createDriveReauthHandler、Web/Desktop共通、Phase 56、§12.6）
 │   │       ├── templates/mapTemplates.ts # 思考フレームワークのテンプレートマップ5種（Phase 46）
 │   │       ├── layout/
 │   │       │   ├── mapLayout.ts     # ノード自動配置ロジック（dagre・円形配置）
@@ -138,18 +139,21 @@ ai-idea-map/
 │           │   ├── canvas/          # IdeaCanvas / IdeaNode / GroupNode / FloatingEdge / ContextMenu
 │           │   ├── panels/          # NodePanel / NodeDetailPanel / AISuggestionPanel / SettingsPanel /
 │           │   │                    # ExportImportPanel / MapAnalysisPanel / AIChatPanel / PresentationOrderPanel /
-│           │   │                    # ArtifactPanel（Phase 45）/ PersonaDebatePanel（Phase 48）
+│           │   │                    # ArtifactPanel（Phase 45）/ PersonaDebatePanel（Phase 48）/
+│           │   │                    # mapAnalysis/（MapAnalysisPanel のタブ4分割、Phase 56、§5.15）
 │           │   ├── screens/         # PresentationMode
 │           │   ├── toolbar/         # Toolbar（PC用）/ BottomNav（スマホ用）
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
 │           │                        # WelcomeModal / MasterPasswordModal / KeyboardShortcutsModal / ApiKeyRequired /
-│           │                        # TemplatePickerModal（Phase 46）/ MergeConflictDialog（Phase 53）
+│           │                        # TemplatePickerModal（Phase 46）/ MergeConflictDialog（Phase 53）/
+│           │                        # CloseButton / PanelHeader / AILoadingIndicator（Phase 56、§5.14）
 │           ├── hooks/               # useAutoSave / useKeyboardShortcuts / useFocusTrap /
 │           │                        # useNodeFocus / useOnlineStatus / useActiveProvider（Phase 35）/
 │           │                        # useGlobalErrorLog（Phase 43）/ useSubtreeNodeIds（Phase 45）/
-│           │                        # useLinkedMapTitle（Phase 52）
+│           │                        # useLinkedMapTitle（Phase 52）/ useClickOutside（Phase 55）/
+│           │                        # useCancellableAIRequest（Phase 56、§5.14）
 │           ├── services/exportService.ts # 画像・JSON・Markdown の書き出しとインポート
-│           ├── utils/markdown.ts    # Markdown→HTML変換ユーティリティ
+│           ├── utils/                # markdown.ts（Markdown→HTML変換）/ formatMapDate.ts（Phase 55）
 │           └── index.ts
 │
 └── apps/
@@ -722,7 +726,7 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 マップ（または選択ノードのサブツリー）から `generateArtifactFromMap`（§9.4.2）を呼び、Markdown成果物をストリーミング生成する右スライドパネル。`App.tsx` に常設し、`uiStore.isArtifactPanelOpen` で開閉する。入口はヘッダーの「成果物を作成」ボタンと `ExportImportPanel` のエクスポートタブ。
 
 - 形式選択（`document` / `slides` / `tasks`）→ 対象範囲表示（`useSubtreeNodeIds()` が `null` でなければ「選択中のノードから n 件を対象」、トグルボタンでマップ全体に切替可）→ 生成ボタン → ストリーミングプレビュー（`<pre>`）→ 完了後に「コピー」（`getPlatform().system.copyToClipboard`）／「.mdで保存」（`getPlatform().file.exportBlob`）
-- ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
+- ローディング・キャンセルは `useCancellableAIRequest`（§5.14）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
 - `useSubtreeNodeIds()`（`packages/ui/src/hooks/useSubtreeNodeIds.ts`）: `uiStore.selectedNodeId` を起点に `mapStore` の edges（source→target、親→子）をBFSしたノードID集合を返す。選択なしなら `null`（＝マップ全体扱い）。`nodes`/`edges` は `useShallow` で id と `source>target` 文字列だけを購読し、ドラッグ中の座標更新では再計算しない
 
 ### 5.12 PersonaDebatePanel（packages/ui/src/components/panels/PersonaDebatePanel.tsx、Phase 48）
@@ -732,7 +736,7 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 - **ペルソナ選択**: プリセット4種（楽観家・批評家・顧客・投資家）のトグルチップ＋自由入力（追加ボタンまたは Enter でリストに追加）。プリセットの選択集合（`Set`）と自由入力の配列をマージした `activePersonas` をリクエストに渡す。1件も選ばれていなければ生成不可
 - **意見の選択**: 生成結果はペルソナごとにカード表示し、`personaIdx-opinionIdx` をキーにした `Set<string>`（`selectedOpinions`）で意見単位にチェックボックス選択できる。生成直後は全件が選択済みの状態になる
 - **子ノード追加**: `handleAddSelected` が `personaDebateTargetId` から対象ノードを解決し、選択された意見それぞれについて `calcSuggestionPositions(targetNode.position.x, targetNode.position.y, count, nodes)` で位置を求めた `IdeaNode[]` と、対象ノードへの `makeEdge({ source: targetNode.id, target: n.id, sourceHandle: 'right', targetHandle: 'left' })` の `Edge[]` を組み立て、`addNodesWithEdges`（§4.1）を1回呼ぶ。追加後は対象ノード＋新規ノード群へ `fitView` し、`personaDebateTargetId` をクリアする
-- ローディング・キャンセル（`AbortController`）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
+- ローディング・キャンセルは `useCancellableAIRequest`（§5.14）・APIキー未設定時の `ApiKeyRequired` 表示は他のAIパネルと同じパターン
 
 ### 5.13 HistoryPanel（packages/ui/src/components/panels/HistoryPanel.tsx、Phase 50）
 
@@ -741,6 +745,18 @@ AI機能の前提設定が未完了のときに AI系パネル（AISuggestionPan
 - 開いたら `uiStore.currentMapId` を元に `getSnapshots(mapId)` を呼び、日時・ノード数/エッジ数の一覧を表示する。行をクリックすると開閉し、開いた行にタイトルとノードタイトル一覧（最大30件、以降は「他 n 件」表示）の読み取り専用プレビューを表示する（既存キャンバスは書き換えない）
 - **「この時点に復元」**: `openConfirmDialog` で確認 → 確定で、まず現在の状態を `recordSnapshot(currentMapId, buildMapFile(currentMapId))` で退避してから（復元により失われる直前の状態を残すため）、選択スナップショットを `loadFromSerialized(snapshot.mapFile.nodes, snapshot.mapFile.edges)` で復元し、`mapTitle`/`presentationNodeIds` も反映する。`documentSlice.ts` の `loadFromSerialized` は `past: [], future: []` で Undo 履歴を消す仕様のため、**この復元操作自体は Undo 1回では戻せない**。「取り消し」は直前状態を退避したスナップショットから再度復元する形で提供する
 - **「タイムラプス再生」**: 確認ダイアログ（Undo履歴が失われる旨の案内）→ `startTimelapse(snapshots)`（§22.3）を呼びパネルを閉じる
+
+### 5.14 パネル共通部品: PanelHeader / CloseButton / AILoadingIndicator / useCancellableAIRequest（Phase 56）
+
+AI系パネルで重複していた定型部分を共通化した（`MapAnalysisPanel.tsx` の756→390行への圧縮を含むリファクタリング）。
+
+- `PanelHeader`（`packages/ui/src/components/common/PanelHeader.tsx`）: アイコン＋タイトル（＋任意のサブタイトル）＋閉じるボタンの定型ヘッダー。内部で `CloseButton`（`components/common/CloseButton.tsx`）を使う。`MapAnalysisPanel` / `ArtifactPanel` / `HistoryPanel` / `AISuggestionPanel` / `PersonaDebatePanel` の5パネルで使用
+- `AILoadingIndicator`（`packages/ui/src/components/common/AILoadingIndicator.tsx`）: AI応答待ちのスピナー＋メッセージ＋キャンセルボタン。`layout?: 'stacked' | 'inline'`（既定 `'stacked'`）でレイアウトを切替。`AISuggestionPanel` / `PersonaDebatePanel` は `'inline'`、`MapAnalysisPanel` の4タブ（§5.15）は既定の `'stacked'` を使用
+- `useCancellableAIRequest(setLoading)`（`packages/ui/src/hooks/useCancellableAIRequest.ts`）: 「`AbortController` 生成 → ローディングON → 実行 → `isAbortError` 判定 → `finally` での後始末」というAI呼び出しハンドラ共通の骨格をまとめた薄いフック。`{ run, cancel }` を返し、`run(fn)` に渡した `fn(signal)` の中でリクエスト組み立てと結果反映を行う。キャンセル時の例外は `run` 内部で握り潰され呼び出し元には届かない（キャンセル以外の例外は再送出するので、エラー表示は各パネルの既存 `catch` のまま使える）。`AIChatPanel` / `AISuggestionPanel` / `ArtifactPanel` / `ExportImportPanel`（ブレインダンプ）/ `MapAnalysisPanel`（4ハンドラで1個のインスタンスを共有）/ `PersonaDebatePanel` で使用
+
+### 5.15 MapAnalysisPanel のタブ分割（packages/ui/src/components/panels/mapAnalysis/、Phase 56）
+
+`MapAnalysisPanel.tsx` の4タブ描画部分を `AnalysisTab.tsx` / `ConnectionsTab.tsx` / `ClustersTab.tsx` / `GardenerTab.tsx` に分割した。親（`MapAnalysisPanel.tsx`）は `uiStore`/`mapStore`/`settingsStore` の購読、4つの `handleXxx`（`analyzeMap`/`suggestConnections`/`suggestClusters`/`reviewMap` の呼び出し、§9.4）、提案の適用系ハンドラ（`handleApplyGardener` 等）を持ち続け、各タブコンポーネントには結果データとコールバックを props で渡すだけにした。状態の置き場所・ロジック自体は変えていない。
 
 ---
 
@@ -1113,7 +1129,7 @@ return safeParseJson<T>(jsonMatch[0])
 | `reviewMap(req, signal?)` | 3072 | Phase 47。`completeJsonWithRetry` 方式（§9.4.3） |
 | `debateNode(req, signal?)` | 3072 | Phase 48。`completeJsonWithRetry` 方式（§9.4.4） |
 
-分析系3関数の `signal` は Phase 32 でサービス層まで通したが `MapAnalysisPanel` 側のUIが無かった。Phase 35 で `abortRef`（`AbortController`）と3タブ共通の `CancelButton` を追加し、キャンセル時は `isAbortError(e)` で握り潰してトーストを出さないようにしている。ローカルLLMは応答が長くかかりうるため必要性が上がったことが理由。
+分析系3関数の `signal` は Phase 32 でサービス層まで通したが `MapAnalysisPanel` 側のUIが無かった。Phase 35 で `abortRef`（`AbortController`）と共通の `CancelButton` を追加し、キャンセル時は `isAbortError(e)` で握り潰してトーストを出さないようにした。ローカルLLMは応答が長くかかりうるため必要性が上がったことが理由。Phase 56 でこの骨格は `useCancellableAIRequest` / `AILoadingIndicator`（§5.14）に置き換わり、4タブ（`reviewMap` 追加後のガーデナーを含む）が共通で使う形になった。
 
 **Phase 35 でのシグネチャ変更:** 5関数すべての `*Request` インタフェースにあった `apiKey: string` / `model: AIModel` の2フィールドを `provider: LLMProvider` に統合した。呼び出し側（各パネル）は `useActiveProvider()`（§9.0.1）で解決済みの `LLMProvider` をそのまま渡す。
 
@@ -1532,7 +1548,7 @@ Google Drive/
 
 Phase 33 で `packages/ui` に汎用化され、Web版・デスクトップ版が同じフックを共有する。保存先の実体は `FileAdapter` に委ねているため、以下は Web版目線の記述だが、デスクトップ版は「Google Drive」を「ローカルファイル」、「`accessToken` あり」を「常に true（`remoteReady`）」に読み替える。
 
-**Phase 38 以降のデスクトップ版**: デスクトップ版は Drive とローカルの両方を扱えるようになったため、保存先の判別は `accessToken` の有無ではなく `uiStore.currentFileOrigin`（§4.2）で行う。`useAutoSave` は `currentFileId` から組み立てる `FileRef.origin` に `currentFileOrigin ?? file.origin` を使う（マップを開いたときに記録した値を優先し、無ければ `FileAdapter` の既定＝ローカルにフォールバック）。`remoteReady` はローカルファイルシステムが常に使えるため常に `true` を渡し、Drive 側の 401 は `AutoSaveOptions.onSaveError` が `currentFileOrigin === 'cloud'` のときだけキーチェーンでの再認証にルーティングする（`apps/desktop/src/DesktopApp.tsx`）。
+**Phase 38 以降のデスクトップ版**: デスクトップ版は Drive とローカルの両方を扱えるようになったため、保存先の判別は `accessToken` の有無ではなく `uiStore.currentFileOrigin`（§4.2）で行う。`useAutoSave` は `currentFileId` から組み立てる `FileRef.origin` に `currentFileOrigin ?? file.origin` を使う（マップを開いたときに記録した値を優先し、無ければ `FileAdapter` の既定＝ローカルにフォールバック）。`remoteReady` はローカルファイルシステムが常に使えるため常に `true` を渡し、Drive 側の 401 は `AutoSaveOptions.onSaveError` が `currentFileOrigin === 'cloud'` のときだけキーチェーンでの再認証にルーティングする（`apps/desktop/src/DesktopApp.tsx`）。`onSaveError` の実体は Phase 56 で Web版と共通の `createDriveReauthHandler`（§12.6）に置き換わった。
 
 - `useMapStore.subscribe()`（ノード・エッジ変更）に加え、`useUIStore.subscribe()` で `mapTitle` 変更も監視（差分比較で mapTitle のみ拾い、パネル開閉等の他UI状態変更では保存しない）。両者は同一デバウンスタイマーを共有
 - デバウンス: 変更から **3000ms** 後に保存実行
@@ -1581,6 +1597,18 @@ remote.mapId ≠ currentMapId → 衝突検出
 
 **後方互換:**
 - `appProperties.mapId` がない旧ファイルは衝突チェックをスキップし、次回保存時に付与する
+
+### 12.6 401リトライ処理の共通化（packages/core/src/services/driveReauthHandler.ts、Phase 56）
+
+Web版・デスクトップ版で同型だった `useAutoSave` の `onSaveError`（§12.4、§18.9）を `createDriveReauthHandler(deps)` ファクトリに一本化した。戻り値は `(err: unknown, attempt: number) => 'retry' | 'handled'` で、`AutoSaveOptions.onSaveError` にそのまま渡せる。判定順序は従来と同じ: オフラインなら即 `'retry'` → 401以外はトーストを出して `'handled'` → 初回401はサイレント再認証して `'retry'` → 2回目以降は「再接続」ボタン付きトーストを出して `'handled'`。`addToast` は `uiStore`（`packages/core` 内）を直接参照するため、呼び出し側は `deps` を注入するだけでよい。
+
+| `DriveReauthDeps` | 用途 | Web版（`WebApp.tsx`） | デスクトップ版（`DesktopApp.tsx`） |
+|---|---|---|---|
+| `isCloudSave()` | 今回の保存が Drive 宛てで 401 を認証切れとして扱ってよいか | `() => true`（常にDrive） | `() => useUIStore.getState().currentFileOrigin === 'cloud'` |
+| `isOnline?()` | 省略可。`false` を返す間はオフライン扱いにし、401判定より先に `'retry'` を返す | `() => navigator.onLine` | 未指定（ローカル保存もあるため不要） |
+| `silentReauth()` | 初回401で試すサイレント再認証 | `useGoogleAuth().silentReauth` | `useDesktopGoogleAuth().silentReauth` |
+| `signIn()` | 2回目以降の401でトーストの「再接続」ボタンから呼ぶ | `useGoogleAuth().signIn` | `useDesktopGoogleAuth().signIn` |
+| `nonAuthErrorMessage?(isCloud)` | 401以外の保存失敗メッセージ。省略時は「Googleドライブへの保存に失敗しました」 | 未指定 | `(isCloud) => isCloud ? 'Googleドライブへの保存に失敗しました' : '保存に失敗しました'` |
 
 ---
 
@@ -2009,7 +2037,7 @@ Web版で作ったマップをデスクトップ版からもそのまま開け�
 
 **`desktopFileAdapter`（`apps/desktop/src/platform/file.desktop.ts`）**: `setDriveAccessToken(token)` でモジュール内変数にトークンを流し込む（`DesktopApp.tsx` が `accessToken` の変化を `useEffect` で反映する、Web版の `googleDriveService` と同じ形）。`openFile` / `saveFile` / `deleteFile` / `getMetadata` は `ref.origin === 'cloud'` のときだけ `packages/core` の `driveService`（`loadMap` / `saveMap` / `deleteMap` / `fetchMapAppProperties`）に処理を委譲し、それ以外はこれまで通りローカルファイルを扱う。`saveLocalMirror`（自動保存領域への書き込み）と `exportBlob` は Drive 化しておらず常にローカルのまま。
 
-**`DesktopApp.tsx` の配線**: `cloudAuth = useDesktopGoogleAuth()` を生成し、`accessToken` の変化を `setDriveAccessToken` へ渡す。`useAutoSave` の `autoSave.remoteReady` は常に `true`（ローカルファイルシステムは常に使える）。`onSaveError` は `uiStore.currentFileOrigin === 'cloud'` のときだけ 401 をキーチェーンでの `silentReauth()` にルーティングし、再試行後も失敗すれば「再接続」アクションボタン付きトーストを出す（§12.4「Phase 38 以降のデスクトップ版」）。
+**`DesktopApp.tsx` の配線**: `cloudAuth = useDesktopGoogleAuth()` を生成し、`accessToken` の変化を `setDriveAccessToken` へ渡す。`useAutoSave` の `autoSave.remoteReady` は常に `true`（ローカルファイルシステムは常に使える）。`onSaveError` は `uiStore.currentFileOrigin === 'cloud'` のときだけ 401 をキーチェーンでの `silentReauth()` にルーティングし、再試行後も失敗すれば「再接続」アクションボタン付きトーストを出す（§12.4「Phase 38 以降のデスクトップ版」）。実装は Phase 56 で `createDriveReauthHandler`（§12.6）に一本化された。
 
 **設定（`settings.json`）の Drive 同期は対象外**: デスクトップ版は APIキーを OSキーチェーンに置きマスターパスワードを持たないため、マスターパスワード暗号化が前提の `settings.json` 同期とは相性が悪い。`apps/desktop/src/main.tsx` は `setAppSettingsSync()`（§4.3）を注入していない。
 
@@ -2183,7 +2211,7 @@ const updateSW = registerSW({
 
 Web版・デスクトップ版共通の `useAutoSave.ts`（§12.4）に、`window` の `online` イベントを購読する `useEffect` を追加した。既存の「`credentialKey` 変化時にリトライする」仕組みと同じ `pendingRetryRef`/`failureCountRef` を再利用し、オンライン復帰時にも保留していた保存を `scheduleSave()` する。`credentialKey`（Web版はアクセストークン）はオフライン中は変化しないため、この仕組みがないとオンライン復帰後も次の編集が起きるまで再送されなかった（既知バグの解消）。
 
-`apps/web/src/WebApp.tsx` の `onSaveError` にも分岐を追加した: `navigator.onLine === false`（オフライン中の保存失敗）のときはトーストを出さずに `'retry'` を返す。オフラインバナー（`Header.tsx` の `useOnlineStatus`）が既に状態を示しているため、`fetch` の `TypeError` のたびにトーストを重ねて出さない。
+`apps/web/src/WebApp.tsx` の `onSaveError` にも分岐を追加した: `navigator.onLine === false`（オフライン中の保存失敗）のときはトーストを出さずに `'retry'` を返す。オフラインバナー（`Header.tsx` の `useOnlineStatus`）が既に状態を示しているため、`fetch` の `TypeError` のたびにトーストを重ねて出さない。**Phase 56 でこの判定は `createDriveReauthHandler`（§12.6）の `isOnline` deps に切り出された**（`WebApp.tsx` は `isOnline: () => navigator.onLine` を渡すだけになった）。
 
 ---
 
