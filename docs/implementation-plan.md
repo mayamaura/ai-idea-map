@@ -2566,6 +2566,96 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
+### Phase 54: ドキュメント再構成（約1日）
+
+**目標**: コードより先にドキュメントを整理し、以降のフェーズ管理を正常化する。
+
+#### タスク
+- [ ] `docs/implementation-plan.md`: 完了済み（✅）フェーズを `docs/archive/implementation-plan-completed.md`（新規）へ分離し、本体は未完了フェーズ＋全フェーズのサマリ表のみにする
+- [ ] `docs/implementation-plan.md`: `## 1-B. デスクトップアプリ版（Phase 32〜38）` 節を解消し、全フェーズを `## 1. 実装フェーズ` 直下に統合する（CLAUDE.md のルールと一致させる）
+- [ ] `docs/implementation-plan.md`: フェーズ見出しのステータス表記を CLAUDE.md 定義の3種（なし／`🔨 実装済み（確認中）`／`✅ 完了（日付）`）に一括統一する（現在「実機確認待ち」等の亜種が4件ある）
+- [ ] `docs/implementation-plan.md`: Phase 11（L342付近）・Phase 12（L440付近）の見出しに欠落している完了マーカーを補う
+- [ ] `docs/implementation-plan.md`: `## 4. スケジュール概要`・`## 5. リスクと対策` に「Phase 39 以降は各フェーズ節を参照」と注記し、集計対象外であることを明示する
+- [ ] `docs/requirements.md`: 見出し番号の重複を修正する（`2.5` が L438 と L468 で重複、`2.4.7` が L425 と L431 で重複。旧番号 `2.4.1`/`2.4.2` の残骸も振り直す）
+- [ ] `docs/design.md`: §6 型定義表に `MapFile.presentationNodeIds` と `AISuggestion.parentNodeId` を追記し、存在しない `SuggestionType`（L813付近）を削除する
+- [ ] `docs/design.md`: §4.2 uiStore 状態表に `currentMapId`・`dragOverGroupId`・`isShortcutsModalOpen` を追記し、§15/§16 の見出し番号の順序入れ替わりを修正する
+- [ ] `docs/roadmap.md`: ヘッダーの「起案日: 2026-08-17（現状: Phase 40）」と実装状況表（Phase 53 まで反映済み）の矛盾を解消し、「やらないと決めたこと」（§8）は残して提案書部分をアーカイブ化する。完了済みマイルストーンは `implementation-plan.md` への参照のみにする
+- [ ] `docs/desktop/README.md`: 最終更新日とロードマップ節（§4）に Phase 40〜53 の状況を1行注記する
+
+**完了条件**: ドキュメント更新のみのため、ビルド影響なし・リンク切れなしであること。
+
+---
+
+### Phase 55: 死んだコード削除と小粒な重複解消（約1日）
+
+**目標**: リスクゼロ〜極小の削除・抽出を先に片付ける。
+
+#### タスク
+- [ ] `packages/core/src/types/index.ts` の未使用型 `IdeaEdgeData`（L32-34）を削除する
+- [ ] 未使用の `HttpAdapter.canReach` を削除する（`packages/platform/src/types.ts:102`・`apps/web/src/platform/http.web.ts`・`apps/desktop/src/platform/http.desktop.ts` の3点を同一コミットで。テストのモックも追従させる）
+- [ ] `apps/web/src/hooks/useGoogleAuth.ts` の `GoogleAuthState`・`apps/desktop/src/hooks/useDesktopGoogleAuth.ts` の `DesktopGoogleAuthState` を削除し、`packages/ui` の `AppCloudAuth` を extend する形に変更する
+- [ ] 日付フォーマット4箇所（`FileOpenDashboard`／`DesktopFileDashboard`／`DriveSection`／`MapListPanel`）を `packages/ui` の `formatMapDate(iso)` 1関数に集約する
+- [ ] 外側クリックで閉じる処理4箇所（`Toolbar.tsx` の3メニュー＋`Header.tsx` のアカウントメニュー）を `packages/ui/src/hooks/useClickOutside.ts` に抽出する
+- [ ] `Header.tsx` のデスクトップ/モバイル二重定義ボタン4組（L290-380、約150行）を `HeaderActionButton` コンポーネントに抽出する
+
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+
+---
+
+### Phase 56: UI の AI 実行フロー共通化（約2日）
+
+**目標**: AI 系パネル8箇所で手書きされている abort＋loading＋キャンセル＋エラー分岐の骨格を共通フックにする。
+
+#### タスク
+- [ ] `packages/ui/src/hooks/useCancellableAIRequest.ts` を新設する（AbortController 管理・loading フラグ・キャンセル関数のみの薄いフック。リクエスト構築とエラー表示先は呼び出し側に残す）
+- [ ] `AISuggestionPanel` / `AIChatPanel` / `PersonaDebatePanel` / `MapAnalysisPanel`（4ハンドラ） / `ArtifactPanel` / `ExportImportPanel` の各ハンドラを新フックに置き換える
+- [ ] ローディングスピナー＋キャンセルボタン6箇所を `AILoadingIndicator` に、パネルヘッダー定型（×ボタン SVG が15ファイルで重複）を `PanelHeader`/`CloseButton` に抽出する
+- [ ] `MapAnalysisPanel`（755行）をタブ単位（Analysis/Connections/Clusters/Gardener）にファイル分割する
+- [ ] `WebApp.tsx` / `DesktopApp.tsx` で重複する `onSaveError` の401リトライ＋トースト分岐を `packages/core` のファクトリ関数（`createDriveReauthHandler` 等）に共通化する
+
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+
+---
+
+### Phase 57: core の LLM 重複統合とストア分割（約2日）
+
+**目標**: LLM プロバイダ間の制御フロー重複を統合し、肥大化したスライスを既存パターンで分割する。
+
+#### タスク
+- [ ] `packages/core/src/llm/httpProviderUtils.ts` を新設する: ①パラメータ剥がし付き POST リトライ（`openaiProvider` L140-171 / `ollamaProvider` L117-148 で同一）②行バッファリング付きストリーム読み取り ③Tauri plugin-http 二重解放回避のタイムアウト付き GET（3箇所で同一コメントごと重複）を集約する
+- [ ] JSON ブロック抽出（`claudeProvider` L132-153 / `openaiProvider` L189-217 で同一）を `jsonUtils.ts` の `extractJsonBlock()` に統合する
+- [ ] `nodeSlice.ts`（635行）からクリップボード（copyNodes/paste）を `clipboardSlice.ts`、整列・分配を `alignmentSlice.ts` に切り出す（`mapStore.ts` の既存スライス合成パターンに乗せる）
+- [ ] `aiService.ts`（928行）を機能別ファイル（suggestions / mapAnalysis / gardener / debate / textExtraction / chat / artifact ＋ shared）に分割し、index から re-export して呼び出し側の import パスを不変に保つ
+- [ ] 既存テスト（`openaiProvider.test.ts` / `ollamaProvider.test.ts` / `aiService.test.ts` 等 226件）が全て通ることを確認する
+
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+
+---
+
+### Phase 58: Web/Desktop ダッシュボード共通化とパネル分割（約1.5日）
+
+**目標**: Web/Desktop 間で丸ごと重複している画面 JSX を `packages/ui` に引き上げる。
+
+#### タスク
+- [ ] `FileOpenDashboard.tsx` / `DesktopFileDashboard.tsx` で完全一致している JSX（ヘッダーブロック33行・再開カード29行・アクションボタン列30行）を `packages/ui` の `DashboardShell` / `ResumeMapCard` / `DashboardActionBar` に抽出し、両アプリから利用する
+- [ ] `SettingsPanel.tsx`（1181行）内の分割済み9サブコンポーネントを `panels/settings/*.tsx` へファイル移動する（ロジック変更なし。ファイル移動コミットとロジック変更コミットを分離するルールに従う）
+- [ ] `ExportImportPanel.tsx`（706行）を ExportTab / ImportTab / ShareTab に分割する
+- [ ] `IdeaCanvas.tsx` 内の独立コンポーネント `NodeActionBar`（約120行）を `canvas/NodeActionBar.tsx` へ移動する
+
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+
+---
+
+**今回見送り（Phase 54〜58 起票時点）**:
+- `uiStore.ts` / `settingsStore.ts` / `mapLayout.ts` の分割 — 複雑度が低く行数だけの問題のため
+- `ContextMenu.tsx` / `NodeDetailPanel.tsx` の分割 — 分割しても複雑さが減らないため
+- `AIChatPanel` の @メンション抽出 — 使用箇所が1つで YAGNI
+- `SlideOverPanel` 外枠の共通化 — 現在3例のみ。4例目が出たら着手
+- `SecretAdapter` の legacy 3メソッド削除 — Web版旧形式キー移行を統一的に扱う設計上の理由があるため
+- `MapListPanel` と `FileOpenDashboard` の Drive 一覧ロジック並存 — 実害が小さく、ダッシュボード共通化（Phase 58）の結果を見てから判断
+
+---
+
 ## 2. Google Cloud Project 設定（開発者向け）
 
 > **変更点**: クライアントIDをユーザーが設定パネルに入力する方式から、アプリ共通の環境変数で管理する方式に変更しました。ユーザーは自分の Google アカウントでサインインするだけで Drive 連携が使えます。
