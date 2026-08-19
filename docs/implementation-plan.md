@@ -69,7 +69,7 @@
 | 54 | ドキュメント再構成（約1日） | ✅ 完了（2026-08-19） | アーカイブ |
 | 55 | 死んだコード削除と小粒な重複解消（約1日） | 🔨 実装済み（確認中） | 本ファイル |
 | 56 | UI の AI 実行フロー共通化（約2日） | 🔨 実装済み（確認中） | 本ファイル |
-| 57 | core の LLM 重複統合とストア分割（約2日） | 未着手 | 本ファイル |
+| 57 | core の LLM 重複統合とストア分割（約2日） | 🔨 実装済み（確認中） | 本ファイル |
 | 58 | Web/Desktop ダッシュボード共通化とパネル分割（約1.5日） | 未着手 | 本ファイル |
 
 ### Phase 25: スマホ表示・レイアウトの最適化（約2日）🔨 実装済み（確認中）
@@ -1374,18 +1374,18 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 57: core の LLM 重複統合とストア分割（約2日）
+### Phase 57: core の LLM 重複統合とストア分割（約2日）🔨 実装済み（確認中）
 
 **目標**: LLM プロバイダ間の制御フロー重複を統合し、肥大化したスライスを既存パターンで分割する。
 
 #### タスク
-- [ ] `packages/core/src/llm/httpProviderUtils.ts` を新設する: ①パラメータ剥がし付き POST リトライ（`openaiProvider` L140-171 / `ollamaProvider` L117-148 で同一）②行バッファリング付きストリーム読み取り ③Tauri plugin-http 二重解放回避のタイムアウト付き GET（3箇所で同一コメントごと重複）を集約する
-- [ ] JSON ブロック抽出（`claudeProvider` L132-153 / `openaiProvider` L189-217 で同一）を `jsonUtils.ts` の `extractJsonBlock()` に統合する
-- [ ] `nodeSlice.ts`（635行）からクリップボード（copyNodes/paste）を `clipboardSlice.ts`、整列・分配を `alignmentSlice.ts` に切り出す（`mapStore.ts` の既存スライス合成パターンに乗せる）
-- [ ] `aiService.ts`（928行）を機能別ファイル（suggestions / mapAnalysis / gardener / debate / textExtraction / chat / artifact ＋ shared）に分割し、index から re-export して呼び出し側の import パスを不変に保つ
-- [ ] 既存テスト（`openaiProvider.test.ts` / `ollamaProvider.test.ts` / `aiService.test.ts` 等 226件）が全て通ることを確認する
+- [x] `packages/core/src/llm/httpProviderUtils.ts` を新設する: ①パラメータ剥がし付き POST リトライ（`openaiProvider` L140-171 / `ollamaProvider` L117-148 で同一）②行バッファリング付きストリーム読み取り ③Tauri plugin-http 二重解放回避のタイムアウト付き GET（3箇所で同一コメントごと重複）を集約する
+- [x] JSON ブロック抽出（`claudeProvider` L132-153 / `openaiProvider` L189-217 で同一）を `jsonUtils.ts` の `extractJsonBlock()` に統合する
+- [x] `nodeSlice.ts`（635行）からクリップボード（copyNodes/paste）を `clipboardSlice.ts`、整列・分配を `alignmentSlice.ts` に切り出す（`mapStore.ts` の既存スライス合成パターンに乗せる）
+- [x] `aiService.ts`（928行）を機能別ファイル（suggestions / mapAnalysis / gardener / debate / textExtraction / chat / artifact ＋ shared）に分割し、index から re-export して呼び出し側の import パスを不変に保つ
+- [x] 既存テスト（`openaiProvider.test.ts` / `ollamaProvider.test.ts` / `aiService.test.ts` 等 226件）が全て通ることを確認する
 
-**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。→ 2026-08-19 実装完了。build 通過・テスト231件パス（書き換え不要のまま全通過）。lint は既存16件のまま。aiService.ts は名前付き re-export のバレルにして公開 API を不変に維持。nodeSlice は 635→476行、MapState は7スライス合成に。
 
 ---
 
