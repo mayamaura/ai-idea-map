@@ -7,7 +7,6 @@ import {
   extractMapFromText,
   buildMapFragmentFromExtracted,
   toFriendlyAIError,
-  isAbortError,
   CURRENT_MAP_FILE_VERSION,
   type IdeaNodeData,
   type MapFile,
@@ -23,6 +22,7 @@ import {
 } from '../../services/exportService'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
+import { useCancellableAIRequest } from '../../hooks/useCancellableAIRequest'
 
 type Tab = 'export' | 'import' | 'share'
 type BrainDumpTarget = 'new' | 'append'
@@ -72,7 +72,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
   const [brainDumpText, setBrainDumpText] = useState('')
   const [brainDumpTarget, setBrainDumpTarget] = useState<BrainDumpTarget>('append')
   const [isBrainDumpLoading, setIsBrainDumpLoading] = useState(false)
-  const brainDumpAbortRef = useRef<AbortController | null>(null)
+  const { run: runBrainDump, cancel: cancelBrainDump } = useCancellableAIRequest(setIsBrainDumpLoading)
 
   const getMapFile = useCallback((): MapFile => ({
     version: CURRENT_MAP_FILE_VERSION,
@@ -165,52 +165,47 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
       addToast(providerId === 'ollama' ? '使用するOllamaモデルが選択されていません' : 'APIキーが設定されていません', 'error')
       return
     }
-    setIsBrainDumpLoading(true)
-    const ctrl = new AbortController()
-    brainDumpAbortRef.current = ctrl
     try {
-      const currentNodes = getSerializedNodes()
-      const existingNodes = brainDumpTarget === 'append'
-        ? currentNodes.map((n) => ({ id: n.id, title: n.title }))
-        : undefined
+      await runBrainDump(async (signal) => {
+        const currentNodes = getSerializedNodes()
+        const existingNodes = brainDumpTarget === 'append'
+          ? currentNodes.map((n) => ({ id: n.id, title: n.title }))
+          : undefined
 
-      const extracted = await extractMapFromText(
-        { provider, text: brainDumpText, categories, existingNodes },
-        ctrl.signal
-      )
-      const fragment = await buildMapFragmentFromExtracted(
-        extracted,
-        brainDumpTarget === 'append' ? { nodes: currentNodes } : undefined
-      )
-      if (fragment.nodes.length === 0) {
-        addToast('構造を抽出できませんでした', 'error')
-        return
-      }
+        const extracted = await extractMapFromText(
+          { provider, text: brainDumpText, categories, existingNodes },
+          signal
+        )
+        const fragment = await buildMapFragmentFromExtracted(
+          extracted,
+          brainDumpTarget === 'append' ? { nodes: currentNodes } : undefined
+        )
+        if (fragment.nodes.length === 0) {
+          addToast('構造を抽出できませんでした', 'error')
+          return
+        }
 
-      if (brainDumpTarget === 'append') {
-        const currentEdges = getSerializedEdges()
-        loadFromSerialized([...currentNodes, ...fragment.nodes], [...currentEdges, ...fragment.edges])
-      } else {
-        // 新規作成フロー（useFileDashboard.startNewMap）と同じ手順で保存先の紐付けをリセットする。
-        // ここを省くと「新規マップのつもりが前回開いていたファイルに上書き保存される」事故になる
-        reset()
-        loadFromSerialized(fragment.nodes, fragment.edges)
-        const firstLine = brainDumpText.trim().split('\n')[0]?.trim()
-        setMapTitle(firstLine ? firstLine.slice(0, 30) : '新しいマップ')
-        setCurrentFileId(null)
-        setCurrentMapId(null)
-        setPresentationNodeIds([])
-        setSaveStatus('unsaved')
-      }
+        if (brainDumpTarget === 'append') {
+          const currentEdges = getSerializedEdges()
+          loadFromSerialized([...currentNodes, ...fragment.nodes], [...currentEdges, ...fragment.edges])
+        } else {
+          // 新規作成フロー（useFileDashboard.startNewMap）と同じ手順で保存先の紐付けをリセットする。
+          // ここを省くと「新規マップのつもりが前回開いていたファイルに上書き保存される」事故になる
+          reset()
+          loadFromSerialized(fragment.nodes, fragment.edges)
+          const firstLine = brainDumpText.trim().split('\n')[0]?.trim()
+          setMapTitle(firstLine ? firstLine.slice(0, 30) : '新しいマップ')
+          setCurrentFileId(null)
+          setCurrentMapId(null)
+          setPresentationNodeIds([])
+          setSaveStatus('unsaved')
+        }
 
-      setBrainDumpText('')
-      addToast(`${fragment.nodes.length}個のノードを追加しました`, 'success')
+        setBrainDumpText('')
+        addToast(`${fragment.nodes.length}個のノードを追加しました`, 'success')
+      })
     } catch (e) {
-      if (isAbortError(e)) return
       addToast(toFriendlyAIError(e), 'error')
-    } finally {
-      setIsBrainDumpLoading(false)
-      brainDumpAbortRef.current = null
     }
   }
 
@@ -568,7 +563,7 @@ export function ExportImportPanel({ onGenerateShareUrl }: ExportImportPanelProps
                           <span className="animate-spin w-4 h-4 border-2 border-primary-200 border-t-primary-600 rounded-full flex-shrink-0" />
                           <span className="text-xs text-gray-500 dark:text-gray-400">AIが構造を抽出しています...</span>
                           <button
-                            onClick={() => brainDumpAbortRef.current?.abort()}
+                            onClick={cancelBrainDump}
                             className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline"
                           >
                             キャンセル

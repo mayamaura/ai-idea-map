@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuidv4 } from 'uuid'
 import { useReactFlow } from '@xyflow/react'
@@ -10,12 +10,14 @@ import {
   DEFAULT_NODE_COLOR,
   debateNode,
   toFriendlyAIError,
-  isAbortError,
   type IdeaNode,
   type MapContext,
 } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { AILoadingIndicator } from '../common/AILoadingIndicator'
+import { PanelHeader } from '../common/PanelHeader'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
+import { useCancellableAIRequest } from '../../hooks/useCancellableAIRequest'
 
 const PRESET_PERSONAS = ['楽観家', '批評家', '顧客', '投資家']
 
@@ -62,7 +64,7 @@ export function PersonaDebatePanel() {
   const [customInput, setCustomInput] = useState('')
   const [selectedOpinions, setSelectedOpinions] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const { run, cancel } = useCancellableAIRequest(setPersonaDebateLoading)
 
   const activePersonas = useMemo(
     () => [...selectedPresets, ...customPersonas],
@@ -98,10 +100,6 @@ export function PersonaDebatePanel() {
     })
   }
 
-  const handleCancel = () => {
-    abortRef.current?.abort()
-  }
-
   const handleDebate = useCallback(async () => {
     if (!selectedNode || !isReady) {
       setError(
@@ -118,37 +116,32 @@ export function PersonaDebatePanel() {
       return
     }
     setError(null)
-    setPersonaDebateLoading(true)
     setPersonaDebateResult([])
     setPersonaDebateTargetId(selectedNode.id)
     setSelectedOpinions(new Set())
 
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-
     try {
-      const { nodes, edges } = useMapStore.getState()
-      const mapContext: MapContext = {
-        mapTitle,
-        nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
-        edges: edges.map((e) => ({ source: e.source, target: e.target, label: typeof e.label === 'string' ? e.label : undefined })),
-        categories: [],
-      }
-      const result = await debateNode(
-        { provider, mapContext, nodeId: selectedNode.id, personas: activePersonas },
-        ctrl.signal,
-      )
-      setPersonaDebateResult(result)
-      const allKeys = new Set<string>()
-      result.forEach((p, pi) => p.opinions.forEach((_, oi) => allKeys.add(opinionKey(pi, oi))))
-      setSelectedOpinions(allKeys)
+      await run(async (signal) => {
+        const { nodes, edges } = useMapStore.getState()
+        const mapContext: MapContext = {
+          mapTitle,
+          nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
+          edges: edges.map((e) => ({ source: e.source, target: e.target, label: typeof e.label === 'string' ? e.label : undefined })),
+          categories: [],
+        }
+        const result = await debateNode(
+          { provider, mapContext, nodeId: selectedNode.id, personas: activePersonas },
+          signal,
+        )
+        setPersonaDebateResult(result)
+        const allKeys = new Set<string>()
+        result.forEach((p, pi) => p.opinions.forEach((_, oi) => allKeys.add(opinionKey(pi, oi))))
+        setSelectedOpinions(allKeys)
+      })
     } catch (e) {
-      if (!isAbortError(e)) setError(toFriendlyAIError(e))
-    } finally {
-      setPersonaDebateLoading(false)
-      abortRef.current = null
+      setError(toFriendlyAIError(e))
     }
-  }, [selectedNode, isReady, providerId, activePersonas, provider, mapTitle, setPersonaDebateLoading, setPersonaDebateResult, setPersonaDebateTargetId])
+  }, [selectedNode, isReady, providerId, activePersonas, provider, mapTitle, run, setPersonaDebateResult, setPersonaDebateTargetId])
 
   const handleAddSelected = useCallback(() => {
     // エッジの接続元は議論を実行したノード。追加時点の選択状態には依存しない
@@ -192,28 +185,13 @@ export function PersonaDebatePanel() {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🎭</span>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">ペルソナ壁打ち会議</h2>
-              {selectedNode && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-48">
-                  "{selectedNode.data.title}"
-                </p>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={() => setPersonaDebatePanelOpen(false)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <PanelHeader
+          icon="🎭"
+          title="ペルソナ壁打ち会議"
+          subtitle={selectedNode ? `"${selectedNode.data.title}"` : undefined}
+          onClose={() => setPersonaDebatePanelOpen(false)}
+          closeAriaLabel="閉じる"
+        />
 
         {!isReady ? (
           <ApiKeyRequired
@@ -304,18 +282,7 @@ export function PersonaDebatePanel() {
 
               {/* ローディング */}
               {isPersonaDebateLoading && (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-                    <button
-                      onClick={handleCancel}
-                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">意見を集めています...</p>
-                </div>
+                <AILoadingIndicator message="意見を集めています..." onCancel={cancel} layout="inline" />
               )}
 
               {/* 意見リスト */}

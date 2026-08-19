@@ -6,6 +6,7 @@ import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import { WebSearchToggle, WebSearchSources } from '../common/WebSearchToggle'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
 import { useWebSearch } from '../../hooks/useWebSearch'
+import { useCancellableAIRequest } from '../../hooks/useCancellableAIRequest'
 import type { Node } from '@xyflow/react'
 
 // メンション候補を購読しないときに返す固定参照（毎回新配列を返すと再レンダリングを誘発するため）
@@ -89,7 +90,7 @@ export function AIChatPanel() {
   const [selectedMentionIdx, setSelectedMentionIdx] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const { run, cancel } = useCancellableAIRequest(setChatLoading)
 
   const selectedNode = useMapStore((s) => s.nodes.find((n) => n.id === selectedNodeId))
 
@@ -174,7 +175,7 @@ export function AIChatPanel() {
   }
 
   const handleStop = () => {
-    abortRef.current?.abort()
+    cancel()
     setChatLoading(false)
     // 送信されなかったメンションを持ち越さない
     setMentionedNodeIds([])
@@ -215,50 +216,41 @@ export function AIChatPanel() {
       content: '',
       timestamp: new Date().toISOString(),
     })
-    setChatLoading(true)
-
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
 
     try {
-      const { content: aiContent, actions } = await chatWithMap(
-        {
-          provider,
-          webSearch: webSearch.client,
-          onWebSearchResults: setSearchSources,
-          messages: [...chatMessages, userMsg],
-          mapContext: buildMapContext(),
-          mentionedNodeIds: currentMentionedIds,
-        },
-        (partial) => {
-          updateLastChatMessage(partial)
-        },
-        ctrl.signal,
-      )
+      await run(async (signal) => {
+        const { content: aiContent, actions } = await chatWithMap(
+          {
+            provider,
+            webSearch: webSearch.client,
+            onWebSearchResults: setSearchSources,
+            messages: [...chatMessages, userMsg],
+            mapContext: buildMapContext(),
+            mentionedNodeIds: currentMentionedIds,
+          },
+          (partial) => {
+            updateLastChatMessage(partial)
+          },
+          signal,
+        )
 
-      // 最終 content と actions を末尾 assistant メッセージへ反映する
-      // actions はストリーミングコールバックでは渡せないため完了後にまとめてセット
-      useUIStore.setState((state) => {
-        const msgs = state.chatMessages
-        if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'assistant') return {}
-        const updated = [...msgs]
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          content: aiContent,
-          actions,
-        }
-        return { chatMessages: updated }
+        // 最終 content と actions を末尾 assistant メッセージへ反映する
+        // actions はストリーミングコールバックでは渡せないため完了後にまとめてセット
+        useUIStore.setState((state) => {
+          const msgs = state.chatMessages
+          if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'assistant') return {}
+          const updated = [...msgs]
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            content: aiContent,
+            actions,
+          }
+          return { chatMessages: updated }
+        })
       })
     } catch (e) {
-      // abort は正常操作なのでトーストを出さない
-      if (ctrl.signal.aborted) {
-        // nothing – message already has partial content
-      } else {
-        addToast(toFriendlyAIError(e), 'error')
-      }
-    } finally {
-      setChatLoading(false)
-      abortRef.current = null
+      // abort は正常操作なのでトーストを出さない（run が握り潰す。ここに来るのは実エラーのみ）
+      addToast(toFriendlyAIError(e), 'error')
     }
   }
 

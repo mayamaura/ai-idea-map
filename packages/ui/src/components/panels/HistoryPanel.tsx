@@ -8,6 +8,7 @@ import {
   recordSnapshot,
   type MapSnapshotEntry,
 } from '@ideamap/core'
+import { PanelHeader } from '../common/PanelHeader'
 import { startTimelapse } from '../../services/timelapsePlayer'
 
 const TIMELAPSE_CONFIRM_MESSAGE =
@@ -102,21 +103,12 @@ export function HistoryPanel() {
     <div className="fixed inset-0 z-40 flex">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setHistoryPanelOpen(false)} />
       <div className="relative ml-auto w-full sm:max-w-md h-full bg-white dark:bg-gray-800 shadow-2xl flex flex-col overflow-hidden">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🕘</span>
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">バージョン履歴</h2>
-          </div>
-          <button
-            onClick={() => setHistoryPanelOpen(false)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <PanelHeader
+          icon="🕘"
+          title="バージョン履歴"
+          onClose={() => setHistoryPanelOpen(false)}
+          closeAriaLabel="閉じる"
+        />
 
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {!currentMapId ? (

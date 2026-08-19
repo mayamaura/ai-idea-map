@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { getPlatform } from '@ideamap/platform'
 import {
@@ -7,13 +7,14 @@ import {
   useSettingsStore,
   generateArtifactFromMap,
   toFriendlyAIError,
-  isAbortError,
   type ArtifactFormat,
   type MapContext,
 } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
+import { PanelHeader } from '../common/PanelHeader'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
 import { useSubtreeNodeIds } from '../../hooks/useSubtreeNodeIds'
+import { useCancellableAIRequest } from '../../hooks/useCancellableAIRequest'
 
 const FORMAT_OPTIONS: { id: ArtifactFormat; label: string; icon: string }[] = [
   { id: 'document', label: 'ドキュメント', icon: '📄' },
@@ -40,45 +41,38 @@ export function ArtifactPanel() {
   const [useWholeMap, setUseWholeMap] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [generatedText, setGeneratedText] = useState('')
-  const abortRef = useRef<AbortController | null>(null)
+  const { run, cancel } = useCancellableAIRequest(setIsLoading)
 
   const notReadyMessage =
     providerId === 'ollama' ? '使用するOllamaモデルが選択されていません' : 'APIキーが設定されていません'
-
-  const handleCancel = () => abortRef.current?.abort()
 
   const handleGenerate = useCallback(async () => {
     if (!isReady) {
       addToast(notReadyMessage, 'error')
       return
     }
-    setIsLoading(true)
     setGeneratedText('')
-    const { nodes, edges } = useMapStore.getState()
-    const mapContext: MapContext = {
-      mapTitle,
-      nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
-      edges: edges.map((e) => ({ source: e.source, target: e.target, label: typeof e.label === 'string' ? e.label : undefined })),
-      categories: categories.map((c) => ({ id: c.id, name: c.name })),
-    }
-    const focusNodeIds = subtreeIds && !useWholeMap ? [...subtreeIds] : undefined
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
     try {
-      const result = await generateArtifactFromMap(
-        { provider, mapContext, format, focusNodeIds },
-        (partial) => setGeneratedText(partial),
-        ctrl.signal,
-      )
-      setGeneratedText(result)
+      await run(async (signal) => {
+        const { nodes, edges } = useMapStore.getState()
+        const mapContext: MapContext = {
+          mapTitle,
+          nodes: nodes.map((n) => ({ id: n.id, title: n.data.title, body: n.data.body, categoryId: n.data.categoryId })),
+          edges: edges.map((e) => ({ source: e.source, target: e.target, label: typeof e.label === 'string' ? e.label : undefined })),
+          categories: categories.map((c) => ({ id: c.id, name: c.name })),
+        }
+        const focusNodeIds = subtreeIds && !useWholeMap ? [...subtreeIds] : undefined
+        const result = await generateArtifactFromMap(
+          { provider, mapContext, format, focusNodeIds },
+          (partial) => setGeneratedText(partial),
+          signal,
+        )
+        setGeneratedText(result)
+      })
     } catch (e) {
-      if (isAbortError(e)) return
       addToast(toFriendlyAIError(e), 'error')
-    } finally {
-      setIsLoading(false)
-      abortRef.current = null
     }
-  }, [isReady, notReadyMessage, provider, mapTitle, categories, format, subtreeIds, useWholeMap, addToast])
+  }, [isReady, notReadyMessage, provider, mapTitle, categories, format, subtreeIds, useWholeMap, run, addToast])
 
   const handleCopy = useCallback(async () => {
     await getPlatform().system.copyToClipboard(generatedText)
@@ -97,21 +91,12 @@ export function ArtifactPanel() {
     <div className="fixed inset-0 z-40 flex">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setArtifactPanelOpen(false)} />
       <div className="relative ml-auto w-full sm:max-w-md h-full bg-white dark:bg-gray-800 shadow-2xl flex flex-col overflow-hidden">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">📝</span>
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">AI成果物生成</h2>
-          </div>
-          <button
-            onClick={() => setArtifactPanelOpen(false)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <PanelHeader
+          icon="📝"
+          title="AI成果物生成"
+          onClose={() => setArtifactPanelOpen(false)}
+          closeAriaLabel="閉じる"
+        />
 
         {!isReady ? (
           <ApiKeyRequired
@@ -175,7 +160,7 @@ export function ArtifactPanel() {
             {isLoading && (
               <div className="flex justify-center">
                 <button
-                  onClick={handleCancel}
+                  onClick={cancel}
                   className="px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
                   キャンセル

@@ -1,11 +1,14 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useReactFlow } from '@xyflow/react'
-import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, isAbortError, type AISuggestion, type WebSearchResult } from '@ideamap/core'
+import { useUIStore, useMapStore, calcSuggestionPositions, useSettingsStore, generateSuggestions, toFriendlyAIError, type AISuggestion, type WebSearchResult } from '@ideamap/core'
 import { ApiKeyRequired } from '../common/ApiKeyRequired'
 import { WebSearchToggle, WebSearchSources } from '../common/WebSearchToggle'
+import { AILoadingIndicator } from '../common/AILoadingIndicator'
+import { PanelHeader } from '../common/PanelHeader'
 import { useActiveProvider } from '../../hooks/useActiveProvider'
 import { useWebSearch } from '../../hooks/useWebSearch'
+import { useCancellableAIRequest } from '../../hooks/useCancellableAIRequest'
 
 export function AISuggestionPanel() {
   const {
@@ -56,7 +59,7 @@ export function AISuggestionPanel() {
   const [addMode, setAddMode] = useState<'child' | 'sibling'>('child')
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null)
   const [searchSources, setSearchSources] = useState<WebSearchResult[]>([])
-  const abortRef = useRef<AbortController | null>(null)
+  const { run, cancel } = useCancellableAIRequest(setAILoading)
 
   // 選択ノードの親ノード ID 一覧（兄弟モードの有効判定と追加処理に使用）
   const parentNodeIds = edges
@@ -130,10 +133,6 @@ export function AISuggestionPanel() {
     addMode,
   ])
 
-  const handleCancel = () => {
-    abortRef.current?.abort()
-  }
-
   const handleFetch = useCallback(async () => {
     if (!selectedNode || !isReady) {
       setError(
@@ -146,39 +145,29 @@ export function AISuggestionPanel() {
       return
     }
     setError(null)
-    setAILoading(true)
     setAISuggestions([])
     setSelected(new Set())
     setSearchSources([])
 
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-
     try {
-      const req = buildBaseRequest()
-      if (!req) return
-      const suggestions = await generateSuggestions(req, ctrl.signal)
-      const existingTitles = new Set(
-        useMapStore.getState().nodes.map((n) => n.data.title.trim().toLowerCase()),
-      )
-      const newSuggestions = suggestions.filter(
-        (s) => !existingTitles.has(s.title.trim().toLowerCase()),
-      )
-      setAISuggestions(newSuggestions)
-      setSelected(new Set(newSuggestions.map((_, i) => i)))
-      setUserInstruction('')
+      await run(async (signal) => {
+        const req = buildBaseRequest()
+        if (!req) return
+        const suggestions = await generateSuggestions(req, signal)
+        const existingTitles = new Set(
+          useMapStore.getState().nodes.map((n) => n.data.title.trim().toLowerCase()),
+        )
+        const newSuggestions = suggestions.filter(
+          (s) => !existingTitles.has(s.title.trim().toLowerCase()),
+        )
+        setAISuggestions(newSuggestions)
+        setSelected(new Set(newSuggestions.map((_, i) => i)))
+        setUserInstruction('')
+      })
     } catch (e) {
-      // キャンセル時はエラー表示しない
-      if (isAbortError(e)) {
-        // nothing
-      } else {
-        setError(toFriendlyAIError(e))
-      }
-    } finally {
-      setAILoading(false)
-      abortRef.current = null
+      setError(toFriendlyAIError(e))
     }
-  }, [selectedNode, isReady, providerId, buildBaseRequest, setAILoading, setAISuggestions])
+  }, [selectedNode, isReady, providerId, buildBaseRequest, run, setAISuggestions])
 
   /** 指定インデックスの提案だけを再生成する */
   const handleRegenerate = useCallback(
@@ -295,28 +284,13 @@ export function AISuggestionPanel() {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🤖</span>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">AIアイデア拡張</h2>
-              {selectedNode && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-48">
-                  "{selectedNode.data.title}"
-                </p>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={() => setAIPanelOpen(false)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <PanelHeader
+          icon="🤖"
+          title="AIアイデア拡張"
+          subtitle={selectedNode ? `"${selectedNode.data.title}"` : undefined}
+          onClose={() => setAIPanelOpen(false)}
+          closeAriaLabel="閉じる"
+        />
 
         {!isReady ? (
           <ApiKeyRequired
@@ -418,18 +392,7 @@ export function AISuggestionPanel() {
 
               {/* ローディング */}
               {isAILoading && (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-                    <button
-                      onClick={handleCancel}
-                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">アイデアを生成中...</p>
-                </div>
+                <AILoadingIndicator message="アイデアを生成中..." onCancel={cancel} layout="inline" />
               )}
 
               {/* 提案リスト */}
