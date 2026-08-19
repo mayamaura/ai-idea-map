@@ -1,9 +1,6 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import type { HttpAdapter } from '@ideamap/platform'
 
-/** 疎通確認が固まらないよう接続待ちを打ち切る時間（ミリ秒） */
-const REACHABILITY_TIMEOUT_MS = 2000
-
 /**
  * plugin-http は webview の URL から Origin ヘッダを勝手に付ける。
  * 開発時は devUrl の `http://localhost:5174` なので Ollama の既定 CORS 許可に引っかからないが、
@@ -27,15 +24,6 @@ function withoutOrigin<T extends RequestInit>(init?: T): T {
  */
 export const desktopHttpAdapter: HttpAdapter = {
   canAccessLocalServers: true,
-
-  async canReach(url) {
-    try {
-      await tauriFetch(url, withoutOrigin({ method: 'GET', connectTimeout: REACHABILITY_TIMEOUT_MS }))
-      return true
-    } catch {
-      return false
-    }
-  },
 
   request(input, init) {
     return tauriFetch(input, withoutOrigin(init))

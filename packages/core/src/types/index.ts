@@ -29,10 +29,6 @@ export interface IdeaNodeData extends Record<string, unknown> {
   linkedMapOrigin?: 'cloud' | 'local'
 }
 
-export interface IdeaEdgeData {
-  label?: string
-}
-
 export interface MapFile {
   version: string
   /** マップの論理的同一性を表す UUID（作成時に1度だけ付与、ファイル名変更後も不変） */

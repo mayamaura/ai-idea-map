@@ -8,16 +8,6 @@ import type { HttpAdapter } from '@ideamap/platform'
 export const webHttpAdapter: HttpAdapter = {
   canAccessLocalServers: false,
 
-  async canReach(url) {
-    try {
-      // no-cors では成否を判定できないため通常リクエストを投げ、
-      // レスポンスが返ってきた時点（ステータス問わず）で到達可能とみなす
-      await fetch(url, { method: 'GET' })
-      return true
-    } catch {
-      return false
-    }
-  },
   request(input, init) {
     return fetch(input, init)
   },

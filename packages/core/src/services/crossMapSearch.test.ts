@@ -77,7 +77,6 @@ function createMockPlatform(contents: Record<string, unknown>, failing: Set<stri
     },
     http: {
       canAccessLocalServers: false,
-      canReach: async () => true,
       request: notImplemented,
       getFetch: notImplemented,
     },

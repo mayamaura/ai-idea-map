@@ -98,8 +98,6 @@ export interface HttpAdapter {
    * Desktop = true。ローカルLLMの設定UIを出すかどうかの判定に使う。
    */
   readonly canAccessLocalServers: boolean
-  /** 任意のURLに到達可能か（Ollama 等のローカルサーバー起動確認に使用） */
-  canReach(url: string): Promise<boolean>
   /**
    * Web = ブラウザの fetch（CORS 制約を受ける）
    * Desktop = Tauri の http プラグイン経由（Rust 側から発行するため CORS の制約を受けない）

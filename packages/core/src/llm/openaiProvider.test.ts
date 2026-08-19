@@ -15,7 +15,6 @@ beforeEach(() => {
   setPlatform({
     http: {
       canAccessLocalServers: false,
-      canReach: async () => true,
       request: async (input: string, init?: RequestInit) => handler(String(input), init ?? {}),
       // OpenAIProvider は request() のみ使い getFetch() は呼ばない
       getFetch: () => {

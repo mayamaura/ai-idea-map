@@ -39,7 +39,6 @@ function createHttp(responses: Response[]): { http: HttpAdapter; calls: Recorded
   const queue = [...responses]
   const http: HttpAdapter = {
     canAccessLocalServers: false,
-    canReach: async () => true,
     request: async (input, init) => {
       calls.push({ url: input, init })
       const res = queue.shift()

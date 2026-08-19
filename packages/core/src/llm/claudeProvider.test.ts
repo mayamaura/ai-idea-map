@@ -21,7 +21,6 @@ beforeEach(() => {
   setPlatform({
     http: {
       canAccessLocalServers: false,
-      canReach: async () => true,
       request: async () => new Response('', { status: 500 }),
       getFetch: () => fetchImpl as typeof fetch,
     },

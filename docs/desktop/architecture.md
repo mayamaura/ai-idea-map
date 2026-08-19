@@ -302,8 +302,6 @@ export interface SecretAdapter {
 // docs/desktop/llm-abstraction.md で扱う。ここでは「誰が実際にfetchするか」の境界のみ定義する。
 
 export interface HttpAdapter {
-  /** 任意のURLに到達可能か（Ollama等のローカルサーバー起動確認に使用） */
-  canReach(url: string): Promise<boolean>
   /**
    * Web = ブラウザの fetch（CORS制約を受ける）
    * Desktop = Tauriの http プラグイン経由（Rust側から発行するためCORSの制約を受けない）
@@ -393,7 +391,7 @@ export function getPlatform(): Platform {
 
 | メソッド | Web実装 | Desktop実装 |
 |---|---|---|
-| `canReach`/`request` | `fetch()` をそのまま使用。Ollamaへのアクセスは相手側のCORS設定（`OLLAMA_ORIGINS`）に依存し、ブラウザから直接叩けない場合がある | `@tauri-apps/plugin-http` の `fetch()` 相当を使用。Rustプロセス側からリクエストするためブラウザCORSの制約を受けず、Ollamaのデフォルト設定のままアクセス可能。詳細は `llm-abstraction.md` |
+| `request` | `fetch()` をそのまま使用。Ollamaへのアクセスは相手側のCORS設定（`OLLAMA_ORIGINS`）に依存し、ブラウザから直接叩けない場合がある | `@tauri-apps/plugin-http` の `fetch()` 相当を使用。Rustプロセス側からリクエストするためブラウザCORSの制約を受けず、Ollamaのデフォルト設定のままアクセス可能。詳細は `llm-abstraction.md` |
 
 #### SystemAdapter
 

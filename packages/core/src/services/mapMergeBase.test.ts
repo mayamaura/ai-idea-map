@@ -45,7 +45,6 @@ function createMockPlatform(): Platform {
     },
     http: {
       canAccessLocalServers: false,
-      canReach: async () => true,
       request: notImplemented,
       getFetch: notImplemented,
     },

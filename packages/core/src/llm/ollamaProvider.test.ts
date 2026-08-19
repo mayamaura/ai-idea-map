@@ -15,7 +15,6 @@ beforeEach(() => {
   setPlatform({
     http: {
       canAccessLocalServers: true,
-      canReach: async () => true,
       request: async (input: string, init?: RequestInit) => handler(String(input), init ?? {}),
       // OllamaProvider は request() のみ使い getFetch() は呼ばない
       getFetch: () => {
