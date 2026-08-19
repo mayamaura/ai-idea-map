@@ -93,7 +93,7 @@ export function findFreePosition(
 }
 
 const RADIUS = 220
-const NODE_WIDTH = 192
+const NODE_WIDTH = 288 // IdeaNode の max-w-72 と揃える
 const NODE_HEIGHT = 64
 const LAYOUT_NODE_SIZE: Size = { width: NODE_WIDTH, height: NODE_HEIGHT }
 

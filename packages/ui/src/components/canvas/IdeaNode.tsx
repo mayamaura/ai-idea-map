@@ -8,16 +8,13 @@ import { useLinkedMapTitle } from '../../hooks/useLinkedMapTitle'
 import { openLinkedMap } from '../../hooks/useFileDashboard'
 import { renderMarkdownSimple } from '../../utils/markdown'
 
+/** ノード幅は内容に追従するので上限だけ決める。日本語は1文字≒1emで折り返しが早いため広めに取る */
+const NODE_WIDTH_CLASS = 'min-w-24 max-w-72'
+
 function shapeClass(shape: string): string {
   if (shape === 'ellipse') return 'rounded-full'
   if (shape === 'hexagon') return 'node-shape-hexagon'
   return 'rounded-xl'
-}
-
-function widthClass(text: string): string {
-  if (text.length < 20) return 'min-w-20 max-w-32'
-  if (text.length > 60) return 'min-w-32 max-w-64'
-  return 'min-w-24 max-w-48'
 }
 
 /** 不正なURLはリンクチップを表示しないため、失敗時は null を返す */
@@ -166,7 +163,6 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
   const isAI = nodeData.createdBy === 'ai'
   const hasBody = Boolean(nodeData.body)
   const shape = shapeClass(nodeShape)
-  const width = widthClass(nodeData.title)
   const category = nodeCategoryId ? getCategoryById(nodeCategoryId) : undefined
   const showCategoryLabel = selected && category && category.id !== 'cat-none'
   const isInPresentation = presentationIndex !== -1
@@ -267,7 +263,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
       {/* 形状コンテナ */}
       <div
         className={`
-          ${width} ${shape} border-2 shadow-sm
+          ${NODE_WIDTH_CLASS} ${shape} border-2 shadow-sm
           transition-all duration-150 cursor-default
           ${isAI ? 'node-ai-generated' : ''}
           ${selected
@@ -293,7 +289,7 @@ function IdeaNodeComponent({ id, data, selected }: NodeProps<Node<IdeaNodeData>>
             />
           ) : (
             <>
-              <p className="text-sm text-gray-800 leading-snug break-words select-none">
+              <p className="text-sm text-gray-800 leading-snug break-words text-balance [word-break:auto-phrase] select-none">
                 {nodeData.title}
               </p>
               {/* 本文プレビュー（Markdown整形・先頭2行相当） */}

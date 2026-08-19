@@ -77,15 +77,15 @@ describe('buildMapFragmentFromExtracted', () => {
     const existingNode: SerializedNode = { id: 'existing-1', title: '既存', x: 0, y: 0, color: '#fff', createdBy: 'user' }
     const extracted: ExtractedNode[] = [extractedNode({ tempId: 'n1', title: '新規' })]
     const fragment = await buildMapFragmentFromExtracted(extracted, { nodes: [existingNode] })
-    // 既存ノードの右端(0 + 幅192) + 200px が新規ブロックの左端になる
-    expect(fragment.nodes[0].x).toBe(392)
+    // 既存ノードの右端(0 + 幅288) + 200px が新規ブロックの左端になる
+    expect(fragment.nodes[0].x).toBe(488)
   })
 
   it('新規マップ生成（existing省略）では平行移動しない', async () => {
     const extracted: ExtractedNode[] = [extractedNode({ tempId: 'n1', title: '新規' })]
     const fragment = await buildMapFragmentFromExtracted(extracted)
     // トップレベル1件のときの放射状レイアウトは中心(0,0)基準の左上座標になる
-    expect(fragment.nodes[0].x).toBe(-96)
+    expect(fragment.nodes[0].x).toBe(-144)
     expect(fragment.nodes[0].y).toBe(-32)
   })
 

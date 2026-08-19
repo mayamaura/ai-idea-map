@@ -288,7 +288,7 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 - `loadFromSerialized`, `getSerializedNodes`, `getSerializedEdges` — シリアライズ（旧 `text` フィールドを `title` に自動マイグレーション）。`updatedAt`/`url`/`image`（Phase 49）・`linkedMapId`/`linkedMapOrigin`（Phase 52）はそのまま往復させ、欠落している旧ファイルの値を捏造しない
 
 内部ヘルパー（Phase 29 で `packages/core/src/layout/groupGeometry.ts` に集約）:
-- `computePushOut(pos, measured, groupNodes, fallbackSize?)` — フリーノードをグループ枠外へ最小移動距離で押し出す。mapStore のドラッグ処理と `mapLayout.applyGroupPushOut` の両方から使う（Phase 29 で重複実装を統合。整列時は 192×64、ドラッグ時は 160×60 をフォールバックサイズに使う差分は引数で吸収）
+- `computePushOut(pos, measured, groupNodes, fallbackSize?)` — フリーノードをグループ枠外へ最小移動距離で押し出す。mapStore のドラッグ処理と `mapLayout.applyGroupPushOut` の両方から使う（Phase 29 で重複実装を統合。整列時は 288×64、ドラッグ時は 160×60 をフォールバックサイズに使う差分は引数で吸収）
 - `findOverlappingGroup(pos, measured, groupNodes)` / `isOutsideParent(pos, measured, parentGroup)` / `clampInsideParent(...)` — グループ出入りダイアログの判定と位置補正
 - `getGroupSize(group)` — `style.width/height` が number のときだけ採用し、それ以外は 400×300 を返す
 - `syncGroupMeasured(nodes)` — グループノードの `style.width/height` を `measured` に同期。`setNodes` / `setNodesNoHistory` / `commitNodesWithHistory` で共通使用（Phase 21: `setNodes` から抽出）
@@ -1385,7 +1385,7 @@ export interface WebSearchOptions {
 
 - 親ノードを中心に半径 **220px** の円形配置
 - 角度計算: `(idx / count) × 2π − π/2`（上から時計回り）
-- 衝突検出: 既存ノードとの重なり（幅192px × 高64px判定）をチェック。重なれば外側に60pxずつ最大5回再試行
+- 衝突検出: 既存ノードとの重なり（幅288px × 高64px判定）をチェック。重なれば外側に60pxずつ最大5回再試行
 
 ### 11.2 子ノード接続時の直線配置（`addConnectedNode`）
 
@@ -1398,7 +1398,7 @@ export interface WebSearchOptions {
 
 - `@dagrejs/dagre` を使用
 - `rankdir: 'LR'`（左→右）、`ranksep: 100`、`nodesep: 60`
-- ノードサイズ: 192 × 64px
+- ノードサイズ: 288 × 64px（`IdeaNode` の `max-w-72` に合わせた代表値）
 - Toolbar の「整列」ボタン実行後にアニメーション完了コールバックで `fitView({ padding: 0.15, duration: 400 })` でフィット（Phase 21: 瞬間移動→アニメーション付きに変更）
 - **Phase 28**: dagre を動的 import に変更したため `applyDagreLayout` / `applyRadialLayout` は `Promise<Node[]>` を返す。呼び出し側（`Toolbar.runLayout`）で `await` する
 

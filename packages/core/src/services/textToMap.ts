@@ -11,7 +11,7 @@ export interface MapFragment {
 
 // mapLayout.ts の ideaNode 既定幅と同じ値。既存マップの外接矩形（右端）を求めるためだけに使う
 // （SerializedNode.width は通常グループノードにしか入らないため、アイデアノードはこの既定値で見積もる）
-const DEFAULT_NODE_WIDTH = 192
+const DEFAULT_NODE_WIDTH = 288
 
 /**
  * AIが抽出したノード群（Phase 44 ブレインダンプ→マップ生成）を、

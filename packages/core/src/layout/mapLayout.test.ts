@@ -7,7 +7,7 @@ import { applyRadialLayout, applyDagreLayout } from './mapLayout'
 // ことと「末端が親のすぐそばに来る」ことを機械的に検出しないと、角度・半径の計算を
 // 壊しても見た目でしか気づけない。
 
-const W = 192
+const W = 288
 const H = 64
 
 function node(id: string): Node<IdeaNodeData> {
@@ -49,7 +49,7 @@ function tree(breadth: number, depth: number): { nodes: Node<IdeaNodeData>[]; ed
  * 上位のノードほど大きなサブツリーを抱えるぶん親から離れるのは想定どおりなので、末端だけを見る。
  */
 function longestLeafDistance(laid: Node<IdeaNodeData>[], edges: Edge[]): number {
-  const MAX = 400
+  const MAX = 480 // ノード幅ぶん中心間距離が伸びるため W に追随する目安値
   const pos = new Map(laid.map((n) => [n.id, n.position]))
   const hasChild = new Set(edges.map((e) => e.source))
   let longest = 0
