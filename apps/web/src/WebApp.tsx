@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { App } from '@ideamap/ui'
-import { useUIStore, useMapStore, migrateMapFile } from '@ideamap/core'
+import { useUIStore, useMapStore, migrateMapFile, createDriveReauthHandler } from '@ideamap/core'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { MapListPanel } from './components/panels/MapListPanel'
 import { FileOpenDashboard } from './components/screens/FileOpenDashboard'
@@ -28,30 +28,15 @@ export function WebApp() {
     () => ({
       remoteReady: accessToken !== null,
       credentialKey: accessToken,
-      onSaveError: (err: unknown, attempt: number): 'retry' | 'handled' => {
-        // オフライン中の保存失敗はヘッダーのオフラインバナー（useOnlineStatus）が既に状態を
-        // 示しているため、fetch の TypeError のたびにトーストを重ねて出さない（Phase 51）。
-        // online イベント（useAutoSave 側）で復帰後に自動リトライされる
-        if (!navigator.onLine) return 'retry'
-        const isAuthError = err instanceof Error && err.message.includes('401')
-        if (!isAuthError) {
-          useUIStore.getState().addToast('Googleドライブへの保存に失敗しました', 'error')
-          return 'handled'
-        }
-        if (attempt === 1) {
-          // 初回401: サイレント再認証を試みる。トーストは表示しない
-          silentReauth()
-          return 'retry'
-        }
-        // 再認証後も401: ユーザーに手動再接続を促す
-        useUIStore
-          .getState()
-          .addToast('Googleドライブの認証が切れました', 'error', {
-            label: '再接続',
-            onClick: signIn,
-          })
-        return 'handled'
-      },
+      // Web版は保存先が常に Drive。オフライン中の保存失敗はヘッダーのオフラインバナー
+      // （useOnlineStatus）が既に状態を示しているため、fetch の TypeError のたびに
+      // トーストを重ねて出さない（Phase 51）。online イベント（useAutoSave 側）で復帰後に自動リトライされる
+      onSaveError: createDriveReauthHandler({
+        isCloudSave: () => true,
+        isOnline: () => navigator.onLine,
+        silentReauth,
+        signIn,
+      }),
     }),
     [accessToken, silentReauth, signIn]
   )

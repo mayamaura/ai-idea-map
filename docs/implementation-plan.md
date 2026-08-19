@@ -68,7 +68,7 @@
 | 53 | 非同期共同編集（Drive 共有フォルダ経由） | 🔨 実装済み（確認中） | 本ファイル |
 | 54 | ドキュメント再構成（約1日） | ✅ 完了（2026-08-19） | アーカイブ |
 | 55 | 死んだコード削除と小粒な重複解消（約1日） | 🔨 実装済み（確認中） | 本ファイル |
-| 56 | UI の AI 実行フロー共通化（約2日） | 未着手 | 本ファイル |
+| 56 | UI の AI 実行フロー共通化（約2日） | 🔨 実装済み（確認中） | 本ファイル |
 | 57 | core の LLM 重複統合とストア分割（約2日） | 未着手 | 本ファイル |
 | 58 | Web/Desktop ダッシュボード共通化とパネル分割（約1.5日） | 未着手 | 本ファイル |
 
@@ -1359,18 +1359,18 @@ Phase 38 は共通コード（`packages/core` / `packages/ui`）にも手を入�
 
 ---
 
-### Phase 56: UI の AI 実行フロー共通化（約2日）
+### Phase 56: UI の AI 実行フロー共通化（約2日）🔨 実装済み（確認中）
 
 **目標**: AI 系パネル8箇所で手書きされている abort＋loading＋キャンセル＋エラー分岐の骨格を共通フックにする。
 
 #### タスク
-- [ ] `packages/ui/src/hooks/useCancellableAIRequest.ts` を新設する（AbortController 管理・loading フラグ・キャンセル関数のみの薄いフック。リクエスト構築とエラー表示先は呼び出し側に残す）
-- [ ] `AISuggestionPanel` / `AIChatPanel` / `PersonaDebatePanel` / `MapAnalysisPanel`（4ハンドラ） / `ArtifactPanel` / `ExportImportPanel` の各ハンドラを新フックに置き換える
-- [ ] ローディングスピナー＋キャンセルボタン6箇所を `AILoadingIndicator` に、パネルヘッダー定型（×ボタン SVG が15ファイルで重複）を `PanelHeader`/`CloseButton` に抽出する
-- [ ] `MapAnalysisPanel`（755行）をタブ単位（Analysis/Connections/Clusters/Gardener）にファイル分割する
-- [ ] `WebApp.tsx` / `DesktopApp.tsx` で重複する `onSaveError` の401リトライ＋トースト分岐を `packages/core` のファクトリ関数（`createDriveReauthHandler` 等）に共通化する
+- [x] `packages/ui/src/hooks/useCancellableAIRequest.ts` を新設する（AbortController 管理・loading フラグ・キャンセル関数のみの薄いフック。リクエスト構築とエラー表示先は呼び出し側に残す）
+- [x] `AISuggestionPanel` / `AIChatPanel` / `PersonaDebatePanel` / `MapAnalysisPanel`（4ハンドラ） / `ArtifactPanel` / `ExportImportPanel` の各ハンドラを新フックに置き換える
+- [x] ローディングスピナー＋キャンセルボタン6箇所を `AILoadingIndicator` に、パネルヘッダー定型（×ボタン SVG が15ファイルで重複）を `PanelHeader`/`CloseButton` に抽出する
+- [x] `MapAnalysisPanel`（755行）をタブ単位（Analysis/Connections/Clusters/Gardener）にファイル分割する
+- [x] `WebApp.tsx` / `DesktopApp.tsx` で重複する `onSaveError` の401リトライ＋トースト分岐を `packages/core` のファクトリ関数（`createDriveReauthHandler` 等）に共通化する
 
-**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。
+**完了条件**: `pnpm build`・`pnpm test`・`pnpm lint` が通り、外部から見た挙動が変わらないこと。→ 2026-08-19 実装完了。build 通過・テスト231件パス（createDriveReauthHandler の新規テスト5件含む）。lint は既存16件のまま増減なし。PanelHeader/CloseButton はマークアップが完全一致する5パネルのみに適用し、スタイルが異なる箇所（ExportImportPanel・NodePanel・AIChatPanel・SettingsPanel・NodeDetailPanel）は見た目を変えないため見送り。MapAnalysisPanel は 756→390行。
 
 ---
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { App } from '@ideamap/ui'
-import { useUIStore } from '@ideamap/core'
+import { useUIStore, createDriveReauthHandler } from '@ideamap/core'
 import { DesktopFileDashboard } from './components/DesktopFileDashboard'
 import { FileDropOverlay } from './components/FileDropOverlay'
 import { UpdaterSection } from './components/UpdaterSection'
@@ -38,27 +38,13 @@ export function DesktopApp() {
       // 保存先未確定のままデバウンス保存すると3秒ごとに保存ダイアログが出るため、
       // 新規ファイルの作成は Ctrl+S 等の明示的な保存にだけ許す
       createNewFileOnSave: false,
-      onSaveError: (err: unknown, attempt: number): 'retry' | 'handled' => {
-        // ローカル保存の失敗と Drive の失効を取り違えないよう、開いている先で分岐する
-        const isCloud = useUIStore.getState().currentFileOrigin === 'cloud'
-        const isAuthError = isCloud && err instanceof Error && err.message.includes('401')
-        if (!isAuthError) {
-          useUIStore
-            .getState()
-            .addToast(isCloud ? 'Googleドライブへの保存に失敗しました' : '保存に失敗しました', 'error')
-          return 'handled'
-        }
-        if (attempt === 1) {
-          // 初回401: キーチェーンのリフレッシュトークンで silent に取り直す
-          silentReauth()
-          return 'retry'
-        }
-        useUIStore.getState().addToast('Googleドライブの認証が切れました', 'error', {
-          label: '再接続',
-          onClick: signIn,
-        })
-        return 'handled'
-      },
+      // ローカル保存の失敗と Drive の失効を取り違えないよう、開いている先（isCloudSave）で分岐する
+      onSaveError: createDriveReauthHandler({
+        isCloudSave: () => useUIStore.getState().currentFileOrigin === 'cloud',
+        silentReauth,
+        signIn,
+        nonAuthErrorMessage: (isCloud) => (isCloud ? 'Googleドライブへの保存に失敗しました' : '保存に失敗しました'),
+      }),
     }),
     [accessToken, silentReauth, signIn]
   )
