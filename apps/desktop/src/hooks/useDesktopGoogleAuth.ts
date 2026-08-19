@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { getPlatform } from '@ideamap/platform'
 import { clearDriveCache, useUIStore } from '@ideamap/core'
+import type { AppCloudAuth } from '@ideamap/ui'
 import {
   REFRESH_TOKEN_SECRET,
   isDesktopClientIdMissing,
@@ -22,16 +23,16 @@ const USER_EMAIL_KEY = 'ideamap-google-email'
 /** アクセストークンの更新を仕掛ける余裕（秒）。失効直前の保存失敗を避ける */
 const REFRESH_MARGIN_SEC = 300
 
-export interface DesktopGoogleAuthState {
-  isSignedIn: boolean
-  accessToken: string | null
-  isLoading: boolean
-  error: string | null
-  userEmail: string | null
+/** フックの戻り値の形。AppCloudAuth に silentReauth を足しただけ */
+export interface DesktopGoogleAuthState extends AppCloudAuth {
+  silentReauth: () => void
 }
 
-export function useDesktopGoogleAuth() {
-  const [state, setState] = useState<DesktopGoogleAuthState>({
+/** useState で保持する分だけの部分集合（signIn/signOut 等は useCallback 側で持つ） */
+type AuthFields = Pick<AppCloudAuth, 'isSignedIn' | 'accessToken' | 'isLoading' | 'error' | 'userEmail'>
+
+export function useDesktopGoogleAuth(): DesktopGoogleAuthState {
+  const [state, setState] = useState<AuthFields>({
     isSignedIn: false,
     accessToken: null,
     isLoading: false,

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { clearDriveCache, useUIStore } from '@ideamap/core'
+import type { AppCloudAuth } from '@ideamap/ui'
 
 // drive.file のみでファイル保存、userinfo.email で接続アカウントを表示
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email'
@@ -11,13 +12,14 @@ const TOKEN_EXPIRY_KEY = 'googleTokenExpiry'
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000
 const USER_EMAIL_KEY = 'googleUserEmail'
 
-export interface GoogleAuthState {
-  isSignedIn: boolean
-  accessToken: string | null
-  isLoading: boolean
-  error: string | null
-  userEmail: string | null
+/** フックの戻り値の形。AppCloudAuth に GIS 固有のフィールドを足しただけ */
+export interface GoogleAuthState extends AppCloudAuth {
+  silentReauth: () => void
+  isGisReady: boolean
 }
+
+/** useState で保持する分だけの部分集合（signIn/signOut 等は useCallback 側で持つ） */
+type AuthFields = Pick<AppCloudAuth, 'isSignedIn' | 'accessToken' | 'isLoading' | 'error' | 'userEmail'>
 
 function saveTokenToSession(token: string, expiresIn: number): void {
   const expiresAt = Date.now() + expiresIn * 1000 - EXPIRY_BUFFER_MS
@@ -50,8 +52,8 @@ function friendlyAuthError(type: string): string | null {
   return `Google認証でエラーが発生しました（${type}）`
 }
 
-export function useGoogleAuth() {
-  const [state, setState] = useState<GoogleAuthState>({
+export function useGoogleAuth(): GoogleAuthState {
+  const [state, setState] = useState<AuthFields>({
     isSignedIn: false,
     accessToken: null,
     isLoading: false,
