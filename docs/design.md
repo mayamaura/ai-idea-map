@@ -97,7 +97,9 @@ ai-idea-map/
 │   │       │   │   ├── types.ts     # IdeaNode / Snapshot / 各スライスの型・MapState
 │   │       │   │   ├── constants.ts # ノード色・矢印マーカー・初期ノード・makeEdge（Phase 48 で packages/core の index.ts から export）
 │   │       │   │   ├── history.ts   # past / future / undo / redo・snapshot / pushPast
-│   │       │   │   ├── nodeSlice.ts # ノード追加・編集・削除・整列・コピー＆ペースト
+│   │       │   │   ├── nodeSlice.ts # ノード追加・編集・削除（Phase 57 でコピー＆ペースト・整列を分離、635→476行）
+│   │       │   │   ├── clipboardSlice.ts # コピー＆ペースト（Phase 57 で nodeSlice.ts から分離）
+│   │       │   │   ├── alignmentSlice.ts # 整列・等間隔分配（Phase 57 で nodeSlice.ts から分離）
 │   │       │   │   ├── edgeSlice.ts # エッジ作成・向き変更・ラベル・削除
 │   │       │   │   ├── groupSlice.ts   # グループ作成・所属変更・押し出し
 │   │       │   │   └── documentSlice.ts # ロード・シリアライズ・リセット
@@ -106,13 +108,23 @@ ai-idea-map/
 │   │       │   └── mapSnapshot.ts   # buildMapFile(mapId) — 保存用スナップショットの組み立て（Phase 38）
 │   │       ├── llm/                 # LLMプロバイダ抽象化（Phase 32 → Phase 33 で移動 → Phase 35 で Ollama 追加 → Phase 39 で OpenAI 追加）
 │   │       │   ├── types.ts         # LLMProvider / LLMRequest / LLMError / isAbortError ほか
-│   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / AIParseError
+│   │       │   ├── jsonUtils.ts     # sanitizeJsonString / safeParseJson / extractJsonBlock（Phase 57）/ AIParseError
 │   │       │   ├── jsonUtils.test.ts # Vitest（Phase 41）。テスト対象と同じディレクトリに同居させる方式
+│   │       │   ├── httpProviderUtils.ts # postWithParamFallback / readLineStream / createTimeoutSignal（Phase 57。Ollama/OpenAI/webSearch で重複していたHTTP制御フローの共通化。Claude は SDK 経由のため対象外）
 │   │       │   ├── claudeProvider.ts # ClaudeProvider（Anthropic SDK 依存をここに閉じ込める）
-│   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35）
-│   │       │   ├── openaiProvider.ts # OpenAIProvider（/v1/chat/completions・/v1/models、Phase 39）
+│   │       │   ├── ollamaProvider.ts # OllamaProvider（/api/chat・/api/tags・/api/ps、Phase 35。Phase 57 で httpProviderUtils.ts に処理を委譲）
+│   │       │   ├── openaiProvider.ts # OpenAIProvider（/v1/chat/completions・/v1/models、Phase 39。Phase 57 で httpProviderUtils.ts に処理を委譲）
 │   │       │   ├── providerFactory.ts # settingsStore の状態から LLMProvider を生成（Phase 35、Phase 39 で OpenAI 対応）
-│   │       │   └── aiService.ts     # AI機能9関数（旧 claudeService.ts。Phase 44 で extractMapFromText、Phase 45 で generateArtifactFromMap、Phase 47 で reviewMap、Phase 48 で debateNode 追加）
+│   │       │   ├── aiService.ts     # aiService/ 配下への re-export バレル（Phase 57。既存の import パスと公開 API は不変）
+│   │       │   └── aiService/       # AI機能9関数の実装本体（旧 claudeService.ts。Phase 44 で extractMapFromText、Phase 45 で generateArtifactFromMap、Phase 47 で reviewMap、Phase 48 で debateNode 追加。Phase 57 で928行の単一ファイルから機能別8ファイルに分割）
+│   │       │       ├── shared.ts         # buildWebContext / jsonInstructionSuffix / completeJsonWithRetry / toFriendlyAIError
+│   │       │       ├── suggestions.ts    # generateSuggestions
+│   │       │       ├── mapAnalysis.ts    # analyzeMap / suggestConnections / suggestClusters
+│   │       │       ├── gardener.ts       # reviewMap
+│   │       │       ├── debate.ts         # debateNode
+│   │       │       ├── textExtraction.ts # sanitizeExtractedNodes / extractMapFromText
+│   │       │       ├── chat.ts           # chatWithMap
+│   │       │       └── artifact.ts       # generateArtifactFromMap
 │   │       ├── services/
 │   │       │   ├── driveService.ts  # Google Drive REST の薄いラッパー（Phase 38 で apps/web から移設。Web/Desktop共通、HttpAdapter経由）
 │   │       │   ├── errorLog.ts      # 未捕捉エラーのリングバッファ（最大200件・StorageAdapter永続化、Phase 43）
@@ -136,11 +148,15 @@ ai-idea-map/
 │           ├── App.tsx              # 共通シェル。プラットフォーム固有部分は props で受け取る
 │           ├── index.css
 │           ├── components/
-│           │   ├── canvas/          # IdeaCanvas / IdeaNode / GroupNode / FloatingEdge / ContextMenu
+│           │   ├── canvas/          # IdeaCanvas / IdeaNode / GroupNode / FloatingEdge / ContextMenu /
+│           │   │                    # NodeActionBar（Phase 58 で IdeaCanvas.tsx から分離、596→469行）
+│           │   ├── dashboard/       # DashboardShell / ResumeMapCard / DashboardActionBar（起動画面の共通部品、Phase 58、§5.1.4）
 │           │   ├── panels/          # NodePanel / NodeDetailPanel / AISuggestionPanel / SettingsPanel /
 │           │   │                    # ExportImportPanel / MapAnalysisPanel / AIChatPanel / PresentationOrderPanel /
 │           │   │                    # ArtifactPanel（Phase 45）/ PersonaDebatePanel（Phase 48）/
-│           │   │                    # mapAnalysis/（MapAnalysisPanel のタブ4分割、Phase 56、§5.15）
+│           │   │                    # mapAnalysis/（MapAnalysisPanel のタブ4分割、Phase 56、§5.15）/
+│           │   │                    # settings/（SettingsPanel のサブコンポーネント9分割、Phase 58、§5.16）/
+│           │   │                    # exportImport/（ExportImportPanel のタブ3分割、Phase 58、§5.17）
 │           │   ├── screens/         # PresentationMode
 │           │   ├── toolbar/         # Toolbar（PC用）/ BottomNav（スマホ用）
 │           │   └── common/          # Header / Toast / ConfirmDialog / InputDialog / SearchBar /
@@ -174,7 +190,7 @@ ai-idea-map/
     │       │   └── index.ts
     │       ├── components/
     │       │   ├── panels/MapListPanel.tsx      # Drive のマップ一覧（Web専用）
-    │       │   └── screens/FileOpenDashboard.tsx # 起動時のファイル選択（Web専用）
+    │       │   └── screens/FileOpenDashboard.tsx # 起動時のファイル選択（Web専用。Phase 58 で共通部品（`dashboard/`、§5.1.4）を利用する形に変更）
     │       ├── hooks/useGoogleAuth.ts   # GIS 認証（Web専用）
     │       ├── services/                # googleDriveService.ts は Phase 38 で packages/core/src/services/driveService.ts へ移設
     │       │   ├── storageService.ts     # localStorage のラッパー
@@ -206,7 +222,7 @@ ai-idea-map/
             ├── googleAuth.ts        # ループバック + PKCE の認可フロー（signInWithGoogle / refreshAccessToken / revokeGoogleToken、Phase 38、§18.9）
             ├── hooks/useDesktopGoogleAuth.ts # Drive 認証状態フック。Web版 useGoogleAuth と同じ形の状態を返す（Phase 38）
             ├── components/
-            │   ├── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰・Googleドライブ欄、Phase 38 で DriveSection を追加）
+            │   ├── DesktopFileDashboard.tsx # 起動画面（最近開いたファイル・自動保存からの復帰・Googleドライブ欄、Phase 38 で DriveSection を追加。Phase 58 で共通部品（`dashboard/`、§5.1.4）を利用する形に変更）
             │   ├── DriveSection.tsx         # 起動画面の Google ドライブ欄（サインイン・一覧・開く・Driveへ保存、Phase 38）
             │   ├── FileDropOverlay.tsx      # ファイルドラッグ&ドロップ受け入れのオーバーレイ（Phase 37）
             │   └── UpdaterSection.tsx       # 設定パネル末尾の「アプリ情報」セクション（バージョン表示・手動更新チェック、Phase 36）
@@ -250,12 +266,14 @@ Phase 33 時点では `settingsStore` の `persist` が zustand 既定の localS
 
 マップの実体データと操作履歴を管理する中心的なストア。
 
-**Phase 29 でスライス分割**: 実装は `packages/core/src/stores/map/` 配下の5スライス（history / node / edge / group / document）に分かれ、`mapStore.ts` はそれらを合成するだけになった。スライスは同じ `set`/`get` で `MapState` 全体を触れるため、`deleteNodes` がエッジも消すようなスライスをまたぐ更新はそのまま書ける。利用側のインタフェース（`useMapStore` から取れるアクション）は分割前と同一。
+**Phase 29 でスライス分割**: 実装は `packages/core/src/stores/map/` 配下のスライスに分かれ、`mapStore.ts` はそれらを合成するだけになった。スライスは同じ `set`/`get` で `MapState` 全体を触れるため、`deleteNodes` がエッジも消すようなスライスをまたぐ更新はそのまま書ける。利用側のインタフェース（`useMapStore` から取れるアクション）は分割前と同一。**Phase 57 で `nodeSlice.ts` からコピー＆ペースト（`clipboardSlice.ts`）と整列・等間隔分配（`alignmentSlice.ts`）をさらに分離し、5→7スライス構成になった**（`nodeSlice.ts` は635→476行。Undo対応の `past` への push 挙動は不変）。
 
 | スライス | 責務 |
 |---|---|
 | `history.ts` | `past` / `future` / `undo` / `redo`、履歴ヘルパー `snapshot` / `pushPast` |
-| `nodeSlice.ts` | ノードの追加・更新・削除・整列・コピー＆ペースト、`onNodesChange` |
+| `nodeSlice.ts` | ノードの追加・更新・削除、`onNodesChange`（Phase 57 でコピー＆ペースト・整列を分離） |
+| `clipboardSlice.ts` | コピー＆ペースト（`copyNodes` / `paste`、Phase 57 で `nodeSlice.ts` から分離） |
+| `alignmentSlice.ts` | 選択ノードの整列・等間隔分配（`alignSelectedNodes` / `distributeSelectedNodes`、Phase 57 で `nodeSlice.ts` から分離） |
 | `edgeSlice.ts` | エッジの作成・向き変更・ラベル編集・削除、`onEdgesChange` / `onConnect` |
 | `groupSlice.ts` | グループ作成・解除・所属変更・枠外への押し出し |
 | `documentSlice.ts` | `loadFromSerialized` / `getSerialized*` / `reset` / `pendingFitView` |
@@ -487,6 +505,16 @@ Phase 33 以降、プラットフォーム固有の部分は props で受け取�
 
 `startNewMapFromTemplate(templateId)`（`useFileDashboard.ts`）は `startNewMap()` と同じ「保存先の紐付けをリセットする」手順を踏む: `mapStore.reset()` → `loadFromSerialized(template.nodes, template.edges)` → `setMapTitle(template.mapTitle)` → `setCurrentFileId(null)` → `setCurrentMapId(null)` → `setPresentationNodeIds([])` → `setSaveStatus('unsaved')` → `setFileDashboardOpen(false)`。
 
+### 5.1.4 ダッシュボード共通部品（packages/ui/src/components/dashboard/、Phase 58）
+
+Web版 `FileOpenDashboard.tsx` とデスクトップ版 `DesktopFileDashboard.tsx` はほぼ完全一致していたヘッダー・再開カード・アクションボタン列を `DashboardShell` / `ResumeMapCard` / `DashboardActionBar` に共通化した（両アプリ計 -158行）。ロジック（Drive一覧取得・自動保存の控え取得・ファイルを開く処理など）は各アプリの `FileOpenDashboard.tsx` / `DesktopFileDashboard.tsx` に残したまま、見た目の外枠だけを差し替えている。
+
+| コンポーネント | 役割 | 意図的な差分（props で注入） |
+|---|---|---|
+| `DashboardShell` | 全画面オーバーレイ・「戻る」ボタン（`hasActiveMap` のときのみ）・ロゴ＆タイトル・カードの外枠 | `scrollableCard`（既定 `false`＝`overflow-hidden`）。デスクトップ版は Drive 欄が加わり縦に伸びるため `true`（`overflow-y-auto`）を渡す |
+| `ResumeMapCard` | 「前回の作業を再開」カード（タイトル・更新日時・ノード数） | なし。Web版はローカル保存、デスクトップ版は自動保存の内容を表示するが、表示対象データの有無判定は呼び出し側が行う |
+| `DashboardActionBar` | 下部の「新規作成」／「テンプレート」／「ファイルを開く」の3ボタン | `openDisabled`。「新規作成」は両アプリで `useFileDashboard.ts` の `startNewMap()` を呼ぶだけのため `DashboardActionBar` が直接呼び出す。デスクトップ版はファイル操作中のみ「ファイルを開く」を無効化する |
+
 ### 5.2 IdeaCanvas（packages/ui/src/components/canvas/IdeaCanvas.tsx）
 
 React Flow の主要設定:
@@ -607,7 +635,7 @@ const top = Math.max(8, Math.min(y, window.innerHeight - 320))
 | 操作 | 条件 | 呼び出し元 |
 |---|---|---|
 | ノード削除（右クリックメニュー） | 接続線があるときのみ | `ContextMenu.handleDeleteNode` |
-| ノード削除（NodeActionBar の 🗑） | 接続線があるときのみ（Phase 30） | `IdeaCanvas.NodeActionBar.handleDelete` |
+| ノード削除（NodeActionBar の 🗑） | 接続線があるときのみ（Phase 30） | `NodeActionBar.handleDelete`（`canvas/NodeActionBar.tsx`、Phase 58 で `IdeaCanvas.tsx` から分離） |
 | グループと子ノードの削除 | 常に | `ContextMenu.handleDeleteGroupChoice` |
 | AIチャットの履歴クリア | 常に（Phase 30） | `AIChatPanel.handleClearHistory` |
 | ノード詳細の編集破棄 | 未コミットの変更があるときのみ（Phase 30） | `NodeDetailPanel.requestClose` |
@@ -757,6 +785,14 @@ AI系パネルで重複していた定型部分を共通化した（`MapAnalysis
 ### 5.15 MapAnalysisPanel のタブ分割（packages/ui/src/components/panels/mapAnalysis/、Phase 56）
 
 `MapAnalysisPanel.tsx` の4タブ描画部分を `AnalysisTab.tsx` / `ConnectionsTab.tsx` / `ClustersTab.tsx` / `GardenerTab.tsx` に分割した。親（`MapAnalysisPanel.tsx`）は `uiStore`/`mapStore`/`settingsStore` の購読、4つの `handleXxx`（`analyzeMap`/`suggestConnections`/`suggestClusters`/`reviewMap` の呼び出し、§9.4）、提案の適用系ハンドラ（`handleApplyGardener` 等）を持ち続け、各タブコンポーネントには結果データとコールバックを props で渡すだけにした。状態の置き場所・ロジック自体は変えていない。
+
+### 5.16 SettingsPanel のサブコンポーネント分割（packages/ui/src/components/panels/settings/、Phase 58）
+
+定義済みだった9個のサブコンポーネント（`ApiKeyField` / `CategoryManager` / `CommandHint` / `DriveSyncSection` / `ErrorLogSection` / `OllamaSection` / `OpenAISection` / `SuggestionCountField` / `WebSearchSection`）を `settings/` 配下へ機械的に移動した（ロジック変更なし）。`SettingsPanel.tsx` は1181→230行になったが、`llmProvider`/`apiKey`/`claudeModel`/`autoSave`/`edgeStyle` など `settingsStore` の主要な状態と、プロバイダ切り替え・カテゴリ管理・外観・保存の各セクションの描画は引き続き `SettingsPanel.tsx`本体が持つ。各サブコンポーネントの機能は既存のまま（Ollama設定は§9.9、Web検索設定は§9.11、設定のDrive同期は§4.3・§12を参照）。
+
+### 5.17 ExportImportPanel のタブ分割（packages/ui/src/components/panels/exportImport/、Phase 58）
+
+`ExportImportPanel.tsx`（701→364行）の3タブ描画部分を、§5.15 の `mapAnalysis/` と同じ流儀で `ExportTab.tsx` / `ImportTab.tsx` / `ShareTab.tsx` に分割した。状態（`tab` / `imageMode` / `shareUrl` / ブレインダンプ関連の各 state）とハンドラ（`handleImageExport` / `handleJsonExport` / `handleFileImport` / `handleBrainDumpExtract` / `handleGenerateShareUrl` 等）は親（`ExportImportPanel.tsx`）に残し、各タブへは結果データとコールバックを props で渡すだけにした。ロジック・挙動は変えていない。
 
 ---
 
@@ -997,12 +1033,13 @@ Redo: future の先頭を復元 → 現在状態を past 末尾に追加 → fut
 **「APIを呼ぶ部分」と「エラー分類」だけ**を `LLMProvider` の背後に隠した。プロンプト構築とJSON抽出はプロバイダ非依存なので `aiService.ts` / `llm/jsonUtils.ts` 側に残る。
 
 ```
-aiService.ts             … プロンプト構築・戻り値整形（5関数は req.provider に渡された LLMProvider を使う。Phase 33 で claudeService.ts から改名）
+aiService.ts             … プロンプト構築・戻り値整形（req.provider に渡された LLMProvider を使う。Phase 33 で claudeService.ts から改名。Phase 57 で aiService/ 配下の機能別ファイルへ実装を移し、このファイルは re-export バレルになった）
   ├─ llm/claudeProvider.ts   … Anthropic SDK 呼び出し・例外→LLMError 変換（SDK依存はこのファイルのみ）
   ├─ llm/ollamaProvider.ts   … Ollama REST API（/api/chat・/api/tags・/api/ps）呼び出し（Phase 35）
+  ├─ llm/httpProviderUtils.ts … postWithParamFallback / readLineStream / createTimeoutSignal（Phase 57。Ollama/OpenAI/webSearch 共通のHTTP制御フロー）
   ├─ llm/providerFactory.ts  … settingsStore の状態から LLMProvider を生成（Phase 35、§9.0.1）
   ├─ llm/types.ts     … LLMProvider / LLMRequest / LLMError / ProviderCapabilities / ModelInfo
-  └─ llm/jsonUtils.ts … sanitizeJsonString / safeParseJson / AIParseError
+  └─ llm/jsonUtils.ts … sanitizeJsonString / safeParseJson / extractJsonBlock / AIParseError
 ```
 
 **`LLMProvider` の4メソッド**
@@ -1010,13 +1047,13 @@ aiService.ts             … プロンプト構築・戻り値整形（5関数�
 | メソッド | 用途 | Claude 実装 | Ollama 実装（Phase 35） | OpenAI 実装（Phase 39） |
 |---|---|---|---|---|
 | `complete(req, signal?)` | 非ストリーミング補完 | `messages.create` | `POST /api/chat`（`stream: false`）。`think: false` を付与 | `POST /v1/chat/completions`（`stream: false`）。出力上限は `max_tokens` ではなく `max_completion_tokens` |
-| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答から最初の `{...}` を正規表現抽出し `safeParseJson`。`schema` は無視（`structuredOutput: 'prompt-only'`） | `format` に `schema`（省略時は `'json'`）を渡し制約付きデコードさせる。`temperature: 0` を明示指定 | `response_format: { type: 'json_object' }` を指定し、応答から最初の `{...}` を正規表現抽出（`structuredOutput: 'prompt-only'`。`json_object` はスキーマを取らないため `schema` 引数は無視） |
+| `completeJson<T>(req, schema?, signal?)` | 構造化出力 | `complete` の応答を `extractJsonBlock()`（§9.3）でJSON抽出。`schema` は無視（`structuredOutput: 'prompt-only'`） | `format` に `schema`（省略時は `'json'`）を渡し制約付きデコードさせる。`temperature: 0` を明示指定 | `response_format: { type: 'json_object' }` を指定し、応答を `extractJsonBlock()`（§9.3）でJSON抽出（`structuredOutput: 'prompt-only'`。`json_object` はスキーマを取らないため `schema` 引数は無視） |
 | `stream(req, onText, signal?)` | ストリーミング補完 | `messages.stream` + `.on('text')`。`onText` には**累積テキスト**を渡す | NDJSON を `ReadableStream` から手動パース（改行区切りで1行1JSONオブジェクト）。行ごとの `message.content` を累積して渡す | SSE（`data: {...}` の行が並び `data: [DONE]` で終端）を `ReadableStream` から手動パース。`choices[0].delta.content` を累積して渡す |
 | `listModels()` | モデル一覧 | 固定リスト（`supportsModelListing: false`） | `GET /api/tags` + `GET /api/ps`（ロード済み判定）。`ModelInfo.contextTokens` は `/api/tags` の `details.context_length`（Ollama 0.32系以降が返す）から取得 | `GET /v1/models` を呼び、ID が `gpt-` または `o` + 数字で始まるものだけを候補にし、埋め込み・音声・画像系（`embedding`/`whisper`/`tts`/`dall-e` 等）を除外して絞り込む（§9.1.3） |
 
-`OllamaProvider` は `complete`/`completeJson`/`stream` すべてに `think: false` を送る。思考モデル（qwen3 系など）は思考トークンが `num_predict` の枠を食い、出力が `done_reason: 'length'` で途中停止することを実測で確認したため（`ClaudeProvider` が `thinking: { type: 'disabled' }` を送るのと同じ理由）。`think` を解釈しないモデル・バージョンの組み合わせに備え、HTTP 400 が返ったときだけ `think` を外して1回だけ再送するフォールバックを持つ。
+`OllamaProvider` は `complete`/`completeJson`/`stream` すべてに `think: false` を送る。思考モデル（qwen3 系など）は思考トークンが `num_predict` の枠を食い、出力が `done_reason: 'length'` で途中停止することを実測で確認したため（`ClaudeProvider` が `thinking: { type: 'disabled' }` を送るのと同じ理由）。`think` を解釈しないモデル・バージョンの組み合わせに備え、HTTP 400 が返ったときだけ `think` を外して1回だけ再送するフォールバックを持つ（`llm/httpProviderUtils.ts` の `postWithParamFallback`。Phase 35 で個別実装し、Phase 57 で `OpenAIProvider` と共通化した）。
 
-`OpenAIProvider` も同じ設計のフォールバックを持つ（Phase 39）。reasoning 系モデル（o-シリーズ等）は `temperature` を指定すると 400 を返す（無視ではなくエラー）ため、HTTP 400 が返り、かつ送信済みボディに `temperature` または `response_format` が含まれるときだけ、それらを外して1回だけ再送する。
+`OpenAIProvider` も同じ `postWithParamFallback` を使う（Phase 39 で個別実装、Phase 57 で共通化）。reasoning 系モデル（o-シリーズ等）は `temperature` を指定すると 400 を返す（無視ではなくエラー）ため、HTTP 400 が返り、かつ送信済みボディに `temperature` または `response_format` が含まれるときだけ、それらを外して1回だけ再送する。
 
 **設計判断（`docs/desktop/llm-abstraction.md` からの意図的な差分。Phase 32 分＋Phase 35 分。詳細は `docs/desktop/README.md` §3.1-B・§3.1-E）**
 
@@ -1077,11 +1114,11 @@ function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKe
 
 `DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'` は `ollamaProvider.ts` にあり、`settingsStore` の `ollamaBaseUrl` の初期値・`migrate` の補完値として使う。
 
-`/api/tags` と `/api/ps` のタイムアウト（5秒）には **`AbortSignal.timeout()` を使ってはいけない**。`tauri-plugin-http` は signal の abort を受けるとレスポンスボディを解放する（`fetch_cancel_body`）ため、読み終わったあとにタイマーが発火すると解放済みリソースの二重解放になり、デスクトップ実機で `The resource id ... is invalid` の未処理例外が出る。`AbortController` ＋ `setTimeout` にして、応答を読み切った時点で `clearTimeout` する（`OllamaProvider.getWithTimeout()`）。
+`/api/tags` と `/api/ps` のタイムアウト（5秒）には **`AbortSignal.timeout()` を使ってはいけない**。`tauri-plugin-http` は signal の abort を受けるとレスポンスボディを解放する（`fetch_cancel_body`）ため、読み終わったあとにタイマーが発火すると解放済みリソースの二重解放になり、デスクトップ実機で `The resource id ... is invalid` の未処理例外が出る。`AbortController` ＋ `setTimeout` にして、応答を読み切った時点で `clearTimeout` する（`OllamaProvider.getWithTimeout()`）。この仕組みは `llm/httpProviderUtils.ts` の `createTimeoutSignal()` として切り出してあり（Phase 57）、§9.1.3 の `OpenAIProvider.listModels()` と §9.10 の `webSearch.ts` も同じ関数を使う。
 
 ### 9.1.3 OpenAI のモデル一覧（Phase 39）
 
-`OpenAIProvider.listModels()` は `GET /v1/models` を呼び、返ってきた ID を機械的に絞り込む。`/v1/models` は埋め込み・音声・画像モデルまで含み用途を判別できるフィールドを持たないため、ID のプレフィックス（`/^(gpt-|o\d)/`）で候補を絞ったうえで、`embedding|whisper|tts|dall-e|moderation|audio|realtime|transcribe|image|instruct|sora` のいずれかを含む ID を除外する（`NON_CHAT_PATTERN`）。タイムアウト（10秒）は §9.1.2 の `OllamaProvider` と同じ理由で `AbortController` ＋ `setTimeout` を使う。
+`OpenAIProvider.listModels()` は `GET /v1/models` を呼び、返ってきた ID を機械的に絞り込む。`/v1/models` は埋め込み・音声・画像モデルまで含み用途を判別できるフィールドを持たないため、ID のプレフィックス（`/^(gpt-|o\d)/`）で候補を絞ったうえで、`embedding|whisper|tts|dall-e|moderation|audio|realtime|transcribe|image|instruct|sora` のいずれかを含む ID を除外する（`NON_CHAT_PATTERN`）。タイムアウト（10秒）は §9.1.2 と同じ `createTimeoutSignal()` を使う。
 
 `DEFAULT_OPENAI_MODEL = 'gpt-5.1'` は初回のみ使う既定値で、実際の選択肢は `listModels()` の動的一覧から選ぶ。`capabilities.maxContextTokens` はモデルごとに異なるが `ProviderCapabilities` はコンストラクタ時点で確定させる必要があるため、`OllamaProvider`（固定値 8192）と同じ制約でUI表示専用の代表値（`FALLBACK_MAX_CONTEXT_TOKENS = 400_000`）を固定で持つ。
 
@@ -1107,10 +1144,13 @@ function isProviderReady(s: ProviderSettings): boolean          // Claude: apiKe
 
 ### 9.3 レスポンス解析
 
-`ClaudeProvider.completeJson()` がJSON部分をregexで抽出する（Claudeの前置き説明文への耐性）:
+`ClaudeProvider.completeJson()` / `OpenAIProvider.completeJson()` は共通の `extractJsonBlock<T>(text)`（`llm/jsonUtils.ts`。Phase 57 で両プロバイダの重複コードを統合）でJSON部分を抽出する（前置き説明文への耐性）:
 ```typescript
-const jsonMatch = text.match(/\{[\s\S]*\}/)
-return safeParseJson<T>(jsonMatch[0])
+export function extractJsonBlock<T>(text: string): T {
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new AIParseError('JSONブロックが見つかりません', text)
+  return safeParseJson<T>(jsonMatch[0])
+}
 ```
 
 `safeParseJson` は素の `JSON.parse` に失敗したら `sanitizeJsonString`（文字列値内の未エスケープ制御文字を修正）で再試行し、それでも失敗したら `AIParseError`（`rawResponse` 付き）を投げる。`MapAnalysisPanel` はこの `rawResponse` を「AIの生レスポンスをコピー」に使う。
@@ -1133,7 +1173,7 @@ return safeParseJson<T>(jsonMatch[0])
 
 **Phase 35 でのシグネチャ変更:** 5関数すべての `*Request` インタフェースにあった `apiKey: string` / `model: AIModel` の2フィールドを `provider: LLMProvider` に統合した。呼び出し側（各パネル）は `useActiveProvider()`（§9.0.1）で解決済みの `LLMProvider` をそのまま渡す。
 
-`generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` は機能ごとの JSON Schema 定数（`SUGGESTIONS_SCHEMA` / `MAP_ANALYSIS_SCHEMA` / `CONNECTIONS_SCHEMA` / `CLUSTERS_SCHEMA`、`aiService.ts` 内）を `completeJsonWithRetry(provider, req, schema, signal)` に渡すようになった。
+`generateSuggestions` / `analyzeMap` / `suggestConnections` / `suggestClusters` は機能ごとの JSON Schema 定数（`SUGGESTIONS_SCHEMA`＝`aiService/suggestions.ts` 内、`MAP_ANALYSIS_SCHEMA` / `CONNECTIONS_SCHEMA` / `CLUSTERS_SCHEMA`＝`aiService/mapAnalysis.ts` 内。Phase 57 で `aiService.ts` から分割）を `completeJsonWithRetry(provider, req, schema, signal)` に渡すようになった。
 
 - `jsonInstructionSuffix(provider, schema)` — プロンプト末尾に付けるスキーマ提示。`provider.capabilities.structuredOutput === 'json-schema'`（＝Ollama）のときだけ `\n\n出力は以下のJSON Schemaに厳密に従ってください:\n${JSON.stringify(schema)}` を追加する。Claude 向けプロンプト文字列は Phase 34 以前と1文字も変わらない。
 - `completeJsonWithRetry(provider, req, schema, signal)` — `provider.completeJson()` が `LLMError('parse')` を投げたら1回だけ「直前の応答はJSONとして解析できませんでした（エラー: …）。同じ内容をJSON形式で出力し直してください」という修復メッセージを追加して再試行する。2回目の失敗はそのまま呼び出し元（`LLMError.rawResponse` 経由でUIの「生レスポンスをコピー」導線）に投げる。
@@ -1151,7 +1191,7 @@ export interface ExtractedNode {
 }
 ```
 
-`ExtractedNode` は `packages/core/src/types/index.ts` ではなく `aiService.ts` 内に定義されている（`sanitizeExtractedNodes` と同じファイルに閉じたいため）。`extractMapFromText(req: { provider, text, categories, existingNodes? }, signal?)` は貼り付けテキスト（先頭 8000 文字に切り詰め）から `EXTRACT_MAP_SCHEMA` に従う `ExtractedNode[]` を `completeJsonWithRetry` で取得し、`sanitizeExtractedNodes()` を通してから返す。`existingNodes`（追記モード時）はプロンプトに「追記先の既存マップのノード」として埋め込まれ、AIはそこにある `id` を `parentNodeId` に使ってよい。
+`ExtractedNode` は `packages/core/src/types/index.ts` ではなく `aiService/textExtraction.ts` 内に定義されている（`sanitizeExtractedNodes` と同じファイルに閉じたいため。Phase 57 で `aiService.ts` から分割）。`extractMapFromText(req: { provider, text, categories, existingNodes? }, signal?)` は貼り付けテキスト（先頭 8000 文字に切り詰め）から `EXTRACT_MAP_SCHEMA` に従う `ExtractedNode[]` を `completeJsonWithRetry` で取得し、`sanitizeExtractedNodes()` を通してから返す。`existingNodes`（追記モード時）はプロンプトに「追記先の既存マップのノード」として埋め込まれ、AIはそこにある `id` を `parentNodeId` に使ってよい。
 
 `sanitizeExtractedNodes(raw)` は小型モデルが作りやすい壊れた構造を防御的に補正する（欠損を補完するのではなく、**壊れた要素をルート扱いに落とす**ことで後段が必ず木構造を組めるようにする）:
 - `tempId` が無い／`title` が空の要素は除外する
@@ -1321,11 +1361,11 @@ export function formatWebSearchBlock(results: WebSearchResult[]): string
 | リクエスト | `{ query, max_results: 5 }`（APIの上限は10だが本アプリでは5件に固定） |
 | レスポンス | `{ results: [{ title, url, content }] }` |
 | 取り込み量 | 1件あたり本文を600文字に切り詰める（`truncate()`）。公式ドキュメントは「検索結果は数千トークンになるためコンテキスト長32K以上を推奨」とするが、本アプリはスニペット利用に限定してローカル小型モデルでも破綻しない量に抑えている |
-| タイムアウト | 15秒。`AbortSignal.timeout()` は使わず `AbortController` ＋ `clearTimeout`（§9.1.2 と同じ理由。`tauri-plugin-http` の abort によるレスポンスボディの二重解放を避けるため） |
+| タイムアウト | 15秒。`AbortSignal.timeout()` は使わず `llm/httpProviderUtils.ts` の `createTimeoutSignal()`（§9.1.2 と同じ理由。`tauri-plugin-http` の abort によるレスポンスボディの二重解放を避けるため。Phase 57 で共通化） |
 | エラー分類 | HTTP 401/403 → `auth`、429 → `rateLimit`、他の非2xx → `unknown`、通信不可 → `connection`。いずれも `LLMError`（`provider: 'ollama'`）として投げ、検索失敗はAI呼び出しごと失敗させる（検索失敗を握り潰さない。ユーザーが明示的に検索をオンにしているため） |
 | HTTP呼び出し | `getPlatform().http.request()` 経由（`packages/core` から `fetch` を直接呼ばない規約に従う） |
 
-**`aiService.ts` への注入（`WebSearchOptions`）:**
+**`aiService/` への注入（`WebSearchOptions`、`aiService/shared.ts` 内で定義。Phase 57 で `aiService.ts` から分割）:**
 
 ```typescript
 export interface WebSearchOptions {
@@ -1335,7 +1375,7 @@ export interface WebSearchOptions {
 }
 ```
 
-`generateSuggestions` / `analyzeMap` / `chatWithMap` の3関数の `*Request` インタフェースがこれを継承する（`ChatWithMapRequest` は `packages/core/src/types/index.ts` 側、他2つは `aiService.ts` 内のローカル `interface` で継承）。`webSearch` が未指定なら `buildWebContext()` が即座に空文字を返し、**プロンプトは Web検索非対応時（Phase 35 本体）と1文字も変わらない**。`suggestConnections` / `suggestClusters` は対象外（ノード間の関係・グループ化はマップ内部の構造を扱うため外部情報が効かない）。
+`generateSuggestions` / `analyzeMap` / `chatWithMap` の3関数の `*Request` インタフェースがこれを継承する（`ChatWithMapRequest` は `packages/core/src/types/index.ts` 側、他2つは `aiService/suggestions.ts` の `SuggestionRequest`・`aiService/mapAnalysis.ts` の `AnalyzeMapRequest` というローカル `interface` で継承。Phase 57 で `aiService.ts` から分割）。`webSearch` が未指定なら `buildWebContext()` が即座に空文字を返し、**プロンプトは Web検索非対応時（Phase 35 本体）と1文字も変わらない**。`suggestConnections` / `suggestClusters` は対象外（ノード間の関係・グループ化はマップ内部の構造を扱うため外部情報が効かない）。
 
 | 関数 | 検索クエリの作り方 |
 |---|---|
@@ -1832,7 +1872,7 @@ const groupChildPairs = useMapStore(
 - メニュー項目の内容（node/edge/pane/group）は不変。表示器の枠だけをレスポンシブ化する。
 - **Phase 26 追加**: モバイルでは `IdeaNode.tsx` の `onTouchStart` 長押し（500ms）でコンテキストメニューを起動する。`touch.clientX/clientY` を `setTimeout` の外のローカル変数に取り込み `openContextMenu({ type: 'node', x, y, targetId: id })` を呼ぶ。`navigator.vibrate?.(10)` で触覚フィードバック（対応端末のみ）。pane（空白）の長押しは `IdeaCanvas.tsx` の `onTouchStart` で同様に処理。
 
-### 17.5 NodeActionBar の画面端クランプ（`IdeaCanvas.tsx`）
+### 17.5 NodeActionBar の画面端クランプ（`canvas/NodeActionBar.tsx`、Phase 58 で `IdeaCanvas.tsx` から分離）
 
 ズーム/パン追従（`useViewport` + `flowToScreenPosition`）で算出した `left` を半幅でクランプ（`Math.max(halfWidth+8, Math.min(screenX, innerWidth - halfWidth - 8))`）して画面端でも横方向に見切れないようにする。`translateX(-50%)` 追従は維持。
 
